@@ -13,12 +13,12 @@ RUN apk add --no-cache sqlite-libs sqlite sqlite-dev
 
 # make home
 RUN mkdir /home/${USER_ID}/ 
-COPY ./000.Database/SQL/Equity.db /home/${USER_ID}/
+COPY Equity.db /home/${USER_ID}/
+COPY create_db.sql /home/${USER_ID}/
+COPY create_tables.sql /home/${USER_ID}/
 
 # load postgres
 # data dump from sqlite needs to be in this order else will fail on primary/foreign keys
-COPY ./000.Database/SQL/create_db.sql /home/${USER_ID}/
-COPY ./000.Database/SQL/create_tables.sql /home/${USER_ID}/
 
 # create db, tables and backfill database
 CMD psql -d 'postgres://postgres:postgres@postgres_db_cw:5432' -a -f /home/${USER_ID}/create_db.sql \
