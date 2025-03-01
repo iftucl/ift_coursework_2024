@@ -3,8 +3,8 @@ from typing import List, Optional
 import psycopg2
 import boto3
 from botocore.exceptions import ClientError
-from a_pipeline.modules.minio_writer.store_minio import ensure_minio_bucket
-from a_pipeline.modules.extracting_csr_reports.fetch_csr_reports import fetch_csr_reports
+from modules.minio_writer.store_minio import ensure_minio_bucket
+from modules.extracting_csr_reports.fetch_csr_reports import fetch_csr_reports
 import os
 
 # =============================

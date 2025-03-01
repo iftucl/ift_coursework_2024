@@ -1,5 +1,5 @@
 from apscheduler.schedulers.background import BackgroundScheduler
-from a_pipeline.modules.extracting_csr_reports.fetch_csr_reports import fetch_csr_reports
+from modules.extracting_csr_reports.fetch_csr_reports import fetch_csr_reports
 import logging
 import time
 import atexit

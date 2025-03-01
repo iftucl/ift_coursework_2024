@@ -70,16 +70,13 @@ def get_companies_from_db():
 def google_search(security, year, num_results=5):
     """Use Google API to search for CSR reports globally with more query variations."""
     queries = [
-        f'"{security} ESG sustainability report {year}" filetype:pdf',
-        f'"{security} CSR sustainability report {year}" filetype:pdf',
-        f'"{security} {year} ESG report" filetype:pdf',
-        f'"{security} {year} CSR report" filetype:pdf',
-        f'"{security} {year} sustainability report" filetype:pdf',
-        f'"{security} annual sustainability report {year}" filetype:pdf',
-        f'"{security} corporate social responsibility report {year}" filetype:pdf'
+        f'"{security} ESG/CSR sustainability report {year}" filetype:pdf',
+        f"{security} {year} ESG report filetype:pdf",
+        f'"{security} {year} ESG report" OR "{security} {year} sustainability report" filetype:pdf'
     ]
 
     service = build("customsearch", "v1", developerKey=API_KEY)
+    backoff_time = 2  # Start with 2 seconds
 
     for query in queries:
         try:
@@ -90,7 +87,13 @@ def google_search(security, year, num_results=5):
             if pdf_links:
                 print(f"✅ Found {len(pdf_links)} reports for {security} ({year})")
                 return pdf_links
+        
         except Exception as e:
+            if "rateLimitExceeded" in str(e):
+                print(f"⚠️ Google API Rate Limit Exceeded. Retrying in {backoff_time} seconds...")
+                time.sleep(backoff_time)
+                backoff_time *= 2  # Exponential backoff
+                continue
             print(f"⚠️ Google API Error: {e}")
             return []
 
@@ -225,7 +228,7 @@ def process_company(symbol, security, region, country, sector, industry):
 
         pdf_links = google_search(security, year)
         if not pdf_links:
-            print(f"NO 🔄 Trying backup search for {security} ({year})...")
+            print(f"⚠️ Google API failed, using backup scraper for {security} ({year})...")
             pdf_links = [scrape_company_website(security, year)]
 
         if not pdf_links or not pdf_links[0]:
@@ -233,7 +236,7 @@ def process_company(symbol, security, region, country, sector, industry):
             time.sleep(5)
             continue
 
-        for pdf_url in pdf_links[:10]:
+        for pdf_url in pdf_links[:5]:
             detected_year = extract_year_from_url(pdf_url) or year
             file_path = download_pdf(pdf_url, security, detected_year)
 

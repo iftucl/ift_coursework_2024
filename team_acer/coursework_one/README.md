@@ -18,19 +18,62 @@ If Poetry is not installed, install it first:
 
 pip install poetry 
 
-Now, install the dependencies:
+Now, install the dependencies. Navigate to the directory containing pyproject.toml and execute:
 
  poetry install
 
+3. Checking and Creating the csr_metadata Table in pgAdmin
+Step 1: Log in to pgAdmin
+ 1. Open pgAdmin and log in using the credentials defined in docker-compose.yml:
+        Email: admin@admin.com
+        Password: root
 
+Step 2: Add a New Server
+ 1. In pgAdmin, right-click on "Servers" in the left panel and select "Create" → "Server".
+
+ 2. Under the General tab:
+
+        Name: Postgres_DB (or any name of your choice)
+
+ 3. Under the Connection tab:
+
+        Host name/address: postgres_db
+        Port: 5432
+        Maintenance database: fift
+        Username: postgres
+        Password: postgres
+        Click "Save" to create the connection.
+
+Step 3: Verify if the csr_metadata Table Exists
+ 1. Expand "Servers" → "Postgres_DB".
+ 2. Navigate to "Databases" → "fift" → "Schemas" → "public" → "Tables".
+ 3. Check if csr_metadata exists in the list.
+
+Step 4: Create csr_metadata Table (If It Does Not Exist)
+If the table does not exist, open the Query Tool and execute the following SQL command:
+
+CREATE TABLE IF NOT EXISTS public.csr_metadata (
+    id SERIAL PRIMARY KEY,
+    symbol TEXT NOT NULL,
+    security TEXT NOT NULL,
+    year INT NOT NULL,
+    region TEXT NOT NULL,
+    country TEXT NOT NULL,
+    sector TEXT NOT NULL,
+    industry TEXT NOT NULL,
+    minio_url TEXT NOT NULL,
+    UNIQUE(symbol, year)  -- Prevents duplicate entries for the same company & year
+);
 
 Running the Extraction Pipeline
 
+Navigate to the a_pipeline:
+
 🔹 Option 1: Run Manually
 
-Navigate to the project root and execute:
+Navigate (cd) to the a_pipeline:
 
- poetry run python -m a_pipeline.modules.extracting_csr_reports.fetch_csr_reports
+ poetry run python -m modules.extracting_csr_reports.fetch_csr_reports
 
 This will start processing CSR reports one by one.
 
@@ -38,7 +81,7 @@ This will start processing CSR reports one by one.
 
 To automate report extraction using a scheduler:
 
- poetry run python -m a_pipeline.modules.scheduler.scheduler_script
+ poetry run python -m modules.scheduler.scheduler_script
 
 This runs in the background, checking for new reports at regular intervals.
 
@@ -47,7 +90,7 @@ Running FastAPI
 
 To start the FastAPI server, run:
 
- poetry run uvicorn a_pipeline.modules.api.app:app --host 0.0.0.0 --port 8080 --reload
+poetry run uvicorn modules.fast_api.app:app --host 0.0.0.0 --port 8080 --reload
 
 Access API documentation at: http://localhost:8080/docs
 
@@ -76,7 +119,7 @@ Wait a few minutes before retrying or use a different API key.
 
 No Reports Found
 
-Check if the company name is formatted correctly.
+Sometimes it is due to a slow interent connection since a timeout has been used
 
 Database Connection Issues
 
@@ -91,4 +134,3 @@ Results are stored in PostgreSQL (metadata) & MinIO (reports).
 Invalid reports (e.g., incorrect year, no CSR content) are discarded.
 
 Happy extracting!
-
