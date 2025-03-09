@@ -16,26 +16,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Poetry
 RUN pip install poetry
 
-# Install Ollama CLI (assumes Linux-based installation)
-RUN curl -sSL https://ollama.com/download/linux | bash && mv ollama /usr/local/bin/
-
 # Create a working directory for the application
 WORKDIR /app
 
 # Copy Poetry configuration files first to leverage Docker's caching mechanism
 COPY pyproject.toml poetry.lock ./
 
-# Install Python dependencies using Poetry
-RUN poetry install --no-dev --no-root
+
+# ✅ Install all Python dependencies
+RUN poetry install --without dev --no-root
+
+# ✅ Install Spacy & NLTK manually without modifying pyproject.toml
+RUN poetry run pip install spacy nltk
+
+# ✅ Now download Spacy models & NLTK stopwords
 RUN poetry run python -m spacy download en_core_web_sm
 RUN poetry run python -m nltk.downloader stopwords
 
 
 # Copy the rest of the application code into the container
-COPY . .
+COPY . /app
 
-# Expose the port used by Ollama (default: 11434)
-EXPOSE 11434
+# Expose FastAPI port
+EXPOSE 8080
 
-# Set the default command to start a Bash shell (customize as needed)
-CMD ["bash"]
+# Start FastAPI application with Uvicorn
+CMD ["poetry", "run", "uvicorn", "a_pipeline.modules.fast_api.app:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
