@@ -7,10 +7,10 @@ from openai import OpenAI
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # === 环境变量加载 ===
-env_path = os.path.abspath(os.path.join(__file__, '../../.env'))
+env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../.env'))
 load_dotenv(dotenv_path=env_path)
 api_key = os.getenv("DEEPSEEK_API_KEY")
-
+print("API Key Loaded:", api_key is not None)  # 检查是否加载成功
 
 # === 初始化 LLM 客户端 ===
 client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
