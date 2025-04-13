@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 
 # === 环境变量加载 ===
-env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+env_path = os.path.abspath(os.path.join(__file__, '../../.env'))
 load_dotenv(dotenv_path=env_path)
 api_key = os.getenv("DEEPSEEK_API_KEY")
 
