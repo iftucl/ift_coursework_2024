@@ -171,12 +171,15 @@ def process_all_pdfs():
         gc.collect()
 
     total_progress.close()
-
+    
     # Write the list of failed files
+    script_dir = Path(__file__).parent
+    failed_json_path = script_dir / "failed_reports.json"
+
     if failed_files:
-        with open("failed_reports.json", "w", encoding="utf-8") as f:
+        with open(failed_json_path, "w", encoding="utf-8") as f:
             json.dump(failed_files, f, ensure_ascii=False, indent=2)
-        tqdm.write(f"❗ Failed files have been written to failed_reports.json, total of {len(failed_files)} files.")
+        tqdm.write(f"❗ Failed files have been written to {failed_json_path}, total of {len(failed_files)} files.")
     else:
         tqdm.write("🎉 All files processed successfully, no failures.")
 

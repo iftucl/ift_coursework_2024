@@ -110,11 +110,14 @@ def process_single_report(object_name, indicators, conn_config):
     return True
 
 def retry_failed_reports():
-    if not os.path.exists("failed_reports.json"):
+    script_dir = Path(__file__).parent
+    failed_json_path = script_dir / "failed_reports.json"
+
+    if not failed_json_path.exists():
         print("No failed_reports.json found, no need to retry.")
         return
 
-    with open("failed_reports.json", "r", encoding="utf-8") as f:
+    with open(failed_json_path, "r", encoding="utf-8") as f:
         failed_files = json.load(f)
 
     if not failed_files:
@@ -133,11 +136,11 @@ def retry_failed_reports():
             remaining_failed.append(object_name)
 
     if remaining_failed:
-        with open("failed_reports.json", "w", encoding="utf-8") as f:
+        with open(failed_json_path, "w", encoding="utf-8") as f:
             json.dump(remaining_failed, f, ensure_ascii=False, indent=2)
         tqdm.write(f"⚠️ {len(remaining_failed)} files still failed after retry, updated failed_reports.json.")
     else:
-        os.remove("failed_reports.json")
+        failed_json_path.unlink()  # safer than os.remove
         tqdm.write("🎉 All failed files have been retried successfully, failed_reports.json has been cleared.")
 
 if __name__ == "__main__":
