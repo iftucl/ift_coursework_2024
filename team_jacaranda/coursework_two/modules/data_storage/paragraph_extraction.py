@@ -10,6 +10,7 @@ from pathlib import Path
 from multiprocessing import Pool
 from tqdm import tqdm
 import psutil
+import gc  # Import gc module for garbage collection
 
 # === MinIO Configuration ===
 MINIO_ENDPOINT = 'localhost:9000'
@@ -41,8 +42,8 @@ def parse_security_and_year(object_name):
         return match.group(1), int(match.group(2))
     return None, None
 
+# === Modified: Use a generator to release PDF file resources ===
 def extract_paragraphs_from_pdf(file_path):
-    paragraphs = []
     with pdfplumber.open(file_path) as pdf:
         for page in pdf.pages:
             text = page.extract_text()
@@ -51,8 +52,8 @@ def extract_paragraphs_from_pdf(file_path):
                 splits = re.split(r'(?<=[。；.\n])\s*', clean_text)
                 for para in splits:
                     if len(para.strip()) > 20:
-                        paragraphs.append((page.page_number, para.strip()))
-    return paragraphs
+                        yield (page.page_number, para.strip())  # Use yield to generate paragraphs on demand
+    # pdfplumber automatically releases resources, no need to explicitly close pdf
 
 def find_matching_paragraphs(paragraphs, keywords, threshold=80):
     matched = []
@@ -103,7 +104,7 @@ def process_report(args):
         tqdm.write(f"📥 Downloading: {object_name}")
         minio_client.fget_object(MINIO_BUCKET, object_name, local_file)
 
-        paragraphs = extract_paragraphs_from_pdf(local_file)
+        paragraphs = extract_paragraphs_from_pdf(local_file)  # Using generator
         extraction_time = datetime.datetime.now()
 
         for indicator_id, indicator_name, keyword_list in indicators:
@@ -123,6 +124,7 @@ def process_report(args):
 
     return None  # Return None if successfully processed
 
+# === Perform garbage collection after each batch process ===
 def process_all_pdfs():
     conn_config = db_config
 
@@ -131,8 +133,8 @@ def process_all_pdfs():
 
     objects = list(minio_client.list_objects(MINIO_BUCKET, recursive=True))
 
-    pool_size = 8
-    batch_size = 80
+    pool_size = 10
+    batch_size = 100
     total_batches = (len(objects) + batch_size - 1) // batch_size
 
     tqdm.write(f"📊 A total of {len(objects)} files need to be processed, divided into {total_batches} batches.")
@@ -149,6 +151,9 @@ def process_all_pdfs():
                 total_progress.update(1)
                 if result:
                     failed_files.append(result)
+
+        # Perform garbage collection after processing each batch
+        gc.collect()
 
     total_progress.close()
 

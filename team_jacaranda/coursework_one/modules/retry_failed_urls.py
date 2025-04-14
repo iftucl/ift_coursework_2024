@@ -7,7 +7,7 @@ import psycopg2
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 
-# --- 日志设置 ---
+# --- Logging Setup ---
 log_dir = Path("./logs")
 log_dir.mkdir(exist_ok=True)
 
@@ -17,13 +17,13 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
 
-# --- MinIO 配置 ---
+# --- MinIO Configuration ---
 MINIO_ENDPOINT = 'localhost:9000'
 MINIO_ACCESS_KEY = 'ift_bigdata'
 MINIO_SECRET_KEY = 'minio_password'
 MINIO_BUCKET = 'csreport'
 
-# --- PostgreSQL 配置 ---
+# --- PostgreSQL Configuration ---
 db_config = {
     "dbname": "fift",
     "user": "postgres",
@@ -32,7 +32,7 @@ db_config = {
     "port": 5439
 }
 
-# --- 初始化 MinIO 客户端 ---
+# --- Initialize MinIO Client ---
 minio_client = Minio(
     MINIO_ENDPOINT,
     access_key=MINIO_ACCESS_KEY,
@@ -40,14 +40,14 @@ minio_client = Minio(
     secure=False
 )
 
-# --- 失败链接文件路径 ---
+# --- Failed URLs File Path ---
 failed_urls_path = log_dir / "failed_urls.txt"
 
-# --- 本地下载目录 ---
+# --- Local Download Directory ---
 download_dir = Path("./downloaded_reports")
 download_dir.mkdir(parents=True, exist_ok=True)
 
-# --- 更新 MinIO 路径到 PostgreSQL ---
+# --- Update MinIO Path in PostgreSQL ---
 def update_minio_path(security, report_year, object_name):
     try:
         conn = psycopg2.connect(**db_config)
@@ -65,7 +65,7 @@ def update_minio_path(security, report_year, object_name):
     except Exception as e:
         logging.error(f"❌ DB Update failed for {security} ({report_year}): {e}")
 
-# --- 单个下载 + 上传任务 ---
+# --- Single Download + Upload Task ---
 def download_and_upload(security, url, year):
     try:
         response = requests.get(url, timeout=15)
@@ -74,13 +74,13 @@ def download_and_upload(security, url, year):
         filename = f"{security}_{year}.pdf"
         local_path = download_dir / filename
 
-        # 保存文件
+        # Save the file
         with open(local_path, "wb") as f:
             f.write(response.content)
 
         object_name = f"{security}/{filename}"
 
-        # 上传到 MinIO
+        # Upload to MinIO
         minio_client.fput_object(
             bucket_name=MINIO_BUCKET,
             object_name=object_name,
@@ -88,10 +88,10 @@ def download_and_upload(security, url, year):
             content_type="application/pdf"
         )
 
-        # 删除本地文件
+        # Delete the local file
         os.remove(local_path)
 
-        # 更新数据库
+        # Update the database
         update_minio_path(security, year, object_name)
 
         logging.info(f"✅ Uploaded: {object_name}")
@@ -101,7 +101,7 @@ def download_and_upload(security, url, year):
         logging.error(f"❌ Failed: {url} | {security} | {year} | Reason: {e}")
         return False
 
-# --- 重试函数 ---
+# --- Retry Function ---
 def retry_failed_urls():
     if not failed_urls_path.exists():
         logging.info("No failed_urls.txt file found.")
@@ -141,12 +141,12 @@ def retry_failed_urls():
                 logging.error(f"❌ Exception in retry thread: {url} | {e}")
                 remaining_failed.append(f"{security}\t{year}\t{url}\n")
 
-    # 重新写回剩余失败项
+    # Write back the remaining failed entries
     with open(failed_urls_path, "w") as f:
         f.writelines(remaining_failed)
 
     logging.info(f"✅ Retry completed. Remaining failed: {len(remaining_failed)}")
 
-# --- 主程序入口 ---
+# --- Main Program Entry ---
 if __name__ == "__main__":
     retry_failed_urls()
