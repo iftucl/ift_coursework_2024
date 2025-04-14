@@ -42,7 +42,7 @@ def parse_security_and_year(object_name):
         return match.group(1), int(match.group(2))
     return None, None
 
-# === Modified: Use a generator to release PDF file resources ===
+# === Use a generator to release PDF file resources ===
 def extract_paragraphs_from_pdf(file_path):
     with pdfplumber.open(file_path) as pdf:
         for page in pdf.pages:
@@ -52,7 +52,7 @@ def extract_paragraphs_from_pdf(file_path):
                 splits = re.split(r'(?<=[。；.\n])\s*', clean_text)
                 for para in splits:
                     if len(para.strip()) > 20:
-                        yield (page.page_number, para.strip())  # Use yield to generate paragraphs on demand
+                        yield (page.page_number, para.strip())
 
 def find_matching_paragraphs(paragraphs, keywords, threshold=80):
     matched = []
@@ -67,7 +67,6 @@ def load_indicators_from_db(conn):
         cur.execute("SELECT indicator_id, indicator_name, keywords FROM csr_reporting.CSR_indicators")
         return cur.fetchall()
 
-# === Modified: Insert and print data_id after insertion ===
 def insert_matched_data(conn, security, report_year, indicator_id, indicator_name, matched, extraction_time):
     with conn.cursor() as cur:
         cur.execute(""" 
@@ -85,16 +84,6 @@ def insert_matched_data(conn, security, report_year, indicator_id, indicator_nam
         tqdm.write(f"🆗 Inserted data_id: {data_id}, security: {security}, year: {report_year}, indicator_id: {indicator_id}")
     conn.commit()
 
-# === New: Check if the same entry already exists ===
-def check_if_entry_exists(conn, security, report_year, indicator_id):
-    with conn.cursor() as cur:
-        cur.execute(""" 
-            SELECT 1 FROM csr_reporting.CSR_Data
-            WHERE security = %s AND report_year = %s AND indicator_id = %s
-            LIMIT 1
-        """, (security, report_year, indicator_id))
-        return cur.fetchone() is not None
-
 def check_memory_usage(threshold_percent=90):
     mem = psutil.virtual_memory()
     if mem.percent > threshold_percent:
@@ -102,7 +91,6 @@ def check_memory_usage(threshold_percent=90):
         return False
     return True
 
-# === Process report in child processes and return failed object names (if any) ===
 def process_report(args):
     from tqdm import tqdm
     conn_config, obj, indicators = args
@@ -113,21 +101,16 @@ def process_report(args):
         return object_name
 
     local_file = f"/tmp/{security}_{report_year}.pdf"
-    not_matched_count = 0  # Keep track of unmatched indicators
-    matched_count = 0  # Keep track of matched indicators
+    not_matched_count = 0
+    matched_count = 0
     try:
         tqdm.write(f"📥 Downloading: {object_name}")
         minio_client.fget_object(MINIO_BUCKET, object_name, local_file)
 
-        paragraphs = extract_paragraphs_from_pdf(local_file)  # Using generator
+        paragraphs = list(extract_paragraphs_from_pdf(local_file))  # convert to list so we can reuse
         extraction_time = datetime.datetime.now()
 
         for indicator_id, indicator_name, keyword_list in indicators:
-            # === Skip if already exists ===
-            if check_if_entry_exists(conn, security, report_year, indicator_id):
-                tqdm.write(f"⏭️ Skipping existing entry: {security} ({report_year}) - {indicator_name}")
-                continue
-
             keywords = keyword_list
             matched = find_matching_paragraphs(paragraphs, keywords)
             if matched:
@@ -141,15 +124,14 @@ def process_report(args):
 
     except Exception as e:
         tqdm.write(f"❌ Failed to process file: {object_name}, Error: {e}")
-        return object_name  # Return the failed object name
+        return object_name
     finally:
         if os.path.exists(local_file):
             os.remove(local_file)
         conn.close()
 
-    return None  # Return None if successfully processed
+    return None
 
-# === Perform garbage collection after each batch process ===
 def process_all_pdfs():
     conn_config = db_config
 
@@ -177,12 +159,10 @@ def process_all_pdfs():
                 if result:
                     failed_files.append(result)
 
-        # Perform garbage collection after processing each batch
         gc.collect()
 
     total_progress.close()
-    
-    # Write the list of failed files
+
     script_dir = Path(__file__).parent
     failed_json_path = script_dir / "failed_reports.json"
 
