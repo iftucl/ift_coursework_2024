@@ -12,8 +12,10 @@ db_config = {
 
 # --- Create Tables and Insert Data ---
 def create_table_and_insert_data():
-    
-    # Create CSR_indicators Table (Indicators Table)
+    # Create schema if not exists
+    create_schema_sql = "CREATE SCHEMA IF NOT EXISTS csr_reporting;"
+
+    # Create CSR_indicators Table
     create_indicators_table_sql = """
     CREATE TABLE IF NOT EXISTS csr_reporting.CSR_indicators (
         indicator_id SERIAL PRIMARY KEY,
@@ -25,8 +27,8 @@ def create_table_and_insert_data():
         is_target BOOLEAN
     );
     """
-    
-    # Create CSR_Data Table (Data Records Table)
+
+    # Create CSR_Data Table
     create_data_table_sql = """
     CREATE TABLE IF NOT EXISTS csr_reporting.CSR_Data (
         data_id SERIAL PRIMARY KEY,
@@ -48,29 +50,50 @@ def create_table_and_insert_data():
     """
 
     try:
-        # Connect to the database and execute SQL statements
         conn = psycopg2.connect(**db_config)
         cur = conn.cursor()
 
-        # Create both tables
+        # Create schema and tables
+        cur.execute(create_schema_sql)
         cur.execute(create_indicators_table_sql)
         cur.execute(create_data_table_sql)
         conn.commit()
-
         print("✅ Tables CSR_indicators and CSR_Data created successfully.")
     except Exception as e:
         print(f"❌ Error occurred: {e}")
 
-# --- Insert Data ---
-    # Raw Indicator Keywords (for reuse by target indicators)
+    # --- Insert Data ---
     keywords_dict = {
-        "Total GHG Emissions": ["Total GHG emissions", "Carbon emissions", "Greenhouse gas emissions", "CO₂ emissions", "GHG emissions"],
-        "Carbon Intensity": ["Carbon intensity", "Carbon emissions per unit revenue", "Carbon emissions per dollar", "Emissions intensity", "GHG intensity"],
-        "Renewable Energy Usage Ratio": ["Renewable energy usage", "Renewable energy ratio", "Solar energy usage", "Wind energy usage", "Percentage of renewable energy", "Green energy"],
-        "Energy Intensity": ["Energy intensity", "Energy consumption per revenue", "Energy efficiency", "Energy usage per unit of output"],
-        "Water Replenishment": ["Water replenishment", "Water recovery rate", "Water recycling rate", "Water return", "Water reinjection"],
-        "Packaging Recyclable": ["Recyclable packaging", "Packaging recyclability", "Sustainable packaging", "Green packaging", "Recyclable materials", "Recyclable content in packaging", "Packaging recyclable content", "Recycled materials in packaging", "Recycled content"],
-        "Waste Reduced": ["Waste reduction", "Waste prevented", "Waste prevention", "Waste minimization", "Waste avoidance", "Waste management", "Recycling rates"]
+        "Total GHG Emissions": [
+            "Total GHG emissions", "Carbon emissions", "Greenhouse gas emissions",
+            "CO₂ emissions", "GHG emissions"
+        ],
+        "Carbon Intensity": [
+            "Carbon intensity", "Carbon emissions per unit revenue", "Carbon emissions per dollar",
+            "Emissions intensity", "GHG intensity"
+        ],
+        "Renewable Energy Usage Ratio": [
+            "Renewable energy usage", "Renewable energy ratio", "Solar energy usage", "Wind energy usage",
+            "Percentage of renewable energy", "Green energy", "Proportion of clean energy", "Sustainable energy mix"
+        ],
+        "Energy Intensity": [
+            "Energy intensity", "Energy consumption per revenue", "Energy efficiency",
+            "Energy usage per unit of output", "Energy use per dollar", "Energy consumed per sales",
+            "Energy productivity"
+        ],
+        "Water Replenishment": [
+            "Water replenishment", "Water recovery rate", "Water recycling rate", "Water return",
+            "Water reinjection", "Percentage of water restored", "Water reused", "Water returned to environment"
+        ],
+        "Packaging Recyclable": [
+            "Recyclable packaging", "Packaging recyclability", "Sustainable packaging", "Green packaging",
+            "Recyclable materials", "Recyclable content in packaging", "Packaging recyclable content",
+            "Recycled materials in packaging", "Recycled content", "Environment-friendly packaging", "Eco-packaging"
+        ],
+        "Waste Reduced": [
+            "Waste reduction", "Waste prevented", "Waste prevention", "Waste minimization", "Waste avoidance",
+            "Waste management", "Recycling rates", "Reduction of solid waste", "Decreased waste output"
+        ]
     }
 
     indicators_data = [
@@ -81,9 +104,15 @@ def create_table_and_insert_data():
         ("Total GHG Emissions Target", "Climate Change", None,
          "The company sets targets for greenhouse gas emissions reduction (e.g., 'Reduce by 20% by 2030').",
          keywords_dict["Total GHG Emissions"], True),
-        ("Scope 1 Emissions", "Climate Change", "metric tons CO₂e", "Scope 1: Direct greenhouse gas emissions from company operations.", ["Scope 1"], False),
-        ("Scope 2 Emissions", "Climate Change", "metric tons CO₂e", "Scope 2: Indirect emissions from energy use within the company.", ["Scope 2"], False),
-        ("Scope 3 Emissions", "Climate Change", "metric tons CO₂e", "Scope 3: Greenhouse gas emissions from the supply chain.", ["Scope 3"], False),
+        ("Scope 1 Emissions", "Climate Change", "metric tons CO₂e",
+         "Scope 1: Direct greenhouse gas emissions from company operations.",
+         ["Scope 1", "Direct emissions", "Direct GHG emissions", "Operational emissions"], False),
+        ("Scope 2 Emissions", "Climate Change", "metric tons CO₂e",
+         "Scope 2: Indirect emissions from energy use within the company.",
+         ["Scope 2", "Indirect emissions", "Energy-related emissions", "Energy consumption emissions"], False),
+        ("Scope 3 Emissions", "Climate Change", "metric tons CO₂e",
+         "Scope 3: Greenhouse gas emissions from the supply chain.",
+         ["Scope 3", "Supply chain emissions", "Indirect supply chain emissions", "Supply chain-related emissions"], False),
         ("Carbon Intensity", "Climate Change", "g CO₂e / $ revenue",
          "Measures the carbon emissions per unit of revenue, helping to evaluate the company's energy efficiency and environmental impact.",
          keywords_dict["Carbon Intensity"], False),
@@ -99,47 +128,45 @@ def create_table_and_insert_data():
          keywords_dict["Renewable Energy Usage Ratio"], False),
         ("Renewable Energy Usage Target", "Energy", None,
          "The company sets a target for the percentage of renewable energy usage.",
-         keywords_dict["Renewable Energy Usage Ratio"], True),
+         ["Renewable energy target", "Renewable energy goal", "Green energy target"], True),
         ("Energy Intensity", "Energy", "kWh / $ revenue", "Measures energy consumption per unit of revenue.",
          keywords_dict["Energy Intensity"], False),
         ("Energy Intensity Target", "Energy", None,
          "The company sets a target for energy consumption intensity.",
-         keywords_dict["Energy Intensity"], True),
+         ["Energy reduction target", "Energy efficiency goal", "Energy consumption per unit target"], True),
 
         # 💧 Water Resources
         ("Water Reduction Target", "Water Resources", None,
          "The company's target for reducing water resource usage.",
-         ["Water consumption reduction", "Water usage target", "Water reduction goals", "Water conservation targets"], True),
+         ["Water conservation target", "Water usage minimization target"], True),
         ("Water Replenishment", "Water Resources", "%", "Measures the percentage of water used by the company that is replenished or returned to the environment.",
          keywords_dict["Water Replenishment"], False),
         ("Water Replenishment Target", "Water Resources", None,
          "The company's target for water replenishment rate.",
-         keywords_dict["Water Replenishment"], True),
+         ["Water restoration goal", "Water return target", "Water reinjection target"], True),
 
         # 📦 Packaging
         ("Packaging Recyclable", "Packaging", "%", "Measures the proportion of recyclable components in product packaging.",
          keywords_dict["Packaging Recyclable"], False),
         ("Packaging Recyclable Target", "Packaging", None,
          "The company sets a target for the proportion of recyclable packaging.",
-         keywords_dict["Packaging Recyclable"], True),
+         ["Sustainable packaging goal", "Recycled content in packaging target"], True),
 
         # 🚮 Waste
         ("Waste Reduced", "Waste", "%", "Measures the reduction in waste across various categories.",
          keywords_dict["Waste Reduced"], False),
         ("Waste Reduction Target", "Waste", None,
          "The company sets a target for waste reduction.",
-         keywords_dict["Waste Reduced"], True)
+         ["Waste prevention goal", "Recycling rate target"], True)
     ]
 
     try:
-        # Insert data
         insert_sql = """
         INSERT INTO csr_reporting.CSR_indicators (indicator_name, theme, unit, description, keywords, is_target)
         VALUES %s;
         """
         execute_values(cur, insert_sql, indicators_data)
         conn.commit()
-
         print("✅ Data inserted into CSR_indicators table successfully.")
     except Exception as e:
         print(f"❌ Error occurred: {e}")

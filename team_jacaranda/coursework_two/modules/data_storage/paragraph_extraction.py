@@ -53,7 +53,6 @@ def extract_paragraphs_from_pdf(file_path):
                 for para in splits:
                     if len(para.strip()) > 20:
                         yield (page.page_number, para.strip())  # Use yield to generate paragraphs on demand
-    # pdfplumber automatically releases resources, no need to explicitly close pdf
 
 def find_matching_paragraphs(paragraphs, keywords, threshold=80):
     matched = []
@@ -68,6 +67,7 @@ def load_indicators_from_db(conn):
         cur.execute("SELECT indicator_id, indicator_name, keywords FROM csr_reporting.CSR_indicators")
         return cur.fetchall()
 
+# === Modified: Insert and print data_id after insertion ===
 def insert_matched_data(conn, security, report_year, indicator_id, indicator_name, matched, extraction_time):
     with conn.cursor() as cur:
         cur.execute(""" 
@@ -76,16 +76,19 @@ def insert_matched_data(conn, security, report_year, indicator_id, indicator_nam
                 source_excerpt, extraction_time
             )
             VALUES (%s, %s, %s, %s, %s::jsonb, %s)
+            RETURNING data_id
         """, (
             security, report_year, indicator_id, indicator_name,
             json.dumps(matched), extraction_time
         ))
+        data_id = cur.fetchone()[0]
+        tqdm.write(f"🆗 Inserted data_id: {data_id}, security: {security}, year: {report_year}, indicator_id: {indicator_id}")
     conn.commit()
 
 # === New: Check if the same entry already exists ===
 def check_if_entry_exists(conn, security, report_year, indicator_id):
     with conn.cursor() as cur:
-        cur.execute("""
+        cur.execute(""" 
             SELECT 1 FROM csr_reporting.CSR_Data
             WHERE security = %s AND report_year = %s AND indicator_id = %s
             LIMIT 1
@@ -110,6 +113,8 @@ def process_report(args):
         return object_name
 
     local_file = f"/tmp/{security}_{report_year}.pdf"
+    not_matched_count = 0  # Keep track of unmatched indicators
+    matched_count = 0  # Keep track of matched indicators
     try:
         tqdm.write(f"📥 Downloading: {object_name}")
         minio_client.fget_object(MINIO_BUCKET, object_name, local_file)
@@ -123,11 +128,16 @@ def process_report(args):
                 tqdm.write(f"⏭️ Skipping existing entry: {security} ({report_year}) - {indicator_name}")
                 continue
 
-            keywords = keyword_list or []
+            keywords = keyword_list
             matched = find_matching_paragraphs(paragraphs, keywords)
             if matched:
+                matched_count += 1
                 tqdm.write(f"✅ Matched indicator【{indicator_name}】in {security} ({report_year}) - Paragraphs: {len(matched)}")
                 insert_matched_data(conn, security, report_year, indicator_id, indicator_name, matched, extraction_time)
+            else:
+                not_matched_count += 1
+
+        tqdm.write(f"📄 Finished processing {object_name}: {matched_count} matched indicators, {not_matched_count} not matched.")
 
     except Exception as e:
         tqdm.write(f"❌ Failed to process file: {object_name}, Error: {e}")
