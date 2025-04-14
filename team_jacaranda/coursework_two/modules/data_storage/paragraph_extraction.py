@@ -11,13 +11,13 @@ from multiprocessing import Pool
 from tqdm import tqdm
 import psutil
 
-# === MinIO 配置 ===
+# === MinIO Configuration ===
 MINIO_ENDPOINT = 'localhost:9000'
 MINIO_ACCESS_KEY = 'ift_bigdata'
 MINIO_SECRET_KEY = 'minio_password'
 MINIO_BUCKET = 'csreport'
 
-# === PostgreSQL 配置 ===
+# === PostgreSQL Configuration ===
 db_config = {
     "dbname": "fift",
     "user": "postgres",
@@ -26,7 +26,7 @@ db_config = {
     "port": 5439
 }
 
-# === 初始化 MinIO 客户端 ===
+# === Initialize MinIO Client ===
 minio_client = Minio(
     MINIO_ENDPOINT,
     access_key=MINIO_ACCESS_KEY,
@@ -84,11 +84,11 @@ def insert_matched_data(conn, security, report_year, indicator_id, indicator_nam
 def check_memory_usage(threshold_percent=90):
     mem = psutil.virtual_memory()
     if mem.percent > threshold_percent:
-        tqdm.write(f"⚠️ 内存使用过高：{mem.percent}%")
+        tqdm.write(f"⚠️ Memory usage is too high: {mem.percent}%")
         return False
     return True
 
-# === 子进程处理报告，并返回失败对象名（若有） ===
+# === Process report in child processes and return failed object names (if any) ===
 def process_report(args):
     from tqdm import tqdm
     conn_config, obj, indicators = args
@@ -100,7 +100,7 @@ def process_report(args):
 
     local_file = f"/tmp/{security}_{report_year}.pdf"
     try:
-        tqdm.write(f"📥 下载：{object_name}")
+        tqdm.write(f"📥 Downloading: {object_name}")
         minio_client.fget_object(MINIO_BUCKET, object_name, local_file)
 
         paragraphs = extract_paragraphs_from_pdf(local_file)
@@ -110,18 +110,18 @@ def process_report(args):
             keywords = keyword_list or []
             matched = find_matching_paragraphs(paragraphs, keywords)
             if matched:
-                tqdm.write(f"✅ 匹配到指标【{indicator_name}】在 {security} ({report_year}) - 段落数: {len(matched)}")
+                tqdm.write(f"✅ Matched indicator【{indicator_name}】in {security} ({report_year}) - Paragraphs: {len(matched)}")
                 insert_matched_data(conn, security, report_year, indicator_id, indicator_name, matched, extraction_time)
 
     except Exception as e:
-        tqdm.write(f"❌ 处理文件失败：{object_name}，错误：{e}")
-        return object_name  # 返回失败的对象名
+        tqdm.write(f"❌ Failed to process file: {object_name}, Error: {e}")
+        return object_name  # Return the failed object name
     finally:
         if os.path.exists(local_file):
             os.remove(local_file)
         conn.close()
 
-    return None  # 成功处理返回 None
+    return None  # Return None if successfully processed
 
 def process_all_pdfs():
     conn_config = db_config
@@ -135,9 +135,9 @@ def process_all_pdfs():
     batch_size = 80
     total_batches = (len(objects) + batch_size - 1) // batch_size
 
-    tqdm.write(f"📊 总共需要处理 {len(objects)} 个文件，分为 {total_batches} 个 batch。")
+    tqdm.write(f"📊 A total of {len(objects)} files need to be processed, divided into {total_batches} batches.")
 
-    total_progress = tqdm(total=len(objects), desc="总体处理进度")
+    total_progress = tqdm(total=len(objects), desc="Overall progress")
     failed_files = []
 
     for i in range(0, len(objects), batch_size):
@@ -152,13 +152,13 @@ def process_all_pdfs():
 
     total_progress.close()
 
-    # 写入失败文件列表
+    # Write the list of failed files
     if failed_files:
         with open("failed_reports.json", "w", encoding="utf-8") as f:
             json.dump(failed_files, f, ensure_ascii=False, indent=2)
-        tqdm.write(f"❗ 处理失败的文件已写入 failed_reports.json，共 {len(failed_files)} 个。")
+        tqdm.write(f"❗ Failed files have been written to failed_reports.json, total of {len(failed_files)} files.")
     else:
-        tqdm.write("🎉 所有文件处理成功，没有失败项。")
+        tqdm.write("🎉 All files processed successfully, no failures.")
 
 if __name__ == "__main__":
     process_all_pdfs()

@@ -8,13 +8,13 @@ from fuzzywuzzy import fuzz
 from pathlib import Path
 from tqdm import tqdm
 
-# === MinIO 配置 ===
+# === MinIO Configuration ===
 MINIO_ENDPOINT = 'localhost:9000'
 MINIO_ACCESS_KEY = 'ift_bigdata'
 MINIO_SECRET_KEY = 'minio_password'
 MINIO_BUCKET = 'csreport'
 
-# === PostgreSQL 配置 ===
+# === PostgreSQL Configuration ===
 db_config = {
     "dbname": "fift",
     "user": "postgres",
@@ -23,7 +23,7 @@ db_config = {
     "port": 5439
 }
 
-# === 初始化 MinIO 客户端 ===
+# === Initialize MinIO Client ===
 minio_client = Minio(
     MINIO_ENDPOINT,
     access_key=MINIO_ACCESS_KEY,
@@ -86,7 +86,7 @@ def process_single_report(object_name, indicators, conn_config):
 
     local_file = f"/tmp/{security}_{report_year}.pdf"
     try:
-        tqdm.write(f"🔁 重试下载：{object_name}")
+        tqdm.write(f"🔁 Retrying download: {object_name}")
         minio_client.fget_object(MINIO_BUCKET, object_name, local_file)
         paragraphs = extract_paragraphs_from_pdf(local_file)
         extraction_time = datetime.datetime.now()
@@ -95,11 +95,11 @@ def process_single_report(object_name, indicators, conn_config):
             keywords = keyword_list or []
             matched = find_matching_paragraphs(paragraphs, keywords)
             if matched:
-                tqdm.write(f"✅ 匹配到指标【{indicator_name}】在 {security} ({report_year}) - 段落数: {len(matched)}")
+                tqdm.write(f"✅ Matched indicator【{indicator_name}】in {security} ({report_year}) - Paragraphs: {len(matched)}")
                 insert_matched_data(conn, security, report_year, indicator_id, indicator_name, matched, extraction_time)
 
     except Exception as e:
-        tqdm.write(f"❌ 重试失败：{object_name}，错误：{e}")
+        tqdm.write(f"❌ Retry failed: {object_name}, Error: {e}")
         return False
     finally:
         if os.path.exists(local_file):
@@ -110,23 +110,23 @@ def process_single_report(object_name, indicators, conn_config):
 
 def retry_failed_reports():
     if not os.path.exists("failed_reports.json"):
-        print("未找到 failed_reports.json，无需重试。")
+        print("No failed_reports.json found, no need to retry.")
         return
 
     with open("failed_reports.json", "r", encoding="utf-8") as f:
         failed_files = json.load(f)
 
     if not failed_files:
-        print("failed_reports.json 是空的，无需重试。")
+        print("failed_reports.json is empty, no need to retry.")
         return
 
     with psycopg2.connect(**db_config) as conn:
         indicators = load_indicators_from_db(conn)
 
-    tqdm.write(f"🔄 正在重试处理 {len(failed_files)} 个失败文件...")
+    tqdm.write(f"🔄 Retrying processing of {len(failed_files)} failed files...")
     remaining_failed = []
 
-    for object_name in tqdm(failed_files, desc="重试中"):
+    for object_name in tqdm(failed_files, desc="Retrying"):
         success = process_single_report(object_name, indicators, db_config)
         if not success:
             remaining_failed.append(object_name)
@@ -134,10 +134,10 @@ def retry_failed_reports():
     if remaining_failed:
         with open("failed_reports.json", "w", encoding="utf-8") as f:
             json.dump(remaining_failed, f, ensure_ascii=False, indent=2)
-        tqdm.write(f"⚠️ 重试后仍有 {len(remaining_failed)} 个文件处理失败，已更新 failed_reports.json。")
+        tqdm.write(f"⚠️ {len(remaining_failed)} files still failed after retry, updated failed_reports.json.")
     else:
         os.remove("failed_reports.json")
-        tqdm.write("🎉 所有失败文件重试成功，已清空 failed_reports.json。")
+        tqdm.write("🎉 All failed files have been retried successfully, failed_reports.json has been cleared.")
 
 if __name__ == "__main__":
     retry_failed_reports()
