@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import datetime
 import psycopg2
 import pdfplumber

@@ -82,6 +82,16 @@ def insert_matched_data(conn, security, report_year, indicator_id, indicator_nam
         ))
     conn.commit()
 
+# === New: Check if the same entry already exists ===
+def check_if_entry_exists(conn, security, report_year, indicator_id):
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT 1 FROM csr_reporting.CSR_Data
+            WHERE security = %s AND report_year = %s AND indicator_id = %s
+            LIMIT 1
+        """, (security, report_year, indicator_id))
+        return cur.fetchone() is not None
+
 def check_memory_usage(threshold_percent=90):
     mem = psutil.virtual_memory()
     if mem.percent > threshold_percent:
@@ -108,6 +118,11 @@ def process_report(args):
         extraction_time = datetime.datetime.now()
 
         for indicator_id, indicator_name, keyword_list in indicators:
+            # === Skip if already exists ===
+            if check_if_entry_exists(conn, security, report_year, indicator_id):
+                tqdm.write(f"⏭️ Skipping existing entry: {security} ({report_year}) - {indicator_name}")
+                continue
+
             keywords = keyword_list or []
             matched = find_matching_paragraphs(paragraphs, keywords)
             if matched:
@@ -134,7 +149,7 @@ def process_all_pdfs():
     objects = list(minio_client.list_objects(MINIO_BUCKET, recursive=True))
 
     pool_size = 10
-    batch_size = 100
+    batch_size = 50
     total_batches = (len(objects) + batch_size - 1) // batch_size
 
     tqdm.write(f"📊 A total of {len(objects)} files need to be processed, divided into {total_batches} batches.")
