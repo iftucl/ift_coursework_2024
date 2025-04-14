@@ -140,7 +140,7 @@ def process_all_pdfs():
 
     objects = list(minio_client.list_objects(MINIO_BUCKET, recursive=True))
 
-    pool_size = 10
+    pool_size = 5
     batch_size = 50
     total_batches = (len(objects) + batch_size - 1) // batch_size
 
