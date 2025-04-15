@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import psycopg2
 from dotenv import load_dotenv
 from tqdm import tqdm
@@ -27,7 +28,7 @@ db_config = {
 def get_connection():
     return psycopg2.connect(**db_config)
 
-# === Query rows to standardize (non-target indicators where value_raw is not null but value_standardized is null) ===
+# === Query rows to standardize ===
 def fetch_rows_to_standardize(conn):
     with conn.cursor() as cur:
         cur.execute("""
@@ -53,8 +54,9 @@ Please note:
 - Output in English only;
 - If the units cannot be converted (e.g., "tons" to "%"), set convertibility to FALSE and value_standardized to NULL;
 - If conversion is possible, set convertibility to TRUE, and provide the converted value in value_standardized (number only, no unit);
-- If the original and target units are the same or nearly identical in meaning, set convertibility to TRUE and value_standardized to the original value;
-- Please return a structured JSON response in the following format (no prefix/suffix like ```json):
+- If the original and target units are the same or nearly identical in meaning, set convertibility to TRUE, and set value_standardized to the same value as raw value;
+- Note that value_standardized is a numeric number, and not separated by commas.
+- Please only return a structured JSON response in the following format (no prefix/suffix like ```json, and do not include any natural language explanation before or after the JSON.):
 {{
   "convertibility": true,
   "value_standardized": "...",
@@ -74,7 +76,16 @@ def call_llm(prompt):
     )
     return response.choices[0].message.content
 
-# === Update database with conversion results (including unit_conversion note) ===
+# === Clean and parse LLM response ===
+def safe_json_parse(response_text):
+    cleaned = response_text.strip()
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+    if not cleaned:
+        raise ValueError("LLM returned empty response after cleaning")
+    return json.loads(cleaned)
+
+# === Update database with conversion results ===
 def update_standardized(conn, data_id, value_standardized, unit_standardized, unit_conversion_note=None):
     with conn.cursor() as cur:
         cur.execute("""
@@ -99,17 +110,16 @@ def process_row(conn, row):
     data_id, indicator_name, value_raw, unit_raw, target_unit, description = row
 
     try:
-        # Case 1: Units match, directly store the original value
+        # Case 1: Units match
         if unit_raw and target_unit and unit_raw.strip().lower() == target_unit.strip().lower():
             update_standardized(conn, data_id, value_raw, target_unit, "Units are identical, no conversion needed")
             print(f"✅ Data ID {data_id} units match, value standardized directly")
             return data_id
 
-        # Case 2: Use LLM to determine convertibility
+        # Case 2: Use LLM
         prompt = build_conversion_prompt(indicator_name, description, value_raw, unit_raw, target_unit)
         llm_response = call_llm(prompt)
-        parsed = json.loads(llm_response)
-
+        parsed = safe_json_parse(llm_response)
         can_convert = parsed.get("convertibility", False)
         result_value = parsed.get("value_standardized")
         note = parsed.get("note", "")
@@ -129,6 +139,13 @@ def process_row(conn, row):
     except Exception as e:
         conn.rollback()
         print(f"❌ Data ID {data_id} standardization failed: {e}")
+
+        # Print raw response for debug
+        try:
+            print(f"🧠 LLM raw response for Data ID {data_id} (exception case):\n{llm_response}")
+        except:
+            pass
+
         return None
 
 # === Main function ===
