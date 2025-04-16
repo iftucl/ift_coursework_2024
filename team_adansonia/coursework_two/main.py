@@ -96,7 +96,7 @@ def process_csr_report(company_data: dict):
 def main():
 
     mongo_client = mongo.connect_to_mongo()
-    mongo.import_seed_to_mongo()
+
 
     if mongo_client is None:
         return  # If MongoDB is not connected, terminate the program
