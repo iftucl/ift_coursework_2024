@@ -1,18 +1,19 @@
 import json
 import os.path
+
 from dotenv import load_dotenv
 from pymongo import MongoClient, errors
 import datetime
 import sqlite3
 import pandas as pd
 import dotenv
-from team_adansonia.coursework_one.a_link_retrieval.modules.utils.dockercheck import is_running_in_docker
+from team_adansonia.coursework_two.extraction.modules.utils.dockercheck import is_running_in_docker
 load_dotenv()
 
 if is_running_in_docker():
     ROOT_DIR = os.getenv("ROOT_DIR_DOCKER")
 else:
-    ROOT_DIR = os.getenv("ROOT_DIR_LOCAL")
+    ROOT_DIR = os.getenv("ROOT_DIR_lOCAL")
 
 class CompanyData:
     """
@@ -189,7 +190,7 @@ def create_mongo_seed_file(df):
     """Convert DataFrame to JSON and save for MongoDB import inside 'mongo_seed/' folder."""
 
     # Define folder and file path
-    seed_folder = os.path.join(ROOT_DIR, "team_adansonia/coursework_one/mongo-seed")
+    seed_folder = os.path.join(ROOT_DIR, "team_adansonia/coursework_two/mongo-seed")
     seed_file = os.path.join(seed_folder, "seed_data.json")
 
     # Check if file already exists
@@ -243,7 +244,7 @@ def import_seed_to_mongo():
     print("⚠️ All existing documents in the collection have been deleted.")
 
     # Step 3: Load the seed file into MongoDB
-    seed_file = os.path.join(ROOT_DIR, "team_adansonia/coursework_one/mongo-seed", "seed_data.json")
+    seed_file = os.path.join(ROOT_DIR, "team_adansonia\coursework_two\mongo-seed", "seed_data.json")
     if os.path.exists(seed_file):  # Check if the seed file exists
         with open(seed_file, "r") as f:
             try:
@@ -274,5 +275,3 @@ def main():
     # Access the database (not the collection directly)
     db = mongo_client["csr_reports"]
 
-"""#run main on import 
-main()"""
