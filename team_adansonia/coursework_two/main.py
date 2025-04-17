@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from io import BytesIO
 from PyPDF2 import PdfReader, PdfWriter
 from team_adansonia.coursework_two.extraction.modules.data_pipeline.llama_extractor import LlamaExtractor  # Assuming you have this in a separate script
-from team_adansonia.coursework_two.extraction.modules.data_pipeline.csr_utils import get_company_data_by_symbol, download_pdf, filter_pdf_pages, get_latest_report_url  # Assuming CSR functions in csr_utils.py
+from team_adansonia.coursework_two.extraction.modules.data_pipeline.csr_utils import get_company_data_by_symbol, download_pdf, filter_pdf_pages, get_latest_report_url, process_csr_report # Assuming CSR functions in csr_utils.py
 from team_adansonia.coursework_two.extraction.modules.mongo_db.company_data import ROOT_DIR
 from team_adansonia.coursework_two.extraction.modules.validation.validation import validate_and_clean_data
 from loguru import logger
@@ -24,16 +24,20 @@ LLAMA_API_KEY = os.getenv("LLAMA_API_KEY")
 
 
 # Main function to run the end-to-end workflow
-def run_end_to_end_workflow(company_symbol: str):
+def run_end_to_end_workflow(company_symbol: str, db):
     # Get company data by symbol
-    company_data = get_company_data_by_symbol(company_symbol)
+    company_data = get_company_data_by_symbol(company_symbol, db)
     if not company_data:
         logger.error(f"No company data found for symbol {company_symbol}")
         return
 
     # Process CSR report
     logger.info(f"Fetching CSR report for {company_data['security']}")
-    filtered_pdf_path = process_csr_report(company_data)
+    filtered_pdf, filtered_text = process_csr_report(company_data)
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+        temp_file.write(filtered_pdf.read())
+        filtered_pdf_path = temp_file.name
 
     # Verify that the filtered PDF path is valid and the file is not empty
     if not os.path.exists(filtered_pdf_path) or os.path.getsize(filtered_pdf_path) == 0:
@@ -57,7 +61,7 @@ def run_end_to_end_workflow(company_symbol: str):
 
     logger.info("✅ Raw extraction complete. Running validation and cleanup...")
 
-    cleaned_data, issues = validate_and_clean_data(raw_result)
+    cleaned_data, issues = validate_and_clean_data(raw_result, filtered_text)
 
     if issues:
         logger.warning("⚠️ Validation issues found:")
@@ -66,33 +70,8 @@ def run_end_to_end_workflow(company_symbol: str):
     else:
         logger.success("✅ All metrics validated and normalized successfully.")
 
-    print("\n🎯 Final Cleaned ESG Data (Ready for MinIO or DB):\n")
     print(json.dumps(cleaned_data, indent=2))
-
-
-# Function to download and filter the CSR report PDF
-def process_csr_report(company_data: dict):
-    report_url = get_latest_report_url(company_data["csr_reports"])
-    if not report_url:
-        raise ValueError("No valid CSR report URL found")
-
-    # Download the CSR PDF report
-    pdf_data = download_pdf(report_url)
-
-    # Filter the pages of the PDF based on keywords and time series
-    filtered_pdf = filter_pdf_pages(pdf_data)
-
-    # Ensure that the filtered PDF is not empty
-    if filtered_pdf.getbuffer().nbytes == 0:
-        raise ValueError("Filtered PDF is empty, no relevant content found.")
-
-    # Save the filtered PDF to a temporary file
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
-        temp_file.write(filtered_pdf.read())  # Write the filtered PDF content to the temp file
-        filtered_pdf_path = temp_file.name  # Get the path of the temporary file
-
-    logger.info(f"Filtered PDF saved to {filtered_pdf_path}")
-    return filtered_pdf_path
+    return cleaned_data
 
 #Udpate mongo seed
 def export_updated_seed_file(db, seed_file="seed_data.json"):
@@ -155,42 +134,8 @@ def run_main_for_symbols(symbols: list[str]):
             try:
                 logger.info(f"🚀 Running ESG workflow for: {symbol}")
 
-                # Get latest report URL
-                report_url = get_latest_report_url(company.get("csr_reports", []))
-                if not report_url:
-                    logger.warning(f"⚠️ No valid report found for {symbol}. Skipping.")
-                    continue
-
                 # Download & filter CSR report
-                pdf_data = download_pdf(report_url)
-                filtered_pdf = filter_pdf_pages(pdf_data)
-
-                if filtered_pdf.getbuffer().nbytes == 0:
-                    logger.warning(f"⚠️ No relevant content found in CSR report for {symbol}")
-                    continue
-
-                # Save temp filtered PDF
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
-                    temp_file.write(filtered_pdf.read())
-                    filtered_pdf_path = temp_file.name
-
-                # Run extraction
-                extractor = LlamaExtractor(
-                    api_key=LLAMA_API_KEY,
-                    company_name=company["security"],
-                    filtered_pdf_path=filtered_pdf_path
-                )
-                raw_result = extractor.process()
-                if not raw_result:
-                    logger.warning(f"⚠️ No ESG data extracted for {symbol}")
-                    continue
-
-                # Clean and validate
-                cleaned_data, issues = validate_and_clean_data(raw_result)
-
-                if issues:
-                    logger.warning(f"⚠️ Issues found for {symbol}. Still saving cleaned data.")
-
+                cleaned_data = run_end_to_end_workflow(symbol, db)
                 # Only update the 'esg_data' field
                 update_result = companies_collection.update_one(
                     {"symbol": symbol},
@@ -243,44 +188,8 @@ def main():
 
             try:
                 logger.info(f"🚀 Running ESG workflow for: {symbol}")
-
-                # Get latest report URL
-                report_url = get_latest_report_url(company.get("csr_reports", []))
-                if not report_url:
-                    logger.warning(f"⚠️ No valid report found for {symbol}. Skipping.")
-                    continue
-
                 # Download & filter CSR report
-                pdf_data = download_pdf(report_url)
-                filtered_pdf = filter_pdf_pages(pdf_data)
-
-                if filtered_pdf.getbuffer().nbytes == 0:
-                    logger.warning(f"⚠️ No relevant content found in CSR report for {symbol}")
-                    continue
-
-                # Save temp filtered PDF
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
-                    temp_file.write(filtered_pdf.read())
-                    filtered_pdf_path = temp_file.name
-
-                # Run extraction
-                extractor = LlamaExtractor(
-                    api_key=LLAMA_API_KEY,
-                    company_name=company["security"],
-                    filtered_pdf_path=filtered_pdf_path
-                )
-                raw_result = extractor.process()
-                if not raw_result:
-                    logger.warning(f"⚠️ No ESG data extracted for {symbol}")
-                    continue
-
-                # Clean and validate
-                cleaned_data, issues = validate_and_clean_data(raw_result)
-
-
-                if issues:
-                    logger.warning(f"⚠️ Issues found for {symbol}. Still saving cleaned data.")
-
+                cleaned_data = run_end_to_end_workflow(symbol, db)
                 # Append ESG data to the document
                 update_result = companies_collection.update_one(
                     {"symbol": company["symbol"]},  # Match by symbol
@@ -304,4 +213,4 @@ def main():
 
 # Entry point
 if __name__ == "__main__":
-  run_main_for_symbols(["ALL", "BAC"])
+  run_main_for_symbols(["AMZN"])

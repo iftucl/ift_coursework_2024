@@ -27,10 +27,10 @@ def download_pdf(url: str) -> BytesIO:
     response.raise_for_status()
     return BytesIO(response.content)
 
-def filter_pdf_pages(pdf_data: BytesIO) -> BytesIO:
+def filter_pdf_pages(pdf_data: BytesIO) -> tuple[BytesIO, str]:
     reader = PdfReader(pdf_data)
     writer = PdfWriter()
-    filtered_pages = []
+    parsed_text = ""
 
     with pdfplumber.open(pdf_data) as pdf:
         for i, page in enumerate(pdf.pages):
@@ -38,7 +38,7 @@ def filter_pdf_pages(pdf_data: BytesIO) -> BytesIO:
             text_lower = text.lower()
 
             # Check for keyword presence
-            has_keyword = any(kw in text_lower for kw in KEYWORDS)
+            has_keyword = any(kw.lower() in text_lower for kw in KEYWORDS)
 
             # Check for year mentions (time series)
             years_found = set(YEAR_PATTERN.findall(text))
@@ -46,11 +46,13 @@ def filter_pdf_pages(pdf_data: BytesIO) -> BytesIO:
 
             if has_keyword and has_time_series:
                 writer.add_page(reader.pages[i])
+                parsed_text += text + "\n"
 
     output_pdf = BytesIO()
     writer.write(output_pdf)
     output_pdf.seek(0)
-    return output_pdf
+
+    return output_pdf, parsed_text.strip().lower()
 
 
 def get_latest_report_url(csr_reports: dict):
@@ -91,6 +93,7 @@ def run_end_to_end_workflow(company_symbol: str, db):
     # This part depends on your specific logic (e.g., extracting ESG data from the CSR report)
     # Assuming you already have a function to process and extract data (not shown here)
 
+
 # Function to download and filter the CSR report PDF
 def process_csr_report(company_data: dict):
     report_url = get_latest_report_url(company_data["csr_reports"])
@@ -102,14 +105,14 @@ def process_csr_report(company_data: dict):
     pdf_data = download_pdf(report_url)
 
     # Filter the pages of the PDF based on keywords and time series
-    filtered_pdf = filter_pdf_pages(pdf_data)
+    filtered_pdf, filtered_text = filter_pdf_pages(pdf_data)
 
     # Ensure that the filtered PDF is not empty
     if filtered_pdf.getbuffer().nbytes == 0:
         print(f"Filtered PDF is empty for {company_data['symbol']}, no relevant content found.")
-        return None
+        return None, None
 
-    return filtered_pdf  # Returning the filtered PDF object for further processing
+    return filtered_pdf, filtered_text
 
 # Entry point
 if __name__ == "__main__":

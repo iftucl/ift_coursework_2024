@@ -4,7 +4,9 @@ import re
 from dotenv import load_dotenv
 from loguru import logger
 
-#TODO: Check if value is in raw parsed text
+#TODO: If number is not on the same page with metric, do not validate
+#TODO: Standardise years
+#TODO: LLM for validation?
 
 
 load_dotenv()
@@ -42,7 +44,7 @@ expected_ranges = {
     "Water Data": (0, 100_000),
 }
 
-def validate_and_clean_data(raw_data: dict):
+def validate_and_clean_data(raw_data: dict, filtered_text: str):
     cleaned = {}
     issues = []
 
@@ -56,9 +58,15 @@ def validate_and_clean_data(raw_data: dict):
         for metric, yearly_data in metrics.items():
             if yearly_data is None:
                 logger.warning("Skipping None metric.")
+                issues.append({
+                    "category": category,
+                    "metric": metric,
+                    "issue": "Metric is None"
+                })
                 continue
+
             cleaned[category][metric] = {}
-            units = None  # Track original unit
+            units = None
 
             for year, pair in yearly_data.items():
                 if not isinstance(pair, list) or len(pair) != 2:
@@ -67,22 +75,34 @@ def validate_and_clean_data(raw_data: dict):
                 value, unit = pair
 
                 if value is None or unit is None:
-                    # Log the missing data for better visibility
                     logger.warning(f"Skipping {metric} for {year} due to missing value or unit.")
+                    issues.append({
+                        "category": category,
+                        "metric": metric,
+                        "year": year,
+                        "issue": "Missing value or unit"
+                    })
                     continue
 
-                # Debug print for value and unit
                 logger.debug(f"Processing value: {value}, unit: {unit} for metric: {metric}, year: {year}")
 
                 normalized_unit = unit.strip().lower()
                 base_value = None
                 matched = False
 
-                # Try matching known unit patterns
+                # Check if value appears in filtered text
+                if str(int(value)) not in filtered_text and str(float(value)) not in filtered_text:
+                    issues.append({
+                        "category": category,
+                        "metric": metric,
+                        "year": year,
+                        "issue": f"Value {value} not found in raw filtered text"
+                    })
+
                 for pattern, scale in unit_patterns:
                     if re.search(pattern, normalized_unit):
                         matched = True
-                        base_value = value * scale  # used only for range check
+                        base_value = value * scale
 
                         if min_base is not None and max_base is not None:
                             if not (min_base <= base_value <= max_base):
@@ -93,17 +113,15 @@ def validate_and_clean_data(raw_data: dict):
                                     "issue": f"Out of range: {base_value} (expected {min_base}-{max_base})"
                                 })
 
-                        # Keep original value and unit
                         cleaned[category][metric][year] = value
                         if units is None:
                             units = unit
                         break
 
                 if not matched:
-                    # Log unrecognized unit issue
                     cleaned[category][metric][year] = value
                     if units is None:
-                        units = unit  # keep the original unit string
+                        units = unit
                     issues.append({
                         "category": category,
                         "metric": metric,
@@ -111,13 +129,17 @@ def validate_and_clean_data(raw_data: dict):
                         "issue": f"Unrecognized unit: '{unit}'"
                     })
 
-            # Attach unit label after all years
+            # Attach unit label after processing all years
             if units:
                 cleaned[category][metric]["Units"] = units
 
-            # If all years were invalid (very unlikely now), remove the metric
-            if not any(k for k in cleaned[category][metric] if k != "Units"):
-                del cleaned[category][metric]
+            # Remove metric if it contains no valid data (except maybe Units)
+            if not any(k for k in cleaned[category][metric] if k.lower() != "units"):
+                cleaned[category].pop(metric)
+
+        # Remove category if it's completely empty
+        if not cleaned[category]:
+            cleaned.pop(category)
 
     print(json.dumps(cleaned, indent=2))
     return cleaned, issues
