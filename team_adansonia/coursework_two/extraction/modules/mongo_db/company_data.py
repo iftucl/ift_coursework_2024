@@ -239,6 +239,9 @@ def import_seed_to_mongo():
     db = mongo_client["csr_reports"]  # Access the MongoDB database
     collection = db["companies"]  # Access the "companies" collection
 
+    collection.delete_many({})  # Removes all documents in the collection
+    print("⚠️ All existing documents in the collection have been deleted.")
+
     # Step 3: Load the seed file into MongoDB
     seed_file = os.path.join(ROOT_DIR, "team_adansonia\coursework_two\mongo-seed", "seed_data.json")
     if os.path.exists(seed_file):  # Check if the seed file exists

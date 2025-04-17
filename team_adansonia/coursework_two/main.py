@@ -4,14 +4,16 @@ import os
 from dotenv import load_dotenv
 from io import BytesIO
 from PyPDF2 import PdfReader, PdfWriter
-from extraction.modules.data_pipeline.llama_extractor import LlamaExtractor  # Assuming you have this in a separate script
-from extraction.modules.data_pipeline.csr_utils import get_company_data_by_symbol, download_pdf, filter_pdf_pages, get_latest_report_url  # Assuming CSR functions in csr_utils.py
-from extraction.modules.validation.validation import validate_and_clean_data
+from team_adansonia.coursework_two.extraction.modules.data_pipeline.llama_extractor import LlamaExtractor  # Assuming you have this in a separate script
+from team_adansonia.coursework_two.extraction.modules.data_pipeline.csr_utils import get_company_data_by_symbol, download_pdf, filter_pdf_pages, get_latest_report_url  # Assuming CSR functions in csr_utils.py
+from team_adansonia.coursework_two.extraction.modules.mongo_db.company_data import ROOT_DIR
+from team_adansonia.coursework_two.extraction.modules.validation.validation import validate_and_clean_data
 from loguru import logger
 import tempfile
 import re
 from team_adansonia.coursework_two.extraction.modules.mongo_db import company_data as mongo
-
+from bson import ObjectId
+from datetime import datetime
 
 KEYWORDS = ["gallons", "MWh", "pounds", "m3", "water usage", "electricity", "energy", "scope 1", "scope 2", "deforestation", "plastic"]
 YEAR_PATTERN = re.compile(r"\b(?:FY\s?\d{2,4}|\b20[1-3][0-9]\b)", re.IGNORECASE)
@@ -92,6 +94,125 @@ def process_csr_report(company_data: dict):
     logger.info(f"Filtered PDF saved to {filtered_pdf_path}")
     return filtered_pdf_path
 
+#Udpate mongo seed
+def export_updated_seed_file(db, seed_file="seed_data.json"):
+    ROOT_DIR = os.getenv("ROOT_DIR_lOCAL")
+    path = os.path.join(ROOT_DIR, "team_adansonia/coursework_two/mongo-seed", seed_file)
+    print(
+        f"Exporting updated seed file to {seed_file}..."
+    )
+
+    collection = db["companies"]
+    unique_data = []
+    seen_companies = set()
+
+    for doc in collection.find({}):
+        company_name = doc.get("security", "")
+        if company_name in seen_companies:
+            continue
+        seen_companies.add(company_name)
+
+        doc.pop("_id", None)
+        for key, value in doc.items():
+            if isinstance(value, datetime):
+                doc[key] = value.isoformat()
+            elif isinstance(value, ObjectId):
+                doc[key] = str(value)
+
+        unique_data.append(doc)
+
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(unique_data, f, indent=4)
+
+    print(f"✅ Exported {len(unique_data)} unique documents to {seed_file}")
+    return
+
+
+def run_main_for_symbols(symbols: list[str]):
+    mongo_client = mongo.connect_to_mongo()
+    if mongo_client is None:
+        return  # If MongoDB is not connected, terminate the program
+
+    db = mongo_client["csr_reports"]
+    companies_collection = db["companies"]
+
+    try:
+        # Only fetch companies matching the provided symbols
+        companies = list(companies_collection.find({"symbol": {"$in": symbols}}))
+
+        if not companies:
+            logger.warning("⚠️ No matching company documents found in the database.")
+            return
+
+        logger.info(f"🔍 Found {len(companies)} matching companies. Starting ESG extraction...\n")
+
+        for company in companies:
+            symbol = company.get("symbol")
+            if not symbol:
+                logger.warning("⚠️ Skipping company, either no symbol or ESG data already exists.")
+                continue
+
+            try:
+                logger.info(f"🚀 Running ESG workflow for: {symbol}")
+
+                # Get latest report URL
+                report_url = get_latest_report_url(company.get("csr_reports", []))
+                if not report_url:
+                    logger.warning(f"⚠️ No valid report found for {symbol}. Skipping.")
+                    continue
+
+                # Download & filter CSR report
+                pdf_data = download_pdf(report_url)
+                filtered_pdf = filter_pdf_pages(pdf_data)
+
+                if filtered_pdf.getbuffer().nbytes == 0:
+                    logger.warning(f"⚠️ No relevant content found in CSR report for {symbol}")
+                    continue
+
+                # Save temp filtered PDF
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+                    temp_file.write(filtered_pdf.read())
+                    filtered_pdf_path = temp_file.name
+
+                # Run extraction
+                extractor = LlamaExtractor(
+                    api_key=LLAMA_API_KEY,
+                    company_name=company["security"],
+                    filtered_pdf_path=filtered_pdf_path
+                )
+                raw_result = extractor.process()
+                if not raw_result:
+                    logger.warning(f"⚠️ No ESG data extracted for {symbol}")
+                    continue
+
+                # Clean and validate
+                cleaned_data, issues = validate_and_clean_data(raw_result)
+
+                if issues:
+                    logger.warning(f"⚠️ Issues found for {symbol}. Still saving cleaned data.")
+
+                # Only update the 'esg_data' field
+                update_result = companies_collection.update_one(
+                    {"symbol": symbol},
+                    {"$set": {"esg_data": cleaned_data}}
+                )
+
+                logger.success(
+                    f"✅ ESG Data field updated for {symbol} (Matched: {update_result.matched_count}, Modified: {update_result.modified_count})"
+                )
+                export_updated_seed_file(db)
+                logger.success("Updated seed file saved to mongo_seed.json.")
+
+            except Exception as e:
+                logger.error(f"❌ Failed to process {symbol}: {e}")
+
+
+    except Exception as db_error:
+        logger.error(f"❌ MongoDB operation failed: {db_error}")
+    finally:
+        mongo_client.close()
+        logger.info("🛑 MongoDB connection closed.")
+
 
 def main():
 
@@ -115,8 +236,9 @@ def main():
 
         for company in companies:
             symbol = company.get("symbol")
-            if not symbol:
-                logger.warning("⚠️ Skipping company with no symbol.")
+            esg_data = company.get("esg_data")
+            if not symbol or esg_data is not None:
+                logger.warning("⚠️ Skipping company, either no symbol or ESG data already exists.")
                 continue
 
             try:
@@ -168,6 +290,9 @@ def main():
                 logger.success(
                     f"✅ ESG data appended to {symbol} (Matched: {update_result.matched_count}, Modified: {update_result.modified_count})")
 
+                export_updated_seed_file(db)
+                logger.success("Updated seed file saved to mongo_seed.json.")
+
             except Exception as e:
                 logger.error(f"❌ Failed to process {symbol}: {e}")
 
@@ -176,6 +301,7 @@ def main():
     finally:
         mongo_client.close()
         logger.info("🛑 MongoDB connection closed.")
+
 # Entry point
 if __name__ == "__main__":
-  main()
+  run_main_for_symbols(["ALL", "BAC"])
