@@ -24,6 +24,9 @@ class DataBaseSettings(BaseSettings):
         MINIO_PASSWORD (str): The password for the MinIO storage service.
         MINIO_PORT (str): The port on which the MinIO service is running.
         MINIO_BUCKET_NAME (str): The name of the bucket in MinIO where files are stored.
+        MONGO_URI (str): The URI for connecting to a MongoDB database.
+        MONGO_DB_NAME (str): The name of the MongoDB database.
+        MONGO_COLLECTION_NAME (str): The name of the collection in the MongoDB database.
 
     Example:
         >>> database_settings = DataBaseSettings()
@@ -43,6 +46,10 @@ class DataBaseSettings(BaseSettings):
     MINIO_HOST: str
     MINIO_PORT: str
     MINIO_BUCKET_NAME: str
+
+    MONGO_URI: str
+    MONGO_DB_NAME: str
+    MONGO_COLLECTION_NAME: str
 
     model_config = SettingsConfigDict(
         env_file=".env",
