@@ -10,17 +10,17 @@ Main script extracts text from a PDF document using LlamaParse and saves the ext
 # Orchestration of parsing, extraction, and storage. Final script should:
     # 1. Reads company details from the sql database, 
     # 2. Look for a company report on minio,
-    # 3. Extract text and store the full report text in mongo
-    # 4. Use the extracted text from mongo to extract metrics and store in SQL (could use data sink feature of Llama to do this)
-# Scheduling of script for refreshing metrics
-# Basic UI for visualisation
-# Code for visualising metric information (for a single company and comparison with multiple companies)
-# Figure out how to pass around and persist metadata
+    # 3. (Iman) Extract text and store the full report text in mongo
+    # 4. (Sardor) Use the extracted text from mongo to extract metrics (in a structured format) and store in SQL (could use data sink feature of Llama to do this)
+# Scheduling of script for refreshing metrics - Iman
+# Basic UI for visualisation - Sardon done
+# Code for visualising metric information (for a single company and comparison with multiple companies) - Siyu
+# Figure out how to pass around and persist metadata - Iman
 
 # Remaining Tasks - Owners / Specialists
-# 1. Switch to sphinx-style docstrings
-# 2. Finalise data catalogue, dictionary, data validation rules, etc.
-# 3. Create architecture diagrams
+# 1. Switch to sphinx-style docstrings (Gabriella)
+# 2. Finalise data catalogue, dictionary, data validation rules, etc. (To be updated once devs have finished)
+# 3. Create architecture diagrams 
 # 4. Write final report
 """
 import os
