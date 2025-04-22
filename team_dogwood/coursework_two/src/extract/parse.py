@@ -25,11 +25,14 @@ Main script extracts text from a PDF document using LlamaParse and saves the ext
 """
 import os
 import sys
+import asyncio
+import tempfile
 from typing import Optional, List
 from loguru import logger
 import pdfplumber
 import re
-from src.data_models.documents import ReportKeywords
+import logging
+logging.getLogger("PyPDF2").setLevel(logging.WARNING)
 
 from llama_cloud_services import LlamaParse
 from llama_index.core import SimpleDirectoryReader, Document
@@ -38,8 +41,12 @@ from pydantic import BaseModel, Field, PrivateAttr
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 
+from src.data_models.documents import ReportKeywords
 from config.models import model_settings
-import asyncio
+from src.db_utils.mongo import MongCollection
+from src.db_utils.postgres import PostgreSQLDB
+from src.db_utils.minio import MinioFileSystem
+from src.db_utils.helpers import get_all_companies, append_reports_to_companies
 
 
 class LLamaTextExtractor(BaseModel):
@@ -77,7 +84,7 @@ class LLamaTextExtractor(BaseModel):
         logger.debug(f"\nPages containing keywords: {matched_pages}")
         return matched_pages
 
-    def async_extract_document_pages(self) -> List[Document]:
+    async def async_extract_document_pages(self) -> List[Document]:
         """
         Extract text from the PDF document using LlamaParse.
 
@@ -90,7 +97,7 @@ class LLamaTextExtractor(BaseModel):
         parser = LlamaParse(
             api_key=self._llama_api_key,
             result_type="markdown",
-            target_pages=",".join(key_pages),
+            target_pages=",".join(map(str, key_pages)),
             language="en",
             table_extraction_mode="full",
             system_prompt_append="You extract text, metrics, and figures from company sustainability reports.",
@@ -103,57 +110,70 @@ Return a summary of the extracted text. Return metrics and figures in a table fo
         # Use SimpleDirectoryReader to read the PDF document
         file_extractor = {".pdf": parser}
         reader = SimpleDirectoryReader(input_files=[self.pdf_path], file_extractor=file_extractor)
-        documents = reader.aload_data()
+        documents = await reader.aload_data()
+
+        logger.info(f"Extracted {len(documents)} pages from {self.pdf_path}")
 
         self.documents = documents
         return documents
 
 
-# Process all PDFs in a folder concurrently
-async def process_all(mongo_collection, folder: str):
-    tasks = []
-    for file in os.listdir(folder):
-        if file.endswith(".pdf"):
-            tasks.append(parse_and_store(mongo_collection, os.path.join(folder, file)))
-    await asyncio.gather(*tasks)
-
-
-# Async function to parse a single file and store result
-async def parse_and_store(collection, filepath):
-    try:
-        docs = await LLamaTextExtractor(filepath).async_extract_document_pages()
-        await collection.insert_one({
-            "company_name": "",  # from postgres
-            "report_year": "",  # from postgres
-            "pdf_retrieval_timestamp": "",  # from postgres
-            "text_extraction_timesamp": "", # current timestamp
-            "filename": os.path.basename(filepath),  # from minio
-            "document_pages": [doc.model_dump() for doc in docs]
-        })
-        logger.info(f"Successfully stored extracted document {filepath}")
-    except Exception as e:
-        logger.error(f"Unable to process {filepath}: {e}")
-    
-
 # Main function to run the script
 async def main():
     # 1. initialise postegres db, minio, and mongo client
-    # 2. parse all reports from minio to process_all function
-    # 3. put extracted text in mongo with metadata
-    pass
+    postgres = PostgreSQLDB()
+    minio = MinioFileSystem()
+    mongo = MongCollection()
 
+    # 2. get all company and report data from postgres
+    companies = get_all_companies(postgres)
+    companies = append_reports_to_companies(companies, postgres)
+
+    # 3. For each company, process each report from minio
+    async def process_report(company, report):
+        company_name = company.security
+        report_path = f"{company.security}/{report.year}/{os.path.basename(report.url)}"
+        if not report_path:
+            return
+        logger.info(f"Processing report {report_path} for company {company_name}")
+
+        # Check if report exists in Minio (sync -> async)
+        available_files = await asyncio.to_thread(minio.list_files_by_company, company.security)
+        if report_path not in available_files:
+            logger.warning(f"Report {report_path} does not exist in Minio. Skipping.")
+            return
+
+        # Fetch PDF as bytes from Minio (sync -> async)
+        pdf_bytes = await asyncio.to_thread(minio.get_pdf_bytes, report_path)
+        if not pdf_bytes:
+            logger.warning(f"Failed to fetch PDF bytes for {report_path} in Minio for company '{company.security}'. Skipping.")
+            return
+
+        # Write bytes to a NamedTemporaryFile
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=True) as tmp_pdf:
+            tmp_pdf.write(pdf_bytes)
+            tmp_pdf.flush()
+
+            # Extract text using LLamaTextExtractor
+            try:
+                extractor = LLamaTextExtractor(pdf_path=tmp_pdf.name)
+                docs = await extractor.async_extract_document_pages()
+            except Exception as e:
+                logger.error(f"Extraction failed for {report_path}: {e}")
+                return
+
+            # Store in MongoDB (sync -> async)
+            try:
+                await asyncio.to_thread(mongo.insert_report, company, docs)
+            except Exception as e:
+                logger.error(f"Failed to store extracted document for {report_path}: {e}")
+
+    # Create tasks for all company/report pairs
+    tasks = []
+    for company in companies:
+        for report in company.esg_reports:
+            tasks.append(process_report(company, report))
+    await asyncio.gather(*tasks)
 
 if __name__ == "__main__":
-    # Sample Usage
-    pdf_path = f"{os.getcwd()}/data/sample-reports/2023-sustainability-report.pdf"
-    logger.info(f"Extracting text from PDF document: {pdf_path}")
-    # Extract text
-    extractor = LLamaTextExtractor(pdf_path=pdf_path)
-    extractor.extract_document_pages()
-    logger.info(f"Snippet of Extracted Text: {extractor.documents[5].text}")  # Print the extracted text from a single page
-    # write to a markdown file
-    logger.info(f"Writing extracted text to markdown file...")
-    with open(f"{os.getcwd()}/data/sample-outputs/test.md", "w") as f:
-        f.write(extractor.documents[5].text)
-        # for doc in extractor.documents:
-        #     f.write(doc.text)
+    asyncio.run(main())
