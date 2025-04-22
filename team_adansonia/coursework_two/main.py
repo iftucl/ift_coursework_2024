@@ -7,7 +7,7 @@ from PyPDF2 import PdfReader, PdfWriter
 from team_adansonia.coursework_two.extraction.modules.data_pipeline.llama_extractor import LlamaExtractor  # Assuming you have this in a separate script
 from team_adansonia.coursework_two.extraction.modules.data_pipeline.csr_utils import get_company_data_by_symbol, download_pdf, filter_pdf_pages, get_latest_report_url, process_csr_report # Assuming CSR functions in csr_utils.py
 from team_adansonia.coursework_two.extraction.modules.mongo_db.company_data import ROOT_DIR
-from team_adansonia.coursework_two.extraction.modules.validation.validation import validate_and_clean_data
+from team_adansonia.coursework_two.extraction.modules.validation.validation import full_validation_pipeline
 from loguru import logger
 import tempfile
 import re
@@ -24,7 +24,7 @@ LLAMA_API_KEY = os.getenv("LLAMA_API_KEY")
 
 
 # Main function to run the end-to-end workflow
-def run_end_to_end_workflow(company_symbol: str, db):
+def run_end_to_end_workflow(company_symbol: str, company_security: str, db):
     # Get company data by symbol
     company_data = get_company_data_by_symbol(company_symbol, db)
     if not company_data:
@@ -61,17 +61,10 @@ def run_end_to_end_workflow(company_symbol: str, db):
 
     logger.info("✅ Raw extraction complete. Running validation and cleanup...")
 
-    cleaned_data, issues = validate_and_clean_data(raw_result, filtered_text)
+    final_data = full_validation_pipeline(raw_result, filtered_text, company_security)
 
-    if issues:
-        logger.warning("⚠️ Validation issues found:")
-        for issue in issues:
-            logger.warning(f" - {issue['category']} > {issue['metric']} ({issue['year']}): {issue['issue']}")
-    else:
-        logger.success("✅ All metrics validated and normalized successfully.")
-
-    print(json.dumps(cleaned_data, indent=2))
-    return cleaned_data
+    print(json.dumps(final_data, indent=2))
+    return final_data
 
 #Udpate mongo seed
 def export_updated_seed_file(db, seed_file="seed_data.json"):
@@ -127,6 +120,7 @@ def run_main_for_symbols(symbols: list[str]):
 
         for company in companies:
             symbol = company.get("symbol")
+            security = company.get("security")
             if not symbol:
                 logger.warning("⚠️ Skipping company, either no symbol or ESG data already exists.")
                 continue
@@ -135,7 +129,7 @@ def run_main_for_symbols(symbols: list[str]):
                 logger.info(f"🚀 Running ESG workflow for: {symbol}")
 
                 # Download & filter CSR report
-                cleaned_data = run_end_to_end_workflow(symbol, db)
+                cleaned_data = run_end_to_end_workflow(symbol, security, db)
                 # Only update the 'esg_data' field
                 update_result = companies_collection.update_one(
                     {"symbol": symbol},
@@ -162,8 +156,6 @@ def run_main_for_symbols(symbols: list[str]):
 def main():
 
     mongo_client = mongo.connect_to_mongo()
-
-
     if mongo_client is None:
         return  # If MongoDB is not connected, terminate the program
 
@@ -181,6 +173,7 @@ def main():
 
         for company in companies:
             symbol = company.get("symbol")
+            security = company.get("security")
             esg_data = company.get("esg_data")
             if not symbol or esg_data is not None:
                 logger.warning("⚠️ Skipping company, either no symbol or ESG data already exists.")
@@ -189,7 +182,7 @@ def main():
             try:
                 logger.info(f"🚀 Running ESG workflow for: {symbol}")
                 # Download & filter CSR report
-                cleaned_data = run_end_to_end_workflow(symbol, db)
+                cleaned_data = run_end_to_end_workflow(symbol, security, db)
                 # Append ESG data to the document
                 update_result = companies_collection.update_one(
                     {"symbol": company["symbol"]},  # Match by symbol
@@ -213,4 +206,4 @@ def main():
 
 # Entry point
 if __name__ == "__main__":
-  run_main_for_symbols(["AMZN"])
+  run_main_for_symbols(["NVDA"])

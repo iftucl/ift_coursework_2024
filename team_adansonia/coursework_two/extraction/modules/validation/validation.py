@@ -3,10 +3,11 @@ import os
 import re
 from dotenv import load_dotenv
 from loguru import logger
+from team_adansonia.coursework_two.extraction.modules.validation.openai_validation import validate_esg_data_with_openai
 
 #TODO: If number is not on the same page with metric, do not validate
 #TODO: Standardise years
-#TODO: LLM for validation?
+#TODO: LLM for validation? Append validation status for each data point
 
 
 load_dotenv()
@@ -143,3 +144,22 @@ def validate_and_clean_data(raw_data: dict, filtered_text: str):
 
     print(json.dumps(cleaned, indent=2))
     return cleaned, issues
+
+
+def full_validation_pipeline(parsed_data, filtered_text, company_name):
+
+    print("🔍 Step 1: Running internal validation...")
+    cleaned_data, internal_issues = validate_and_clean_data(parsed_data, filtered_text)
+
+    try:
+        print("🤖 Step 2: Validating with OpenAI...")
+        corrected_data = validate_esg_data_with_openai(cleaned_data, filtered_text, company_name)
+        print("\n✅ Corrected Data (OpenAI):")
+        print(json.dumps(corrected_data, indent=2))
+        return corrected_data
+
+    except Exception as e:
+        print(f"❌ OpenAI validation failed: {e}")
+        print("🔁 Falling back to internally cleaned data.")
+        print(json.dumps(cleaned_data, indent=2))
+        return cleaned_data
