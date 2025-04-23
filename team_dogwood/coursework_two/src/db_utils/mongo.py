@@ -51,7 +51,7 @@ class MongCollection:
             # Return False to propagate the exception
             return False
     
-    async def insert_report(self, company: Company, report: List[Document]) -> None:
+    def insert_report(self, company: Company, report: List[Document]) -> None:
         """
         Insert a report document into the MongoDB collection.
 
@@ -60,10 +60,31 @@ class MongCollection:
         """
         try:
             self.collection.insert_one({
-                "company": company.model_dump(),
+                "company": company.model_dump(exclude={"esg_reports"}),
                 "text_extraction_timestamp": datetime.now(),
                 "report": [doc.model_dump() for doc in report]
             })
             logger.info(f"{company.security}'s report inserted successfully.")
         except Exception as e:
             logger.error(f"Error inserting document: {e}")
+    
+    def get_report_by_company(self, company: Company) -> List[Document]:
+        """
+        Get a report document by company.
+
+        :param company: The company to get the report for.
+        :type company: Company
+        :return: The report documents.
+        :rtype: list[Document]
+        """
+        try:
+            report = self.collection.find_one({"company": company.model_dump(exclude={"esg_reports"})})
+            if report:
+                logger.info(f"Report found for {company.security}.")
+                return report
+            else:
+                logger.warning(f"No report found for {company.security}.")
+                return None
+        except Exception as e:
+            logger.error(f"Error fetching document: {e}")
+            return None

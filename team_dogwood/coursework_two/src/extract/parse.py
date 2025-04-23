@@ -3,6 +3,8 @@ Methods for text extraction from PDF documents.
 
 Main script extracts text from a PDF document using LlamaParse and saves the extracted document to MongoDB.
 
+TODO (Iman) - test retrieval of documents from MongoDB, create scheduler for refreshing metrics
+
 # Remaining Tasks - Devs
 # Implementation of vector store for querying (targeted searches of specific figures)
     # 1. Read extracted text from mongo and create a vector store
@@ -137,13 +139,13 @@ async def main():
             return
         logger.info(f"Processing report {report_path} for company {company_name}")
 
-        # Check if report exists in Minio (sync -> async)
+        # Check if report exists in Minio
         available_files = await asyncio.to_thread(minio.list_files_by_company, company.security)
         if report_path not in available_files:
             logger.warning(f"Report {report_path} does not exist in Minio. Skipping.")
             return
 
-        # Fetch PDF as bytes from Minio (sync -> async)
+        # Fetch PDF as bytes from Minio
         pdf_bytes = await asyncio.to_thread(minio.get_pdf_bytes, report_path)
         if not pdf_bytes:
             logger.warning(f"Failed to fetch PDF bytes for {report_path} in Minio for company '{company.security}'. Skipping.")
@@ -162,7 +164,7 @@ async def main():
                 logger.error(f"Extraction failed for {report_path}: {e}")
                 return
 
-            # Store in MongoDB (sync -> async)
+            # Store in MongoDB
             try:
                 await asyncio.to_thread(mongo.insert_report, company, docs)
             except Exception as e:
@@ -174,6 +176,7 @@ async def main():
         for report in company.esg_reports:
             tasks.append(process_report(company, report))
     await asyncio.gather(*tasks)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
