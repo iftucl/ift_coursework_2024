@@ -3,8 +3,9 @@
 # The original JSON Schema: http://127.0.0.1:8000/openapi.json
 
 # poetry run uvicorn FastAPI.main:app --host 0.0.0.0 --port 8000 --reload
+# ngrok http 8000
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from typing import List, Optional
 import psycopg2
 import psycopg2.extras
@@ -21,7 +22,7 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,           # Can also use ["*"] for full access
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -50,7 +51,6 @@ def query_db(query: str, params: Optional[tuple] = None):
     conn.close()
     return results
 
-
 # --- CSR_indicators Endpoints ---
 @app.get("/indicators", summary="Get all CSR indicators")
 def get_all_indicators():
@@ -64,6 +64,24 @@ def get_indicator_by_id(indicator_id: int):
     if not results:
         raise HTTPException(status_code=404, detail="Indicator not found")
     return results[0]
+
+@app.get("/indicators/search", summary="Search CSR indicators by name or theme")
+def search_indicators(
+    indicator_name: Optional[str] = Query(None),
+    theme: Optional[str] = Query(None)
+):
+    query = "SELECT * FROM csr_reporting.CSR_indicators WHERE TRUE"
+    params = []
+
+    if indicator_name:
+        query += " AND indicator_name ILIKE %s"
+        params.append(f"%{indicator_name}%")
+
+    if theme:
+        query += " AND theme ILIKE %s"
+        params.append(f"%{theme}%")
+
+    return query_db(query, tuple(params))
 
 
 # --- CSR_Data Endpoints ---
@@ -80,6 +98,35 @@ def get_data_by_id(data_id: int):
         raise HTTPException(status_code=404, detail="Data entry not found")
     return results[0]
 
+@app.get("/data/search", summary="Search CSR data by various fields")
+def search_data(
+    security: Optional[str] = Query(None),
+    report_year: Optional[int] = Query(None),
+    indicator_id: Optional[int] = Query(None),
+    indicator_name: Optional[str] = Query(None)
+):
+    query = "SELECT * FROM csr_reporting.CSR_Data WHERE TRUE"
+    params = []
+
+    if security:
+        query += " AND security ILIKE %s"
+        params.append(f"%{security}%")
+
+    if report_year:
+        query += " AND report_year = %s"
+        params.append(report_year)
+
+    if indicator_id:
+        query += " AND indicator_id = %s"
+        params.append(indicator_id)
+
+    if indicator_name:
+        query += " AND indicator_name ILIKE %s"
+        params.append(f"%{indicator_name}%")
+
+    query += " ORDER BY data_id LIMIT 100;"
+    return query_db(query, tuple(params))
+
 
 # --- company_reports Endpoints ---
 @app.get("/reports", summary="Get all company reports")
@@ -94,3 +141,27 @@ def get_company_report_by_id(report_id: int):
     if not results:
         raise HTTPException(status_code=404, detail="Report not found")
     return results[0]
+
+@app.get("/reports/search", summary="Search company reports by symbol, security or report_year")
+def search_reports(
+    symbol: Optional[str] = Query(None),
+    security: Optional[str] = Query(None),
+    report_year: Optional[int] = Query(None)
+):
+    query = "SELECT * FROM csr_reporting.company_reports WHERE TRUE"
+    params = []
+
+    if symbol:
+        query += " AND symbol ILIKE %s"
+        params.append(f"%{symbol}%")
+
+    if security:
+        query += " AND security ILIKE %s"
+        params.append(f"%{security}%")
+
+    if report_year:
+        query += " AND report_year = %s"
+        params.append(report_year)
+
+    query += " ORDER BY id;"
+    return query_db(query, tuple(params))
