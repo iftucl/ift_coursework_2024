@@ -4,6 +4,8 @@ import os
 from dotenv import load_dotenv
 from io import BytesIO
 from PyPDF2 import PdfReader, PdfWriter
+
+from team_adansonia.coursework_two.data_pipeline.goals_extractor import call_deepseek_find_goals, extract_goals_by_page
 from team_adansonia.coursework_two.data_pipeline.llama_extractor import LlamaExtractor  # Assuming you have this in a separate script
 from team_adansonia.coursework_two.data_pipeline.csr_utils import get_company_data_by_symbol, download_pdf, filter_pdf_pages, get_latest_report_url, process_csr_report # Assuming CSR functions in csr_utils.py
 from team_adansonia.coursework_two.validation.validation import full_validation_pipeline
@@ -61,9 +63,10 @@ def run_end_to_end_workflow(company_symbol: str, company_security: str, db):
     logger.info("✅ Raw extraction complete. Running validation and cleanup...")
 
     final_data = full_validation_pipeline(raw_result, filtered_text, company_security)
-
+    goals_text = extract_goals_by_page(filtered_pdf_path)
+    goals = call_deepseek_find_goals(company_security, goals_text)
     print(json.dumps(final_data, indent=2))
-    return final_data
+    return final_data, goals
 
 #Udpate mongo seed
 def export_updated_seed_file(db, seed_file="seed_data.json"):
@@ -128,16 +131,22 @@ def run_main_for_symbols(symbols: list[str]):
                 logger.info(f"🚀 Running ESG workflow for: {symbol}")
 
                 # Download & filter CSR report
-                cleaned_data = run_end_to_end_workflow(symbol, security, db)
+                cleaned_data, cleaned_goals = run_end_to_end_workflow(symbol, security, db)
                 # Only update the 'esg_data' field
-                update_result = companies_collection.update_one(
+                update_result_data = companies_collection.update_one(
                     {"symbol": symbol},
                     {"$set": {"esg_data": cleaned_data}}
                 )
 
-                logger.success(
-                    f"✅ ESG Data field updated for {symbol} (Matched: {update_result.matched_count}, Modified: {update_result.modified_count})"
+                update_result_goals = companies_collection.update_one(
+                    {"symbol": symbol},
+                    {"$set": {"esg_goals": cleaned_goals}}
                 )
+
+                logger.success(
+                    f"✅ ESG Data fields updated for {symbol} "
+                )
+
                 export_updated_seed_file(db)
                 logger.success("Updated seed file saved to mongo_seed.json.")
 
@@ -181,15 +190,21 @@ def main():
             try:
                 logger.info(f"🚀 Running ESG workflow for: {symbol}")
                 # Download & filter CSR report
-                cleaned_data = run_end_to_end_workflow(symbol, security, db)
-                # Append ESG data to the document
-                update_result = companies_collection.update_one(
-                    {"symbol": company["symbol"]},  # Match by symbol
-                    {"$set": {"esg_data": cleaned_data}}  # Set the esg_data field
+                cleaned_data, cleaned_goals = run_end_to_end_workflow(symbol, security, db)
+
+                update_result_data = companies_collection.update_one(
+                    {"symbol": symbol},
+                    {"$set": {"esg_data": cleaned_data}}
+                )
+
+                update_result_goals = companies_collection.update_one(
+                    {"symbol": symbol},
+                    {"$set": {"esg_goals": cleaned_goals}}
                 )
 
                 logger.success(
-                    f"✅ ESG data appended to {symbol} (Matched: {update_result.matched_count}, Modified: {update_result.modified_count})")
+                    f"✅ ESG Data fields updated for {symbol} "
+                )
 
                 export_updated_seed_file(db)
                 logger.success("Updated seed file saved to mongo_seed.json.")
@@ -205,4 +220,4 @@ def main():
 
 # Entry point
 if __name__ == "__main__":
-  run_main_for_symbols(["NVDA"])
+  run_main_for_symbols(["GOOG"])
