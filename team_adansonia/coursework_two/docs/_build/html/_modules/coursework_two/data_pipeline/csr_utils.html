@@ -1,0 +1,263 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>coursework_two.data_pipeline.csr_utils &mdash; Team Adansonia  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            Team Adansonia
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../modules.html">Modules</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">Team Adansonia</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">coursework_two.data_pipeline.csr_utils</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for coursework_two.data_pipeline.csr_utils</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">io</span><span class="w"> </span><span class="kn">import</span> <span class="n">BytesIO</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">PyPDF2</span><span class="w"> </span><span class="kn">import</span> <span class="n">PdfReader</span><span class="p">,</span> <span class="n">PdfWriter</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pdfplumber</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pymongo</span><span class="w"> </span><span class="kn">import</span> <span class="n">MongoClient</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">team_adansonia.coursework_two.mongo_db</span><span class="w"> </span><span class="kn">import</span> <span class="n">company_data</span> <span class="k">as</span> <span class="n">mongo</span>
+<span class="n">KEYWORDS</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;gallons&quot;</span><span class="p">,</span> <span class="s2">&quot;MWh&quot;</span><span class="p">,</span> <span class="s2">&quot;pounds&quot;</span><span class="p">,</span> <span class="s2">&quot;m3&quot;</span><span class="p">,</span> <span class="s2">&quot;water usage&quot;</span><span class="p">,</span> <span class="s2">&quot;electricity&quot;</span><span class="p">,</span> <span class="s2">&quot;energy&quot;</span><span class="p">,</span> <span class="s2">&quot;scope 1&quot;</span><span class="p">,</span> <span class="s2">&quot;scope 2&quot;</span><span class="p">,</span> <span class="s2">&quot;deforestation&quot;</span><span class="p">,</span> <span class="s2">&quot;plastic&quot;</span><span class="p">]</span>
+<span class="n">YEAR_PATTERN</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;\b(?:FY\s?\d{2,4}|\b20[1-3][0-9]\b)&quot;</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">)</span>
+
+
+
+<span class="c1"># Connect to MongoDB</span>
+<div class="viewcode-block" id="connect_to_mongo">
+<a class="viewcode-back" href="../../../coursework_two.data_pipeline.html#coursework_two.data_pipeline.csr_utils.connect_to_mongo">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">connect_to_mongo</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;This function does something useful.</span>
+
+<span class="sd">       Args:</span>
+<span class="sd">           param1: The first parameter.</span>
+<span class="sd">           param2: The second parameter.</span>
+
+<span class="sd">       Returns:</span>
+<span class="sd">           bool: The result of the function.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">client</span> <span class="o">=</span> <span class="n">MongoClient</span><span class="p">(</span><span class="s2">&quot;mongodb://localhost:27017/&quot;</span><span class="p">)</span>  <span class="c1"># Adjust the connection string if necessary</span>
+        <span class="k">return</span> <span class="n">client</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error connecting to MongoDB: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span></div>
+
+
+<span class="c1"># Function to get company data from MongoDB based on symbol</span>
+<div class="viewcode-block" id="get_company_data_by_symbol">
+<a class="viewcode-back" href="../../../coursework_two.data_pipeline.html#coursework_two.data_pipeline.csr_utils.get_company_data_by_symbol">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_company_data_by_symbol</span><span class="p">(</span><span class="n">symbol</span><span class="p">,</span> <span class="n">db</span><span class="p">):</span>
+    <span class="n">company</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">companies</span><span class="o">.</span><span class="n">find_one</span><span class="p">({</span><span class="s2">&quot;symbol&quot;</span><span class="p">:</span> <span class="n">symbol</span><span class="p">})</span>
+    <span class="k">return</span> <span class="n">company</span></div>
+
+
+<div class="viewcode-block" id="download_pdf">
+<a class="viewcode-back" href="../../../coursework_two.data_pipeline.html#coursework_two.data_pipeline.csr_utils.download_pdf">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">download_pdf</span><span class="p">(</span><span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BytesIO</span><span class="p">:</span>
+    <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+    <span class="n">response</span><span class="o">.</span><span class="n">raise_for_status</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">BytesIO</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">content</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="filter_pdf_pages">
+<a class="viewcode-back" href="../../../coursework_two.data_pipeline.html#coursework_two.data_pipeline.csr_utils.filter_pdf_pages">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">filter_pdf_pages</span><span class="p">(</span><span class="n">pdf_data</span><span class="p">:</span> <span class="n">BytesIO</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">BytesIO</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+    <span class="n">reader</span> <span class="o">=</span> <span class="n">PdfReader</span><span class="p">(</span><span class="n">pdf_data</span><span class="p">)</span>
+    <span class="n">writer</span> <span class="o">=</span> <span class="n">PdfWriter</span><span class="p">()</span>
+    <span class="n">parsed_text</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+
+    <span class="k">with</span> <span class="n">pdfplumber</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">pdf_data</span><span class="p">)</span> <span class="k">as</span> <span class="n">pdf</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">page</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">pdf</span><span class="o">.</span><span class="n">pages</span><span class="p">):</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="n">page</span><span class="o">.</span><span class="n">extract_text</span><span class="p">()</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span>
+            <span class="n">text_lower</span> <span class="o">=</span> <span class="n">text</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+
+            <span class="c1"># Check for keyword presence</span>
+            <span class="n">has_keyword</span> <span class="o">=</span> <span class="nb">any</span><span class="p">(</span><span class="n">kw</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="n">text_lower</span> <span class="k">for</span> <span class="n">kw</span> <span class="ow">in</span> <span class="n">KEYWORDS</span><span class="p">)</span>
+
+            <span class="c1"># Check for year mentions (time series)</span>
+            <span class="n">years_found</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">YEAR_PATTERN</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">text</span><span class="p">))</span>
+            <span class="n">has_time_series</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">years_found</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">2</span>
+
+            <span class="k">if</span> <span class="n">has_keyword</span> <span class="ow">and</span> <span class="n">has_time_series</span><span class="p">:</span>
+                <span class="n">writer</span><span class="o">.</span><span class="n">add_page</span><span class="p">(</span><span class="n">reader</span><span class="o">.</span><span class="n">pages</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+                <span class="n">parsed_text</span> <span class="o">+=</span> <span class="n">text</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span>
+
+    <span class="n">output_pdf</span> <span class="o">=</span> <span class="n">BytesIO</span><span class="p">()</span>
+    <span class="n">writer</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">output_pdf</span><span class="p">)</span>
+    <span class="n">output_pdf</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">output_pdf</span><span class="p">,</span> <span class="n">parsed_text</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span></div>
+
+
+
+<div class="viewcode-block" id="get_latest_report_url">
+<a class="viewcode-back" href="../../../coursework_two.data_pipeline.html#coursework_two.data_pipeline.csr_utils.get_latest_report_url">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_latest_report_url</span><span class="p">(</span><span class="n">csr_reports</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
+    <span class="c1"># Ensure csr_reports is a dictionary</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">csr_reports</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="c1"># Sort the report years in reverse order (most recent first)</span>
+    <span class="n">years</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">csr_reports</span><span class="o">.</span><span class="n">keys</span><span class="p">(),</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">year</span> <span class="ow">in</span> <span class="n">years</span><span class="p">:</span>
+        <span class="n">url</span> <span class="o">=</span> <span class="n">csr_reports</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">year</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">url</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">url</span>
+    <span class="k">return</span> <span class="kc">None</span></div>
+
+
+
+<span class="c1"># Main function to run the end-to-end workflow</span>
+<div class="viewcode-block" id="run_end_to_end_workflow">
+<a class="viewcode-back" href="../../../coursework_two.data_pipeline.html#coursework_two.data_pipeline.csr_utils.run_end_to_end_workflow">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">run_end_to_end_workflow</span><span class="p">(</span><span class="n">company_symbol</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">db</span><span class="p">):</span>
+    <span class="c1"># Get company data from MongoDB</span>
+    <span class="n">company_data</span> <span class="o">=</span> <span class="n">get_company_data_by_symbol</span><span class="p">(</span><span class="n">company_symbol</span><span class="p">,</span> <span class="n">db</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">company_data</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No company data found for symbol </span><span class="si">{</span><span class="n">company_symbol</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="c1"># Process CSR report</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Fetching CSR report for </span><span class="si">{</span><span class="n">company_data</span><span class="p">[</span><span class="s1">&#39;security&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">filtered_pdf_path</span> <span class="o">=</span> <span class="n">process_csr_report</span><span class="p">(</span><span class="n">company_data</span><span class="p">)</span>
+
+    <span class="c1"># Verify that the filtered PDF path is valid and the file is not empty</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">filtered_pdf_path</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Filtered PDF file is either empty or doesn&#39;t exist for </span><span class="si">{</span><span class="n">company_data</span><span class="p">[</span><span class="s1">&#39;symbol&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Filtered CSR PDF file saved for </span><span class="si">{</span><span class="n">company_data</span><span class="p">[</span><span class="s1">&#39;symbol&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+
+    <span class="c1"># Perform the rest of the workflow, for example, extracting ESG data</span>
+    <span class="c1"># This part depends on your specific logic (e.g., extracting ESG data from the CSR report)</span>
+    <span class="c1"># Assuming you already have a function to process and extract data (not shown here)</span>
+
+
+<span class="c1"># Function to download and filter the CSR report PDF</span>
+<div class="viewcode-block" id="process_csr_report">
+<a class="viewcode-back" href="../../../coursework_two.data_pipeline.html#coursework_two.data_pipeline.csr_utils.process_csr_report">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">process_csr_report</span><span class="p">(</span><span class="n">company_data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
+    <span class="n">report_url</span> <span class="o">=</span> <span class="n">get_latest_report_url</span><span class="p">(</span><span class="n">company_data</span><span class="p">[</span><span class="s2">&quot;csr_reports&quot;</span><span class="p">])</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">report_url</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No valid CSR report URL found for </span><span class="si">{</span><span class="n">company_data</span><span class="p">[</span><span class="s1">&#39;symbol&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="c1"># Download the CSR PDF report</span>
+    <span class="n">pdf_data</span> <span class="o">=</span> <span class="n">download_pdf</span><span class="p">(</span><span class="n">report_url</span><span class="p">)</span>
+
+    <span class="c1"># Filter the pages of the PDF based on keywords and time series</span>
+    <span class="n">filtered_pdf</span><span class="p">,</span> <span class="n">filtered_text</span> <span class="o">=</span> <span class="n">filter_pdf_pages</span><span class="p">(</span><span class="n">pdf_data</span><span class="p">)</span>
+
+    <span class="c1"># Ensure that the filtered PDF is not empty</span>
+    <span class="k">if</span> <span class="n">filtered_pdf</span><span class="o">.</span><span class="n">getbuffer</span><span class="p">()</span><span class="o">.</span><span class="n">nbytes</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Filtered PDF is empty for </span><span class="si">{</span><span class="n">company_data</span><span class="p">[</span><span class="s1">&#39;symbol&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">, no relevant content found.&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+
+    <span class="k">return</span> <span class="n">filtered_pdf</span><span class="p">,</span> <span class="n">filtered_text</span></div>
+
+
+<span class="c1"># Entry point</span>
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="c1"># Connect to MongoDB</span>
+    <span class="n">mongo_client</span> <span class="o">=</span> <span class="n">mongo</span><span class="o">.</span><span class="n">connect_to_mongo</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">mongo_client</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Failed to connect to MongoDB. Exiting.&quot;</span><span class="p">)</span>
+        <span class="n">exit</span><span class="p">()</span>
+
+    <span class="c1"># Access the database</span>
+    <span class="n">db</span> <span class="o">=</span> <span class="n">mongo_client</span><span class="p">[</span><span class="s2">&quot;csr_reports&quot;</span><span class="p">]</span>
+
+    <span class="c1"># Example: Running workflow for a company symbol &quot;MMM&quot;</span>
+    <span class="n">company_symbol</span> <span class="o">=</span> <span class="s2">&quot;MMM&quot;</span>  <span class="c1"># Replace with the desired company symbol</span>
+    <span class="n">run_end_to_end_workflow</span><span class="p">(</span><span class="n">company_symbol</span><span class="p">,</span> <span class="n">db</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Balazs.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -4,14 +4,13 @@ import os
 from dotenv import load_dotenv
 from io import BytesIO
 from PyPDF2 import PdfReader, PdfWriter
-from team_adansonia.coursework_two.extraction.modules.data_pipeline.llama_extractor import LlamaExtractor  # Assuming you have this in a separate script
-from team_adansonia.coursework_two.extraction.modules.data_pipeline.csr_utils import get_company_data_by_symbol, download_pdf, filter_pdf_pages, get_latest_report_url, process_csr_report # Assuming CSR functions in csr_utils.py
-from team_adansonia.coursework_two.extraction.modules.mongo_db.company_data import ROOT_DIR
-from team_adansonia.coursework_two.extraction.modules.validation.validation import full_validation_pipeline
+from team_adansonia.coursework_two.data_pipeline.llama_extractor import LlamaExtractor  # Assuming you have this in a separate script
+from team_adansonia.coursework_two.data_pipeline.csr_utils import get_company_data_by_symbol, download_pdf, filter_pdf_pages, get_latest_report_url, process_csr_report # Assuming CSR functions in csr_utils.py
+from team_adansonia.coursework_two.validation.validation import full_validation_pipeline
 from loguru import logger
 import tempfile
 import re
-from team_adansonia.coursework_two.extraction.modules.mongo_db import company_data as mongo
+from team_adansonia.coursework_two.mongo_db import company_data as mongo
 from bson import ObjectId
 from datetime import datetime
 
