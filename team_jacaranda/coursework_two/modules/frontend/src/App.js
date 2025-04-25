@@ -1,8 +1,3 @@
-// cd modules/frontend
-// npm install
-// npm start
-// npm run build
-
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 
@@ -17,18 +12,58 @@ function App() {
   const [indicatorFilter, setIndicatorFilter] = useState("");  // 用于指标名称过滤
   const [securityFilter, setSecurityFilter] = useState("");  // 用于证券名称过滤
 
+  // 状态钩子：用于显示加载和错误信息
+  const [loading, setLoading] = useState(true); // 数据加载状态
+  const [error, setError] = useState(""); // 错误信息
+
   // FastAPI的基本URL（本地开发环境）
   const baseURL = "http://localhost:8000"; // 替换为你的FastAPI服务地址
 
   // 使用useEffect钩子获取数据
   useEffect(() => {
     // 获取指标数据
-    axios.get(`${baseURL}/indicators`).then((res) => setIndicators(res.data));
+    axios
+      .get(`${baseURL}/indicators`)
+      .then((res) => {
+        setIndicators(res.data);
+        console.log("Indicators Data:", res.data);  // 打印返回的 indicators 数据
+      })
+      .catch((err) => {
+        setError("Error fetching indicators data");
+        console.error("Error fetching indicators data:", err);
+      });
+
     // 获取数据项
-    axios.get(`${baseURL}/data`).then((res) => setData(res.data));
+    axios
+      .get(`${baseURL}/data`)
+      .then((res) => setData(res.data))
+      .catch((err) => {
+        setError("Error fetching data items");
+        console.error("Error fetching data items:", err);
+      });
+
     // 获取报告数据
-    axios.get(`${baseURL}/reports`).then((res) => setReports(res.data));
+    axios
+      .get(`${baseURL}/reports`)
+      .then((res) => setReports(res.data))
+      .catch((err) => {
+        setError("Error fetching reports");
+        console.error("Error fetching reports:", err);
+      })
+      .finally(() => {
+        setLoading(false);  // 无论成功或失败，都表示加载完成
+      });
   }, []); // 空依赖数组，表示只在组件首次渲染时执行
+
+  // 如果正在加载数据，显示加载提示
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+
+  // 如果有错误，显示错误信息
+  if (error) {
+    return <div>Error: {error}</div>;
+  }
 
   return (
     <div className="p-6 space-y-10">
