@@ -3,6 +3,22 @@ Methods for text extraction from PDF documents.
 
 Main script extracts text from a PDF document using LlamaParse and saves the extracted document to MongoDB.
 
+
+
+Iman
+- openmetadata registration of SQL tables
+- share with grabriella files to use for sphinx documentation
+- schedule the script to run periodically
+- organize the scripts
+
+Sardor
+- reading from mongo for sardors script
+
+Siyu
+- visualisations - reading from sql tables
+- passing to UI (sardor to share code)
+
+
 TODO (Iman) - test retrieval of documents from MongoDB, create scheduler for refreshing metrics
 
 # Remaining Tasks - Devs
@@ -166,7 +182,7 @@ async def main():
 
             # Store in MongoDB
             try:
-                await asyncio.to_thread(mongo.insert_report, company, docs)
+                await asyncio.to_thread(mongo.insert_report, company, report, docs)
             except Exception as e:
                 logger.error(f"Failed to store extracted document for {report_path}: {e}")
 

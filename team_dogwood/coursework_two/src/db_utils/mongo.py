@@ -14,7 +14,7 @@ from llama_index.core import Document
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 
 from config.db import database_settings
-from src.data_models.company import Company
+from src.data_models.company import Company, ESGReport
 
 
 class MongCollection:
@@ -51,7 +51,7 @@ class MongCollection:
             # Return False to propagate the exception
             return False
     
-    def insert_report(self, company: Company, report: List[Document]) -> None:
+    def insert_report(self, company: Company, report_metadata: ESGReport, report: List[Document]) -> None:
         """
         Insert a report document into the MongoDB collection.
 
@@ -61,6 +61,7 @@ class MongCollection:
         try:
             self.collection.insert_one({
                 "company": company.model_dump(exclude={"esg_reports"}),
+                "report_metadata": report_metadata.model_dump(),
                 "text_extraction_timestamp": datetime.now(),
                 "report": [doc.model_dump() for doc in report]
             })
