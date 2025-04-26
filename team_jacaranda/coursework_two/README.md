@@ -7,7 +7,7 @@
 ---
 
 # 📄 Project Process Image
-![Project Overall Process](./static/Project_Process.jpg)
+![Project Overall Process](https://raw.githubusercontent.com/Etainos/ift_coursework_2024/team_jacaranda/team_jacaranda/coursework_two/static/Project_Process.jpg)
 
 ---
 ## ⚡ Quick Start
