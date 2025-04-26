@@ -1,16 +1,12 @@
 
 ---
 
-# 📄 Project README (Containerized & Poetry-Managed Version)  
+# 📄 Project README 
 # End-to-End Data Product Development for CSR Indicators: Extraction, Storage, and Visualization
 
 ---
 
-<<<<<<< HEAD:team_jacaranda/coursework_two/README.md
-# 📄 Project Process Image
-=======
 # Project Overall Process
->>>>>>> 70537e14a445cf1239fe62bba418b6e2081d53f5:team_jacaranda/coursework_two/README
 ![Project Overall Process](https://raw.githubusercontent.com/Etainos/ift_coursework_2024/team_jacaranda/team_jacaranda/coursework_two/static/Project_Process.jpg)
 
 ---
