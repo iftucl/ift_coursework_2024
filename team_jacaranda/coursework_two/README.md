@@ -46,11 +46,11 @@ All components are fully containerized, with backend dependencies managed by **P
 ## 📂 Project Structure
 ```
 coursework_two/
- ├── config/                  # Configuration files
+ ├── config/                  
  ├── FastAPI/                 # Backend API (FastAPI service)
  ├── modules/
  │    ├── data_storage/       # Data extraction and processing
- │    ├── db/                 # Database connection modules
+ │    ├── db/                 # The output data files for preview
  │    ├── frontend/           # React frontend
  │    └── __init__.py
  ├── static/                  # Static assets
