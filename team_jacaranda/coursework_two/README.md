@@ -89,8 +89,6 @@ DEEPSEEK_API_KEY = sk-f3***************
 docker compose up --build
 ```
 
-> 📌 Note: This assumes the database is launched in a separate container.
-
 ---
 
 ## 🛠️ Backend Data Processing Workflow
