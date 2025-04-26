@@ -46,7 +46,7 @@ All components are fully containerized, with backend dependencies managed by **P
 ## 📂 Project Structure
 ```
 coursework_two/
- ├── config/                 # Configuration files (DB/MinIO connections)
+ ├── config/                  # Configuration files
  ├── FastAPI/                 # Backend API (FastAPI service)
  ├── modules/
  │    ├── data_storage/       # Data extraction and processing
