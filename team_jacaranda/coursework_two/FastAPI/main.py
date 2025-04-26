@@ -3,7 +3,7 @@
 # The original JSON Schema: http://127.0.0.1:8000/openapi.json
 
 # poetry run uvicorn FastAPI.main:app --host 0.0.0.0 --port 8000 --reload
-# ngrok http 8000
+# ngrok http --url=csr.jacaranda.ngrok.app 8000
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,6 +39,13 @@ if os.path.exists(frontend_build_dir):
     @app.get("/")
     def serve_frontend():
         return FileResponse(os.path.join(frontend_build_dir, "index.html"))
+
+# 🔥 新增：专门处理 favicon.ico 请求
+favicon_path = os.path.join(frontend_build_dir, "favicon.ico")
+if os.path.exists(favicon_path):
+    @app.get("/favicon.ico")
+    async def favicon():
+        return FileResponse(favicon_path)
 
 # --- 数据库配置 ---
 db_config = {

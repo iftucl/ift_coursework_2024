@@ -1,6 +1,6 @@
 // npm install
-// npm start
 // npm run build
+// npm start
 
 import React, { useEffect, useState } from "react";
 import axios from "axios";
@@ -21,7 +21,7 @@ function App() {
   const [error, setError] = useState(""); // 错误信息
 
   // FastAPI的基本URL（本地开发环境）
-  const baseURL = "https://b99c-77-241-76-117.ngrok-free.app"; // 替换为你的FastAPI服务地址
+  const baseURL = "https://csr.jacaranda.ngrok.app"; // 替换为你的FastAPI服务地址
 
   // 使用useEffect钩子获取数据
   useEffect(() => {
