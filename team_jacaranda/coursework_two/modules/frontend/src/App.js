@@ -265,7 +265,7 @@ function App() {
 
         {/* MIDDLE */}
         <div className="col-span-6 flex flex-col gap-6">
-          <section className="border-2 border-green-900 rounded-xl p-4 bg-white shadow-lg">
+          <section className="border-2 border-green-900 rounded-xl p-4 bg-white shadow-lg min-h-full">
             <h3 className="text-xl font-semibold text-green-900 mb-4">Search Company Data</h3>
             <div className="flex gap-4 items-center mb-6">
               {/* COMPANYSEARCH */}
@@ -412,7 +412,7 @@ function App() {
 
             {/* Source Excerpt */}
             {sourceInfo && (
-              <div className="mt-8 p-4 border-2 border-green-400 rounded-lg bg-green-50">
+              <div className="mt-8 p-4 border-2 border-green-400 rounded-lg bg-green-50 max-h-80 overflow-y-auto scrollbar-custom">
                 <div className="flex justify-between items-center mb-2">
                   <h4 className="text-md font-bold text-green-900">Source Details</h4>
                   <button
