@@ -36,7 +36,7 @@ All components are fully containerized, with backend dependencies managed by **P
 ## ⚙️ Environment Requirements
 - Docker & Docker Compose
 - Poetry ≥ 1.5.0
-- Node.js = 16 (for frontend development)
+- Node.js ≥ 16.0 (for frontend development)
 - Python ≥ 3.8 (managed via Poetry)
 - PostgreSQL (in container)
 - MinIO storage service (in container)
@@ -46,21 +46,24 @@ All components are fully containerized, with backend dependencies managed by **P
 ## 📂 Project Structure
 ```
 coursework_two/
- ├── config/                  
- ├── FastAPI/                 # Backend API (FastAPI service)
+ ├── config/                  # Configuration folder.
+ ├── FastAPI/                 # Backend API (FastAPI service), responsible for handling frontend requests and providing data endpoints.
  ├── modules/
- │    ├── data_storage/       # Data extraction and processing
- │    ├── db/                 # The output data files for preview
- │    ├── frontend/           # React frontend
- │    └── __init__.py
- ├── static/                  # Static assets
- ├── test/                    # Test scripts
- ├── .env                     # Environment variables
- ├── Dockerfile.txt           # Dockerfile (container setup)
- ├── pyproject.toml           # Poetry dependency configuration
- ├── poetry.lock
- ├── pytest.ini               # Pytest settings
- └── .gitignore
+ │    ├── data_storage/       # Data extraction and processing module, responsible for extracting data from various sources and preprocessing it.
+ │    ├── db/                 # Output data folder, stores processed data files for preview.
+ │    ├── frontend/           # Frontend React application, displays data and interacts with the user.
+ │    ├── security/           # Security module, involves authentication, authorization, and data protection functionalities.
+ │    └── __init__.py         # Marks this folder as a Python module.
+ ├── static/                  # Static assets folder, contains static files needed by the frontend (e.g., images).
+ ├── test/                    # Test scripts folder, contains unit tests and integration tests, etc.
+ ├── .env                     # Environment variables file, stores configuration for the project environment.
+ ├── Dockerfile.txt           # Dockerfile, defines how to build the Docker image for the project.
+ ├── pyproject.toml           # Poetry dependency configuration file, lists the Python packages required for the project.
+ ├── poetry.lock              # Poetry lock file, records the exact versions of dependencies.
+ ├── pytest.ini               # Pytest configuration file, defines options for running tests.
+ ├── bandit_report.txt        # Bandit security scan report, logs security issues in Python code.
+ ├── safety_report.txt        # Safety security scan report, logs known vulnerabilities in Python dependencies.
+ └── .gitignore               # Git ignore file, lists files that should not be tracked by version control.
 ```
 
 ---

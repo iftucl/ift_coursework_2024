@@ -7,8 +7,9 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, Legend } from "recharts";
-import { AcademicCapIcon } from '@heroicons/react/solid';  // For Heroicons v1
+import { AcademicCapIcon } from '@heroicons/react/solid';
 
+const baseURL = "https://csr.jacaranda.ngrok.app";
 
 function App() {
   const [reports, setReports] = useState([]);
@@ -26,8 +27,21 @@ function App() {
   const [indicatorData, setIndicatorData] = useState([]);
   const [trendData, setTrendData] = useState([]);
   const [sourceInfo, setSourceInfo] = useState(null);
+  const [targetData, setTargetData] = useState([]);
 
-  const baseURL = "https://csr.jacaranda.ngrok.app";
+  const companyList = [...new Set(reports.map(r => r.security))];
+
+  const availableYears = selectedCompany
+    ? [...new Set(reports.filter(r => r.security === selectedCompany).map(r => r.report_year))].sort()
+    : [];
+
+  const filteredReports = searchClicked
+    ? reports.filter((report) => {
+        const matchCompany = selectedCompany ? report.security === selectedCompany : true;
+        const matchYear = selectedYear ? report.report_year === Number(selectedYear) : true;
+        return matchCompany && matchYear;
+      })
+    : [];
 
   useEffect(() => {
     const fetchData = async () => {
@@ -46,38 +60,8 @@ function App() {
       }
     };
     fetchData();
-  }, [baseURL]);
+  }, []);
 
-  const handleSearchClick = async (customCompany = selectedCompany, customYear = selectedYear) => {
-    if (customCompany && customYear) {
-      setSearchClicked(true);
-      try {
-        const res = await axios.get(`${baseURL}/data/search`, {
-          params: {
-            security: customCompany,
-            report_year: customYear,
-          },
-        });
-  
-        const validData = res.data
-          .filter(d => d.value_standardized && !isNaN(d.value_standardized))
-          .map(d => ({
-            name: d.indicator_name,
-            value: Number(d.value_standardized),
-            unit: d.unit_standardized || "",
-            source_excerpt: d.source_excerpt,
-            pdf_page: d.pdf_page,
-          }));
-  
-        setIndicatorData(validData);
-      } catch (error) {
-        console.error("Error fetching indicator data:", error);
-        setIndicatorData([]);
-      }
-    }
-  };
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (reports.length > 0) {
       const availableYears = reports
@@ -86,13 +70,10 @@ function App() {
       if (availableYears.length > 0) {
         const latestYear = Math.max(...availableYears);
         setSelectedYear(latestYear);
-        handleSearchClick("3M Company", latestYear);
+        searchCompanyYear("3M Company", latestYear);
       }
     }
   }, [reports]);
-  
-
-  const companyList = [...new Set(reports.map(r => r.security))];
 
   const handleSearchChange = (e) => {
     const value = e.target.value;
@@ -117,13 +98,56 @@ function App() {
     setSearchClicked(false);
     setSelectedIndicator("");
     setTrendData([]);
+    setTargetData([]);
   };
 
   const handleYearChange = (e) => {
     setSelectedYear(e.target.value);
     setSelectedReports([]);
     setSearchClicked(false);
-  };  
+  };
+
+  const searchCompanyYear = async (company, year) => {
+    if (company && year) {
+      setSearchClicked(true);
+      try {
+        const res = await axios.get(`${baseURL}/data/search`, {
+          params: {
+            security: company,
+            report_year: year,
+          },
+        });
+
+        const rawData = res.data;
+
+        const numberIndicators = rawData.filter(d =>
+          d.value_standardized && !isNaN(d.value_standardized) && !d.indicator_name.toLowerCase().endsWith("target")
+        ).map(d => ({
+          name: d.indicator_name,
+          value: Number(d.value_standardized),
+          unit: d.unit_standardized || "",
+        }));
+
+        const textTargets = rawData.filter(d =>
+          d.indicator_name.toLowerCase().endsWith("target")
+        ).map(d => ({
+          name: d.indicator_name,
+          text: d.value_raw || "",
+        }));
+
+        setIndicatorData(numberIndicators);
+        setTargetData(textTargets);
+      } catch (error) {
+        console.error("Error fetching indicator data:", error);
+        setIndicatorData([]);
+        setTargetData([]);
+      }
+    }
+  };
+
+  const handleSearchClick = () => {
+    searchCompanyYear(selectedCompany, selectedYear);
+  };
 
   const handleIndicatorSelect = async (indicatorName) => {
     setSelectedIndicator(prev => (prev === indicatorName ? "" : indicatorName));
@@ -160,6 +184,7 @@ function App() {
       setSelectedReports([...selectedReports, report]);
     }
   };
+
   const downloadSelectedReports = () => {
     if (selectedReports.length === 0) return;
 
@@ -177,9 +202,8 @@ function App() {
 
   const handleHoverIndicator = async (item) => {
     if (!selectedCompany || !selectedYear || !item.name) return;
-
     try {
-      const res = await axios.get(`https://csr.jacaranda.ngrok.app/data/search`, {
+      const res = await axios.get(`${baseURL}/data/search`, {
         params: {
           security: selectedCompany,
           report_year: selectedYear,
@@ -208,22 +232,7 @@ function App() {
     }
   };
 
-  const clearSourceInfo = () => {
-    setSourceInfo(null);
-  };
-
-  const availableYears = selectedCompany
-    ? [...new Set(reports.filter(r => r.security === selectedCompany).map(r => r.report_year))].sort()
-    : [];
-      
-  const filteredReports = searchClicked
-    ? reports.filter((report) => {
-      const matchCompany = selectedCompany ? report.security === selectedCompany : true;
-      const matchYear = selectedYear ? report.report_year === Number(selectedYear) : true;
-      return matchCompany && matchYear;
-    })
-  : [];
-
+  const clearSourceInfo = () => setSourceInfo(null);
 
   if (loading) return <div className="loading-spinner">Loading...</div>;
   if (error) return <div className="error-message">Error: {error}</div>;
@@ -231,19 +240,17 @@ function App() {
   return (
     <div className="h-screen bg-white flex flex-col">
       <header className="bg-white border-b-4 border-green-900 p-4 shadow-md flex items-center gap-2">
-        <AcademicCapIcon className="w-8 h-8 text-green-900" /> {/* The icon */}
-        <h1 className="text-3xl font-bold text-green-900 text-center">CSR DATA</h1>
+        <AcademicCapIcon className="w-8 h-8 text-green-900" />
+        <h1 className="text-3xl font-bold text-green-900 text-center flex-grow">CSR DATA</h1>
       </header>
+
       <main className="flex-1 grid grid-cols-12 gap-6 p-6 bg-gray-50">
-        {/* 左栏开始 */}
+        {/* LEFT - IndicatorSELECT */}
         <section className="col-span-3 border-2 border-green-900 rounded-xl p-4 bg-white shadow-lg">
-          <h3 className="text-xl font-semibold text-green-900 mb-4">CSR INDICATOR</h3>
+          <h3 className="text-xl font-semibold text-green-900 mb-4">CSR Indicator</h3>
           <div className="h-[calc(100vh-14rem)] overflow-y-auto scrollbar-custom space-y-2">
             {indicators.map((indicator, index) => (
-              <label
-                key={index}
-                className="flex items-center p-2 hover:bg-green-50 rounded-lg cursor-pointer transition-colors"
-              >
+              <label key={index} className="flex items-center p-2 hover:bg-green-50 rounded-lg cursor-pointer transition-colors">
                 <input
                   type="checkbox"
                   className="w-5 h-5 text-green-900 border-2 border-green-900 rounded mr-2"
@@ -256,11 +263,12 @@ function App() {
           </div>
         </section>
 
-        {/* middle */}
+        {/* MIDDLE */}
         <div className="col-span-6 flex flex-col gap-6">
           <section className="border-2 border-green-900 rounded-xl p-4 bg-white shadow-lg">
             <h3 className="text-xl font-semibold text-green-900 mb-4">Search Company Data</h3>
             <div className="flex gap-4 items-center mb-6">
+              {/* COMPANYSEARCH */}
               <div className="relative flex-1">
                 <input
                   type="text"
@@ -284,7 +292,7 @@ function App() {
                 )}
               </div>
 
-              {/* year */}
+              {/* YEAR */}
               <div className="w-40">
                 <select
                   className="w-full h-12 border-2 border-green-900 rounded-lg p-3 focus:ring-2 focus:ring-green-500"
@@ -299,17 +307,16 @@ function App() {
                 </select>
               </div>
 
-              {/* Searchbutton */}
+              {/* SEARCHBUTTON */}
               <button
-                onClick={() => handleSearchClick(selectedCompany, selectedYear)}
+                onClick={handleSearchClick}
                 className="h-12 bg-green-900 text-white px-4 py-2 rounded-lg hover:bg-green-800 transition-colors"
               >
                 Search
               </button>
             </div>
-
-            {/* table/chart */}
-            {searchClicked && (
+                        {/* Chart Table */}
+                        {searchClicked && (
               <>
                 <div className="flex gap-4 mb-4">
                   <button
@@ -326,53 +333,67 @@ function App() {
                   </button>
                 </div>
 
-                <div>
-                  {indicatorData.length === 0 ? (
-                    <div className="text-center text-red-500">No indicator data found.</div>
+                {/* Chart  Table */}
+                {indicatorData.length === 0 ? (
+                  <div className="text-center text-red-500">No indicator data found.</div>
+                ) : (
+                  viewMode === "chart" ? (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={indicatorData}>
+                        <XAxis dataKey="name" interval={0} angle={0} textAnchor="middle" height={100} />
+                        <YAxis domain={[0, dataMax => dataMax * 1.2]} />
+                        <Tooltip />
+                        <Bar dataKey="value" fill="#004d40" barSize={40} minPointSize={5} />
+                      </BarChart>
+                    </ResponsiveContainer>
                   ) : (
-                    viewMode === "chart" ? (
-                      <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={indicatorData}>
-                          <XAxis dataKey="name" interval={0} angle={0} textAnchor="end" height={100} />
-                          <YAxis domain={[0, dataMax => dataMax * 1.2]} />
-                          <Tooltip />
-                          <Bar dataKey="value" fill="#004d40" barSize={40} minPointSize={5} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full bg-white border border-green-900">
-                          <thead className="bg-green-100">
-                            <tr>
-                              <th className="py-2 px-4 border">Indicator</th>
-                              <th className="py-2 px-4 border">Value</th>
-                              <th className="py-2 px-4 border">Unit</th>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full bg-white border border-green-900">
+                        <thead className="bg-green-100">
+                          <tr>
+                            <th className="py-2 px-4 border">Indicator</th>
+                            <th className="py-2 px-4 border">Value</th>
+                            <th className="py-2 px-4 border">Unit</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {indicatorData.map((item, index) => (
+                            <tr
+                              key={index}
+                              className="border-t hover:bg-green-50 cursor-pointer"
+                              onClick={() => handleHoverIndicator(item)}
+                            >
+                              <td className="py-2 px-4 border">{item.name}</td>
+                              <td className="py-2 px-4 border">{item.value}</td>
+                              <td className="py-2 px-4 border">{item.unit}</td>
                             </tr>
-                          </thead>
-                          <tbody>
-                            {indicatorData.map((item, index) => (
-                              <tr
-                                key={index}
-                                className="border-t hover:bg-green-50 cursor-pointer"
-                                onClick={() => handleHoverIndicator(item)}
-                              >
-                                <td className="py-2 px-4 border">{item.name}</td>
-                                <td className="py-2 px-4 border">{item.value}</td>
-                                <td className="py-2 px-4 border">{item.unit}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )
-                  )}
-                </div>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                )}
               </>
             )}
-            {/* line*/}
+
+            {/* Target Indicator */}
+            {targetData.length > 0 && (
+              <div className="mt-8 p-4 border-2 border-dashed border-green-400 rounded-lg bg-green-50">
+                <h4 className="text-lg font-bold text-green-900 mb-4">Company Targets</h4>
+                <ul className="list-disc pl-6 text-green-800 space-y-2">
+                  {targetData.map((target, idx) => (
+                    <li key={idx}>
+                      <span className="font-semibold">{target.name}: </span>{target.text}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* LineChart */}
             {selectedIndicator && (
-              <div className="mt-6">
-                <h3 className="text-lg font-semibold text-green-900 mb-2">Trend of {selectedIndicator}</h3>
+              <div className="mt-8">
+                <h3 className="text-lg font-semibold text-green-900 mb-4">Trend of {selectedIndicator}</h3>
                 {trendData.length === 0 ? (
                   <div className="text-red-500">No trend data available.</div>
                 ) : (
@@ -391,10 +412,15 @@ function App() {
 
             {/* Source Excerpt */}
             {sourceInfo && (
-              <div className="mt-6 p-4 border-2 border-green-400 rounded-lg bg-green-50">
+              <div className="mt-8 p-4 border-2 border-green-400 rounded-lg bg-green-50">
                 <div className="flex justify-between items-center mb-2">
                   <h4 className="text-md font-bold text-green-900">Source Details</h4>
-                  <button onClick={clearSourceInfo} className="text-green-900 underline">Clear</button>
+                  <button
+                    onClick={clearSourceInfo}
+                    className="text-green-900 underline text-sm"
+                  >
+                    Clear
+                  </button>
                 </div>
                 <div className="text-sm text-green-700 whitespace-pre-wrap">
                   {sourceInfo.source_excerpt.map((excerpt, idx) => (
@@ -408,8 +434,7 @@ function App() {
           </section>
         </div>
 
-
-        {/* left */}
+        {/* Report Download */}
         <section className="col-span-3 border-2 border-green-900 rounded-xl p-4 bg-white shadow-lg">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-xl font-semibold text-green-900">{selectedCompany || "Company"} Reports</h3>
@@ -439,7 +464,7 @@ function App() {
                   href={report.report_url}
                   className="mt-3 inline-flex items-center text-green-900 hover:underline"
                   target="_blank"
-                  rel="noopener noreferrer"
+                  rel="noreferrer"
                 >
                   View Full Report
                 </a>
