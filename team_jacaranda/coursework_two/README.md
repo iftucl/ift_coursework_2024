@@ -72,7 +72,7 @@ coursework_two/
 
 ### 1. Clone the Project
 ```bash
-git clone <your-repo-url>
+git clone -b team_jacaranda https://github.com/Etainos/ift_coursework_2024.git
 cd coursework_two
 ```
 
