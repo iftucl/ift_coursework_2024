@@ -1,12 +1,12 @@
 
 ---
 
-# 📄 Project README 
+## 📄 Project README 
 # End-to-End Data Product Development for CSR Indicators: Extraction, Storage, and Visualization
 
 ---
 
-# Project Overall Process
+## Project Overall Process
 ![Project Overall Process](https://raw.githubusercontent.com/Etainos/ift_coursework_2024/team_jacaranda/team_jacaranda/coursework_two/static/Project_Process.jpg)
 
 ---
@@ -36,7 +36,7 @@ All components are fully containerized, with backend dependencies managed by **P
 ## ⚙️ Environment Requirements
 - Docker & Docker Compose
 - Poetry ≥ 1.5.0
-- Node.js ≥ 16 (for frontend development)
+- Node.js = 16 (for frontend development)
 - Python ≥ 3.8 (managed via Poetry)
 - PostgreSQL (in container)
 - MinIO storage service (in container)
