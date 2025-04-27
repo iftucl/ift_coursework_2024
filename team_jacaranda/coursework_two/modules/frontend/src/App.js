@@ -27,7 +27,7 @@ function App() {
   const [trendData, setTrendData] = useState([]);
   const [sourceInfo, setSourceInfo] = useState(null);
 
-  const baseURL = process.env.REACT_APP_BASE_URL;
+  const baseURL = "https://csr.jacaranda.ngrok.app";
 
   useEffect(() => {
     const fetchData = async () => {
