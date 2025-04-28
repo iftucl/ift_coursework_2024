@@ -60,7 +60,8 @@ class PostgreSQLDB:
         self.conn.close()
 
     def execute(self, query, params=None):
-        """Fetches data (SELECT) and returns a list of dictionaries."""
+        """Executes a SQL statement (INSERT, UPDATE, DELETE) and returns an empty list."""
+        # Note: This method is for executing non-SELECT queries.
         try:
             logger.info(f"Executing query: {query}...")
             cursor = self.conn.cursor(cursor_factory=RealDictCursor)
