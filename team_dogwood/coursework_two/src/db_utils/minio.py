@@ -2,7 +2,7 @@ import os
 import sys
 from datetime import timedelta
 
-from ift_global import MinioFileSystemRepo
+# from ift_global import MinioFileSystemRepo
 from loguru import logger
 from minio import Minio
 
@@ -10,6 +10,9 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 
 from config.db import database_settings
 
+class MinioFileSystemRepo:
+    """Dummy class to satisfy inheritance."""
+    pass
 
 class MinioFileSystem(MinioFileSystemRepo):
     """Overwrite file read and file write methods in MinioFileSystemRepo to add functionality to process PDF files.

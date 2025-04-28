@@ -1,36 +1,41 @@
+# src/extract/ingest_to_pg.py
+
 #!/usr/bin/env python3
 """
 ingest_to_pg.py
 ===============
 
-Query the **vector store** (built from parsed CSR reports), prompt **GPT-4**
-to return nine key ESG indicators as JSON, then UPSERT them into three
-PostgreSQL tables:
+Load parsed CSR pages from MongoDB, build an in‐memory vector index,
+prompt GPT-4 to extract nine ESG metrics as JSON, validate/normalize
+them, and UPSERT into three PostgreSQL tables:
 
-* ``emissions`` – Scope 1/2/3
-* ``energy``     – energy + water metrics
-* ``waste``      – waste + packaging metrics
+  * emissions – Scope 1/2/3
+  * energy    – energy + water
+  * waste     – waste + packaging
+
+By default, processes ALL companies & years in Mongo.  Use --company
+and/or --year to restrict.
 """
 
-# ── standard library ──────────────────────────────────────────────────────
 import argparse
 import json
 import os
 import re
-from pathlib import Path
-from typing import Dict, List
+from typing import List, Dict, Optional
 
-# ── third-party ────────────────────────────────────────────────────────────
 import psycopg2
-from loguru import logger
 from dotenv import load_dotenv
-from llama_index.core import StorageContext, load_index_from_storage, VectorStoreIndex
+from loguru import logger
+from llama_index.core import Document, VectorStoreIndex
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.llms.openai import OpenAI
 
-load_dotenv()  # picks up OPENAI_API_KEY + DB creds from .env
+from src.db_utils.mongo import MongCollection
 
-# ── extraction prompt ------------------------------------------------------
+# load .env for OPENAI_*, DB_POSTGRES_*, MONGO_*, MODEL_NAME, etc.
+load_dotenv()
+
+
 ESG_PROMPT = r"""
 You are an ESG data-extraction function. Return **only** valid JSON, no prose.
 
@@ -59,27 +64,69 @@ Each element example:
 """
 
 
-# ── small helper -----------------------------------------------------------
+def parse_and_strip_json(raw: str) -> List[Dict]:
+    """
+    Strip any Markdown/JSON code fences and parse GPT-4 output.
+
+    :param raw: Raw response text from the LLM.
+    :type raw: str
+    :return: List of metric dicts.
+    :rtype: list[dict]
+    :raises json.JSONDecodeError: If the cleaned text is not valid JSON.
+    """
+    clean = re.sub(r"^```json\s*|\s*```$", "", raw.strip(),
+                   flags=re.IGNORECASE | re.DOTALL)
+    return json.loads(clean)
+
+
+def validate_and_normalize(metrics: List[Dict]) -> List[Dict]:
+    """
+    Validate and normalize a list of ESG metric dicts.
+
+    - Coerce 'figure' to float or int based on 'data_type'.
+    - Normalize 'unit' to a lowercase, trimmed string.
+    - Drop metrics where 'figure' cannot be parsed.
+
+    :param metrics: Raw metric dicts from GPT-4.
+    :type metrics: list[dict]
+    :return: Cleaned list of metric dicts.
+    :rtype: list[dict]
+    """
+    out = []
+    for m in metrics:
+        try:
+            # figure → float/int
+            raw = m.get("figure")
+            val = float(str(raw).replace(",", ""))
+            if m.get("data_type", "").lower() == "integer":
+                m["figure"] = int(round(val))
+            else:
+                m["figure"] = val
+
+            # unit → lowercase trimmed
+            unit = str(m.get("unit", "")).strip().lower()
+            m["unit"] = unit or "unknown"
+
+            out.append(m)
+        except Exception as e:
+            logger.warning(f"Dropping metric {m.get('indicator_id')} – {e}")
+    return out
+
+
 def upsert_many(cur, table: str, rows: List[Dict]) -> None:
     """
-    Bulk-UPSERT *rows* into *table* (``indicator_id`` is primary-key).
+    Bulk UPSERT a list of metrics into the specified Postgres table.
 
-    Parameters
-    ----------
-    cur : psycopg2.extensions.cursor
-        Active DB cursor.
-    table : str
-        Destination table name (``emissions`` | ``energy`` | ``waste``).
-    rows : list[dict]
-        Parsed JSON rows from GPT-4.
+    :param cur: Psycopg2 cursor (open transaction).
+    :param table: Table name ('emissions', 'energy', or 'waste').
+    :param rows: List of metric dicts containing matching columns.
     """
     if not rows:
         return
-    cols = list(rows[0])
+    cols = list(rows[0].keys())
     cols_csv = ", ".join(cols)
     placeholders = ", ".join(["%s"] * len(cols))
     updates = ", ".join(f"{c}=EXCLUDED.{c}" for c in cols if c != "indicator_id")
-
     sql = (
         f"INSERT INTO {table} ({cols_csv}) VALUES ({placeholders}) "
         f"ON CONFLICT (indicator_id) DO UPDATE SET {updates};"
@@ -87,75 +134,117 @@ def upsert_many(cur, table: str, rows: List[Dict]) -> None:
     cur.executemany(sql, [tuple(r[c] for c in cols) for r in rows])
 
 
-# ── main pipeline ----------------------------------------------------------
 def main() -> None:
     """
-    CLI entrypoint.  
-    Example::
+    Entry point: parse CLI args, read from Mongo, prompt GPT-4, validate
+    metrics, and upsert into Postgres.
 
-        poetry run python ingest_to_pg.py --company Amazon --year 2023
+    Flags:
+      --company:   Single company.security to process.
+      --year:      Single year to process (requires --company).
+      --openai_model: Override default LLM model.
+      --openai_key:   Override default API key.
     """
-    # 1 ⎯ CLI args ----------------------------------------------------------
-    ap = argparse.ArgumentParser(description="Extract ESG KPIs into Postgres")
-    ap.add_argument("--company", required=True)
-    ap.add_argument("--year", type=int, required=True)
-    ap.add_argument("--persist_dir", type=Path, default=Path("data/vector_db"))
-    ap.add_argument("--model_name", default="all-MiniLM-L6-v2")
-    ap.add_argument("--openai_model", default="gpt-4o-mini")
-    ap.add_argument("--openai_key", default=os.getenv("OPENAI_API_KEY"))
-    args = ap.parse_args()
-
-    # 2 ⎯ reload vector index ----------------------------------------------
-    embed = HuggingFaceEmbedding(model_name=args.model_name)
-    storage = StorageContext.from_defaults(persist_dir=str(args.persist_dir))
-    index: VectorStoreIndex = load_index_from_storage(storage, embed_model=embed)
-
-    # 3 ⎯ GPT-4 query -------------------------------------------------------
-    llm = OpenAI(model=args.openai_model, api_key=args.openai_key)
-    qe = index.as_query_engine(similarity_top_k=10, llm=llm)
-
-    logger.info("Querying GPT-4 for structured ESG data …")
-    rsp = qe.query(ESG_PROMPT.format(company=args.company, year=args.year))
-    raw = getattr(rsp, "response", None) or rsp.response_text
-
-    # strip ```json … ``` fences (GPT sometimes wraps output)
-    clean = re.sub(r"^```json\s*|\s*```$", "", raw.strip(),
-                   flags=re.IGNORECASE | re.DOTALL)
-
-    try:
-        metrics: List[Dict] = json.loads(clean)
-    except json.JSONDecodeError as exc:
-        logger.error("GPT-4 did not return valid JSON")
-        logger.error(raw)
-        raise exc
-
-    # 4 ⎯ bucket rows -------------------------------------------------------
-    emissions = [m for m in metrics if "emissions" in m["category"].lower()]
-    energy = [
-        m for m in metrics
-        if m["indicator_name"].lower().startswith(("total energy", "water"))
-    ]
-    waste = [
-        m for m in metrics
-        if "waste" in m["category"].lower()
-        or "packaging" in m["indicator_name"].lower()
-    ]
-
-    # 5 ⎯ Postgres upsert ---------------------------------------------------
-    conn = psycopg2.connect(
-        dbname=os.getenv("DB_POSTGRES_DB_NAME", "fift"),
-        user=os.getenv("DB_POSTGRES_USERNAME", "postgres"),
-        password=os.getenv("DB_POSTGRES_PASSWORD", "postgres"),
-        host=os.getenv("DB_POSTGRES_HOST", "localhost"),
-        port=os.getenv("DB_POSTGRES_PORT", "5439"),
+    parser = argparse.ArgumentParser(
+        description="Ingest ESG KPIs from Mongo ↦ GPT-4 ↦ PostgreSQL."
     )
-    with conn, conn.cursor() as cur:
-        upsert_many(cur, "emissions", emissions)
-        upsert_many(cur, "energy",    energy)
-        upsert_many(cur, "waste",     waste)
+    parser.add_argument(
+        "--company",
+        help="Ticker/security to process (e.g. AAPL). Omit to process all.",
+    )
+    parser.add_argument(
+        "--year",
+        type=int,
+        help="Report year to process (requires --company). Omit to process all years.",
+    )
+    parser.add_argument(
+        "--openai_model",
+        default=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+        help="OpenAI model to use.",
+    )
+    parser.add_argument(
+        "--openai_key",
+        default=os.getenv("OPENAI_API_KEY"),
+        help="OpenAI API key.",
+    )
+    args = parser.parse_args()
 
-    logger.success("Done! ESG metrics persisted to Postgres.")
+    # 1) Mongo & company list
+    with MongCollection() as mongo:
+        if args.company:
+            companies = [args.company]
+        else:
+            companies = mongo.list_companies()
+        logger.info(f"Processing {len(companies)} companies…")
+
+        # 2) LLM & embedding
+        embed_model = os.getenv("MODEL_NAME", "all-MiniLM-L6-v2")
+        embed = HuggingFaceEmbedding(model_name=embed_model)
+        llm = OpenAI(model=args.openai_model, api_key=args.openai_key)
+
+        # 3) Postgres
+        conn = psycopg2.connect(
+            dbname=os.getenv("DB_POSTGRES_DB_NAME"),
+            user=os.getenv("DB_POSTGRES_USERNAME"),
+            password=os.getenv("DB_POSTGRES_PASSWORD"),
+            host=os.getenv("DB_POSTGRES_HOST"),
+            port=os.getenv("DB_POSTGRES_PORT"),
+        )
+
+        # 4) Loop companies & years
+        for sec in companies:
+            doc = mongo.get_report_by_company(sec)
+            if not doc:
+                continue
+
+            years = [args.year] if args.year else mongo.get_available_years(doc)
+            if args.year and args.company is None:
+                logger.warning("--year requires --company; ignoring year filter.")
+                years = mongo.get_available_years(doc)
+
+            if not years:
+                logger.warning(f"No parsed years for {sec}; skipping.")
+                continue
+
+            # rebuild Document pages once per company
+            pages = [Document(**p) for p in doc["report"]]
+            index = VectorStoreIndex.from_documents(pages, embed_model=embed)
+            qe = index.as_query_engine(similarity_top_k=10, llm=llm)
+
+            for yr in years:
+                logger.info(f"▶ {sec} / {yr}")
+                prompt = ESG_PROMPT.format(company=sec, year=yr)
+                rsp = qe.query(prompt)
+                raw = getattr(rsp, "response", None) or rsp.response_text
+
+                try:
+                    metrics = parse_and_strip_json(raw)
+                except json.JSONDecodeError:
+                    logger.error(f"Invalid JSON for {sec}/{yr}; skipping.")
+                    continue
+
+                metrics = validate_and_normalize(metrics)
+                emissions = [m for m in metrics if "emissions" in m["category"].lower()]
+                energy    = [
+                    m for m in metrics
+                    if m["indicator_name"].lower().startswith(("total energy", "water"))
+                ]
+                waste     = [
+                    m for m in metrics
+                    if "waste" in m["category"].lower()
+                    or "packaging" in m["indicator_name"].lower()
+                ]
+
+                with conn.cursor() as cur:
+                    upsert_many(cur, "emissions", emissions)
+                    upsert_many(cur, "energy",    energy)
+                    upsert_many(cur, "waste",     waste)
+                conn.commit()
+                logger.success(f"Persisted {sec}/{yr} → Postgres.")
+
+    conn.close()
+    logger.success("✅ All done.")
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     main()
