@@ -4,7 +4,6 @@ Methods for text extraction from PDF documents.
 Main script extracts text from a PDF document using LlamaParse and saves the extracted document to MongoDB.
 
 Iman
-- openmetadata registration of SQL tables
 - share with grabriella files to use for sphinx documentation
 - schedule the script to run periodically
 - organize the scripts
