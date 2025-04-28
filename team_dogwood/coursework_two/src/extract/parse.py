@@ -3,21 +3,18 @@ Methods for text extraction from PDF documents.
 
 Main script extracts text from a PDF document using LlamaParse and saves the extracted document to MongoDB.
 
-TODO (Iman) - test retrieval of documents from MongoDB, create scheduler for refreshing metrics
+Iman
+- share with grabriella files to use for sphinx documentation
+- schedule the script to run periodically
+- organize the scripts
 
-# Remaining Tasks - Devs
-# Implementation of vector store for querying (targeted searches of specific figures)
-    # 1. Read extracted text from mongo and create a vector store
-    # 2. Query store to get specific figures
-# Orchestration of parsing, extraction, and storage. Final script should:
-    # 1. Reads company details from the sql database, 
-    # 2. Look for a company report on minio,
-    # 3. (Iman) Extract text and store the full report text in mongo
-    # 4. (Sardor) Use the extracted text from mongo to extract metrics (in a structured format) and store in SQL (could use data sink feature of Llama to do this)
-# Scheduling of script for refreshing metrics - Iman
-# Basic UI for visualisation - Sardon done
-# Code for visualising metric information (for a single company and comparison with multiple companies) - Siyu
-# Figure out how to pass around and persist metadata - Iman
+Sardor
+- reading from mongo for sardors script
+- data validation
+
+Siyu
+- visualisations - reading from sql tables
+- passing to UI (sardor to share code)
 
 # Remaining Tasks - Owners / Specialists
 # 1. Switch to sphinx-style docstrings (Gabriella)
@@ -166,7 +163,7 @@ async def main():
 
             # Store in MongoDB
             try:
-                await asyncio.to_thread(mongo.insert_report, company, docs)
+                await asyncio.to_thread(mongo.insert_report, company, report, docs)
             except Exception as e:
                 logger.error(f"Failed to store extracted document for {report_path}: {e}")
 
