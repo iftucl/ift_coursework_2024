@@ -5,35 +5,50 @@ Store ESG metrics data models.
 from pydantic import BaseModel, Field
 
 
-class ScopeMetrics(BaseModel):
+class IndicatorList(BaseModel):
     """
-    Class for representing Scope 1, 2, and 3 emissions metrics.
-    """
-
-    scope_1: float = Field(
-        ...,
-        description="Scope 1 emissions in metric tons of CO2 equivalent.",
-    )
-    scope_2: float = Field(
-        ...,
-        description="Scope 2 emissions in metric tons of CO2 equivalent.",
-    )
-    scope_3: float = Field(
-        ...,
-        description="Scope 3 emissions in metric tons of CO2 equivalent.",
-    )
-
-
-class WaterMetrics(BaseModel):
-    """
-    Class for representing water usage metrics.
+    List of ESG indicators.
     """
 
-    total_water_usage: float = Field(
+    indicators: list["Indicator"] = Field(
         ...,
-        description="Total water usage in cubic meters.",
+        description="List of ESG indicators.",
     )
-    water_usage_intensity: float = Field(
+
+    class Config:
+        arbitrary_types_allowed = True
+
+
+class Indicator(BaseModel):
+    ID: str = Field(
         ...,
-        description="Water usage intensity in cubic meters per unit of production.",
+        description="Unique identifier for the indicator.",
+    )
+    name: str = Field(
+        ...,
+        description="Name of the indicator.",
+    )
+    category: str = Field(
+        ...,
+        description="Category of the indicator.",
+    )
+    company: str = Field(
+        ...,
+        description="Company associated with the indicator.",
+    )
+    report_year: int = Field(
+        ...,
+        description="Year of the report.",
+    )
+    figure: float = Field(
+        ...,
+        description="Value of the indicator.",
+    )
+    unit: str = Field(
+        ...,
+        description="Unit of measurement for the indicator.",
+    )
+    data_type: str = Field(
+        ...,
+        description="Type of data (e.g., 'absolute', 'intensity').",
     )

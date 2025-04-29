@@ -16,7 +16,11 @@ class ModelSettings(BaseSettings):
     LLAMACLOUD_API_KEY: str
 
     # OpenAI API key
+    OPENAI_MODEL_NAME: str
     OPENAI_API_KEY: str
+
+    # Embedding model name
+    EMBEDDINGS_MODEL_NAME: str
 
     model_config = SettingsConfigDict(
         env_file=".env",

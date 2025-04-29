@@ -1,7 +1,6 @@
 Final list of tasks for CW2
 
 Development
-- update sardors script to register metadata
 - write a couple unit tests
 - add run once arg to main.py
 - update main script to run sardor and siyu scripts
