@@ -36,26 +36,31 @@ class PostgresManager:
         return count > 0  # if count > 0，it already exists
     
     def insert_pdf_record(self, record: Dict):
-    # Check if database already exists (company, year)
-        query = "SELECT 1 FROM pdf_records WHERE company = %s AND year = %s;"
-        self.cur.execute(query, (record['company'], record['year']))
-        exists = self.cur.fetchone()
-
-        if exists:  # Skip if records already exist for that company for that year
-            logger.info(f"[Postgres] Skipping {record['company']} {record['year']}, already exists.")
-            return
-    
-    # insert data
+        """
+        插入一条记录；若同 company+year 已存在，则更新 filename、url、file_hash，
+        保证 Postgres 中的 filename 与 MinIO 保持一致。
+        """
         try:
             self.cur.execute("""
-            INSERT INTO pdf_records (company, url, year, file_hash, filename)
-            VALUES (%s, %s, %s, %s, %s);
-            """, (record['company'], record['url'], record['year'], record['file_hash'], record['filename']))
+                INSERT INTO pdf_records (company, url, year, file_hash, filename)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (company, year) 
+                DO UPDATE SET
+                    url = EXCLUDED.url,
+                    file_hash = EXCLUDED.file_hash,
+                    filename = EXCLUDED.filename;
+            """, (
+                record["company"],
+                record["url"],
+                record["year"],
+                record["file_hash"],
+                record["filename"],
+            ))
             self.conn.commit()
-            logger.info(f"[Postgres] Inserted record for {record['company']} - {record['year']}")
+            logger.info(f"[Postgres] Upserted record for {record['company']} - {record['year']}")
         except Exception as e:
-            self.conn.rollback()  
-            logger.error(f"[Postgres] Insert failed: {str(e)}")
+            self.conn.rollback()
+            logger.error(f"[Postgres] Upsert failed: {str(e)}")
 
    
     def close(self):
