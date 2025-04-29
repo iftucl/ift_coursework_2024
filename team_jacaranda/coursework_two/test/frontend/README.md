@@ -14,4 +14,4 @@ To run all frontend-related tests with coverage:
 # https://www.python.org/downloads/
 
 cd coursework_two
-poetry run pytest test/frontend/
+poetry run pytest test/frontend/ --cov
