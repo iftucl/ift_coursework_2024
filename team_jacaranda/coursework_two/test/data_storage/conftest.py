@@ -1,5 +1,5 @@
 # ※ conftest.py
-# poetry run pytest --cov
+# poetry run pytest test/data_storage/ --cov=modules
 
 import pytest
 from unittest.mock import MagicMock, patch
