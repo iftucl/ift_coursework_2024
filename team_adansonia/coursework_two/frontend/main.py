@@ -6,22 +6,17 @@ import httpx
 
 app = FastAPI()
 
-app.mount("/static", StaticFiles(directory="team_adansonia/coursework_two/frontend/static"), name="static")
-templates = Jinja2Templates(directory="team_adansonia/coursework_two/frontend/templates")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
 
 # Home page: search form
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    """
-    Renders the home page which contains a search form.
-
-    Args:
-        request: The HTTP request object passed by FastAPI for rendering templates.
-
-    Returns:
-        HTMLResponse: Renders the 'home.html' template with the request object passed to it.
-    """
-    return templates.TemplateResponse("home.html", {"request": request})
+    url = f"http://localhost:8081/all"
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url)
+        data = response.json()
+    return templates.TemplateResponse("home.html", {"request": request, "data": data})
 
 # Company page: display fetched JSON
 @app.get("/company/{symbol}", response_class=HTMLResponse)

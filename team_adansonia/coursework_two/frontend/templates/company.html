@@ -1,14 +1,120 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Company: {{ symbol }}</title>
-    <link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
-    <div class="container">
-        <h1>Company: {{ symbol }}</h1>
-        <pre>{{ data | tojson(indent=2) }}</pre>
-        <a href="/">← Back to Search</a>
-    </div>
-</body>
-</html>
+{% extends "base.html" %}
+
+{% block title %}{{ data.security }} ESG Report{% endblock %}
+
+{% block content %}
+  <h1 class="govuk-heading-xl">{{ data.security }} <span class="govuk-!-font-weight-regular">({{ data.symbol }})</span></h1>
+
+  <p class="govuk-body"><strong>Sector:</strong> {{ data.gics_sector }} – {{ data.gics_industry }}</p>
+  <p class="govuk-body"><strong>Region:</strong> {{ data.region }}</p>
+
+  {# ---------------- CSR REPORT LINKS ---------------- #}
+  <h2 class="govuk-heading-l">Corporate Sustainability Reports</h2>
+  {% if data.csr_reports %}
+    <ul class="govuk-list govuk-list--bullet">
+      {% for year, link in data.csr_reports|dictsort(reverse=True) %}
+        {% if link %}
+          <li><a class="govuk-link" href="{{ link }}" target="_blank" rel="noopener noreferrer">{{ year }}</a></li>
+        {% else %}
+          <li>{{ year }} – report not available</li>
+        {% endif %}
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="govuk-body">No corporate sustainability reports were found for this company.</p>
+  {% endif %}
+
+  {# ---------------- ESG METRICS ---------------- #}
+  <h2 class="govuk-heading-l govuk-!-margin-top-8">ESG Metrics</h2>
+
+  {% if data.esg_data %}
+    {% for category, metrics in data.esg_data.items() %}
+      {% set cat_idx = loop.index0 %}
+
+      <h3 class="govuk-heading-m">{{ category }}</h3>
+
+      {% for metric_name, metric_values in metrics.items() %}
+        <details class="govuk-details govuk-!-margin-bottom-6" data-module="govuk-details">
+          <summary class="govuk-details__summary">
+            <span class="govuk-details__summary-text">{{ metric_name }}</span>
+          </summary>
+          <div class="govuk-details__text">
+            <table class="govuk-table govuk-!-margin-bottom-4">
+              <caption class="govuk-visually-hidden">{{ metric_name }} year-on-year values</caption>
+              <thead class="govuk-table__head">
+                <tr class="govuk-table__row">
+                  <th scope="col" class="govuk-table__header">Year</th>
+                  <th scope="col" class="govuk-table__header">Value</th>
+                </tr>
+              </thead>
+              <tbody class="govuk-table__body">
+                {% for yr, val in metric_values.items() if yr not in ["Units", "validated"] %}
+                  <tr class="govuk-table__row">
+                    <th scope="row" class="govuk-table__header">{{ yr }}</th>
+                    <td class="govuk-table__cell">{{ val }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+
+            <p class="govuk-body"><strong>Units:</strong> {{ metric_values.get('Units', 'N/A') }}<br>
+            <strong>Validated:</strong> {{ metric_values.get('validated', 'unknown')|capitalize }}</p>
+
+            {% set chart_id = "chart_" ~ cat_idx ~ "_" ~ loop.index0 %}
+            <canvas id="{{ chart_id }}" class="govuk-!-width-full" style="width: 100%; height: 200px; max-height: 240px;" data-chart-config='{{ {
+              "labels": metric_values | dictsort | rejectattr("0", "equalto", "Units") | rejectattr("0", "equalto", "validated") | map(attribute="0") | list,
+              "data": metric_values | dictsort | rejectattr("0", "equalto", "Units") | rejectattr("0", "equalto", "validated") | map(attribute="1") | list,
+              "unit": metric_values.get("Units", "")
+            } | tojson | safe }}'></canvas>
+          </div>
+        </details>
+      {% endfor %}
+    {% endfor %}
+  {% else %}
+    <p class="govuk-body">No ESG data available for this company.</p>
+  {% endif %}
+
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    document.querySelectorAll('.govuk-details').forEach(details => {
+      details.addEventListener('toggle', event => {
+        if (!event.target.open) return;
+        const canvas = event.target.querySelector('canvas');
+        if (!canvas || canvas.dataset.chartRendered) return;
+
+        const config = JSON.parse(canvas.dataset.chartConfig);
+        new Chart(canvas, {
+          type: 'line',
+          data: {
+            labels: config.labels,
+            datasets: [{
+              label: '',
+              data: config.data,
+              borderWidth: 2,
+              fill: false
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false }
+            },
+            scales: {
+              x: { title: { display: true, text: 'Year' } },
+              y: {
+                title: { display: true, text: config.unit },
+                beginAtZero: false
+              }
+            }
+          }
+        });
+
+        canvas.dataset.chartRendered = true;
+      });
+    });
+  </script>
+{% endblock %}
