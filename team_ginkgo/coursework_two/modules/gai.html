@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Corporate Sustainability Metrics Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html-docx-js/dist/html-docx.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <style>
+        body { 
+            font-family: 'Segoe UI', sans-serif; 
+            margin: 20px; 
+            background: #f8f9fa; 
+        }
+        .dashboard-header { 
+            text-align: center; 
+            margin-bottom: 30px; 
+        }
+        .filters { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); 
+            gap: 15px; 
+            margin-bottom: 25px; 
+            background: white; 
+            padding: 20px; 
+            border-radius: 12px; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05); 
+        }
+        .view-switcher {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .view-btn {
+            padding: 8px 20px;
+            margin: 0 10px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .view-btn.active {
+            background: #45a049;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .chart-container {
+            width: 90%;
+            height: 500px;
+            margin: 20px auto;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            position: relative;
+        }
+        .chart-view {
+            display: none;
+            height: 100%;
+        }
+        .chart-view.active {
+            display: block;
+        }
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin: 25px 0; 
+        }
+        th, td { 
+            padding: 12px; 
+            border-bottom: 1px solid #ddd; 
+            text-align: left; 
+        }
+        th { 
+            background-color: #4CAF50; 
+            color: white; 
+        }
+        .pagination { 
+            display: flex; 
+            justify-content: center; 
+            gap: 10px; 
+            margin: 20px 0; 
+        }
+        .selection-counter { 
+            position: fixed; 
+            right: 20px; 
+            top: 20px; 
+            background: #4CAF50; 
+            color: white; 
+            padding: 10px 20px; 
+            border-radius: 20px; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2); 
+        }
+        .autocomplete-items {
+            position: absolute;
+            background: white;
+            z-index: 999;
+            max-height: 200px;
+            overflow-y: auto;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            width: 200px;
+        }
+        .autocomplete-item {
+            padding: 8px;
+            cursor: pointer;
+            border-bottom: 1px solid #ddd;
+        }
+        .autocomplete-item:hover {
+            background-color: #f8f9fa;
+        }
+        .export-buttons {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+        .export-btn {
+            padding: 6px 12px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .legend-container {
+            text-align: center;
+            margin-top: 15px;
+        }
+        .legend-item {
+            display: inline-flex;
+            align-items: center;
+            margin: 0 15px;
+            cursor: pointer;
+        }
+        .legend-color {
+            width: 20px;
+            height: 3px;
+            display: inline-block;
+            margin-right: 5px;
+        }
+        .loader {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #4CAF50;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            z-index: 9999;
+            display: none;
+        }
+        @keyframes spin {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        .error-alert {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #ff4444;
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            z-index: 9999;
+            display: none;
+        }
+        #retryButton {
+            position: fixed;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 20px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            z-index: 9999;
+            display: none;
+        }
+        #debugInfo {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            background: #fff;
+            padding: 5px;
+            font-size: 12px;
+            z-index: 9999;
+        }
+    </style>
+</head>
+<body>
+    <div class="loader" id="loader"></div>
+    <div class="error-alert" id="errorAlert"></div>
+    <button id="retryButton">Retry</button>
+    <div id="debugInfo"></div>
+
+    <div class="selection-counter" id="selectionCounter">Selected: 0/50</div>
+    <div class="dashboard-header">
+        <h1>Corporate Sustainability Metrics Dashboard</h1>
+    </div>
+
+    <div class="filters">
+        <div class="filter-group" style="position:relative;">
+            <input type="text" id="searchInput" placeholder="Search company..." autocomplete="off">
+            <div id="autocompleteList" class="autocomplete-items"></div>
+        </div>
+        
+        <div class="filter-group" style="position:relative;">
+            <input type="text" id="symbolFilter" placeholder="Filter by symbol..." autocomplete="off">
+        </div>
+
+        <div class="filter-group">
+            <select id="yearFilter"></select>
+        </div>
+
+        <div class="filter-group action-buttons">
+            <button onclick="applyFilters()">Apply</button>
+            <button onclick="resetAll()">Reset</button>
+        </div>
+    </div>
+
+    <table id="dataTable">
+        <thead>
+            <tr>
+                <th>Select</th>
+                <th>Symbol</th>
+                <th>Company</th>
+                <th>Year</th>
+                <th>Scope 1</th>
+                <th>Scope 2</th>
+                <th>Scope 3</th>
+                <th>Water</th>
+                <th>Total</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <div class="pagination">
+        <button onclick="prevPage()">Previous</button>
+        <span id="pageInfo">Page 1 of 1</span>
+        <button onclick="nextPage()">Next</button>
+    </div>
+
+    <div class="view-switcher">
+        <button class="view-btn active" onclick="switchView('bar')">Bar Chart</button>
+        <button class="view-btn" onclick="switchView('trend')">Trend Chart</button>
+    </div>
+
+    <div class="chart-container">
+        <div class="export-buttons">
+            <button class="export-btn" onclick="exportToPDF()">Export PDF</button>
+            <button class="export-btn" onclick="exportToWord()">Export Word</button>
+        </div>
+        <div id="barView" class="chart-view active">
+            <canvas id="combinedChart"></canvas>
+        </div>
+        <div id="trendView" class="chart-view">
+            <div class="legend-container" id="trendLegend"></div>
+            <canvas id="trendChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // ================== Global Configuration ==================
+        const API_ENDPOINT = 'http://localhost:8000/reports';
+        const REQUEST_TIMEOUT = 10000;
+    
+        // ================== Global State ==================
+        let fullData = [];
+        let currentPage = 1;
+        const itemsPerPage = 10;
+        let selectedItems = new Set();
+        let currentChart = null;
+        let trendChart = null;
+        let currentFilteredData = [];
+        let currentView = 'bar';
+        
+        Chart.register(ChartDataLabels);
+        
+        const TYPE_COLORS = {
+            'Scope 1': '#FF6B6B',
+            'Scope 2': '#4ECDC4',
+            'Scope 3': '#FFD700',
+            'Water': '#9370DB',
+            'Total': '#556270'
+        };
+    
+        
+        async function initData() {
+            showLoader(true);
+            updateDebugInfo('Start data initialization...');
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => {
+                    controller.abort();
+                    throw new Error('Request timeout（10s）');
+                }, REQUEST_TIMEOUT);
+
+                const response = await fetch(`${API_ENDPOINT}?_=${Date.now()}`, {
+                    signal: controller.signal,
+                    mode: 'cors',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Cache-Control': 'no-cache'
+                    }
+                });
+                clearTimeout(timeoutId);
+
+                updateDebugInfo(`HTTP Status Codes: ${response.status}`);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`API request failed: ${response.status} - ${errorText}`);
+                }
+
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    throw new Error('Invalid response format');
+                }
+
+                const apiData = await response.json();
+                updateDebugInfo(`Received ${apiData.length} pieces of raw data`);
+
+                fullData = apiData.map((item) => {
+                    try {
+                        const scope1 = validateNumber(item.scope_1);
+                        const scope2 = validateNumber(item.scope_2);
+                        const scope3 = validateNumber(item.scope_3);
+                        const water = validateNumber(item.water_consumption);
+                        
+                        return {
+                            symbol: item.symbol || '',
+                            name: item.company_name || 'Unknown Company',
+                            year: item.report_year || new Date().getFullYear(),
+                            scope1: scope1,
+                            scope2: scope2,
+                            scope3: scope3,
+                            water: water,
+                            total: scope1 + scope2 + scope3 + water
+                        };
+                    } catch (e) {
+                        console.error('Data conversion error:', e);
+                        return null;
+                    }
+                }).filter(Boolean);
+
+                if (fullData.length === 0) {
+                    showError('No valid data');
+                    return;
+                }
+
+                initYearFilter();
+                setupSearch();
+                applyFilters();
+                updateDebugInfo('Initialization completed');
+
+            } catch (error) {
+                console.error('Initialization Error:', error);
+                let errorMessage = error.message;
+                if (error.name === 'AbortError') {
+                    errorMessage = 'The request timed out, please check the network connection';
+                } else if (error.message.includes('Failed to fetch')) {
+                    errorMessage = 'Unable to connect to API service';
+                }
+                showError(`Error: ${errorMessage}`);
+                document.getElementById('retryButton').style.display = 'block';
+            } finally {
+                showLoader(false);
+            }
+        }
+    
+        
+        function validateNumber(value) {
+            if (typeof value === 'string' && value.trim() === '') return 0;
+            const num = parseFloat(value);
+            return isNaN(num) ? 0 : num;
+        }
+    
+        function updateDebugInfo(message) {
+            const debugDiv = document.getElementById('debugInfo');
+            debugDiv.innerHTML = `[DEBUG] ${new Date().toLocaleTimeString()}: ${message}`;
+        }
+    
+        function showLoader(show) {
+            document.getElementById('loader').style.display = show ? 'block' : 'none';
+        }
+    
+        function showError(message) {
+            const errorAlert = document.getElementById('errorAlert');
+            errorAlert.textContent = message;
+            errorAlert.style.display = 'block';
+            setTimeout(() => {
+                errorAlert.style.display = 'none';
+            }, 5000);
+        }
+    
+        
+        function applyFilters() {
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const symbol = document.getElementById('symbolFilter').value.toUpperCase();
+            const year = parseInt(document.getElementById('yearFilter').value) || '';
+    
+            currentFilteredData = fullData.filter(item => 
+                item.name.toLowerCase().includes(search) &&
+                item.symbol.toUpperCase().includes(symbol) &&
+                (!year || item.year === year)
+            );
+    
+            selectedItems = new Set([...selectedItems].filter(id => {
+                const [name, year] = id.split('-');
+                return fullData.some(d => d.name === name && d.year === parseInt(year));
+            }));
+    
+            currentPage = 1;
+            updateTable(currentFilteredData);
+            updateChartDisplay();
+            updateSelectionCounter();
+        }
+    
+        function initYearFilter() {
+            const yearSelect = document.getElementById('yearFilter');
+            yearSelect.innerHTML = '<option value="">All Years</option>';
+            const years = [...new Set(fullData.map(d => d.year))]
+                          .sort((a, b) => b - a)
+                          .filter(y => !isNaN(y));
+            
+            years.forEach(year => {
+                const option = document.createElement('option');
+                option.value = year;
+                option.textContent = year;
+                yearSelect.appendChild(option);
+            });
+        }
+    
+        function setupSearch() {
+            const companyNames = [...new Set(fullData.map(item => item.name))];
+            const searchInput = document.getElementById('searchInput');
+            
+            searchInput.addEventListener('input', function() {
+                const inputVal = this.value.toLowerCase();
+                const matches = companyNames.filter(name => 
+                    name.toLowerCase().includes(inputVal)
+                ).slice(0, 5);
+                
+                document.getElementById('autocompleteList').innerHTML = matches.map(name => `
+                    <div class="autocomplete-item" onclick="document.getElementById('searchInput').value='${name}';applyFilters()">
+                        ${name}
+                    </div>
+                `).join('');
+            });
+        }
+    
+        // ================== Chart ==================
+        function updateTable(filteredData) {
+            const start = (currentPage - 1) * itemsPerPage;
+            const pageData = filteredData.slice(start, start + itemsPerPage);
+            
+            const tbody = document.querySelector('#dataTable tbody');
+            tbody.innerHTML = pageData.map(item => {
+                const isSelected = selectedItems.has(`${item.name}-${item.year}`);
+                return `
+                    <tr ${isSelected ? 'style="background: #e8f5e9;"' : ''}>
+                        <td><input type="checkbox" 
+                            data-id="${item.name}-${item.year}"
+                            ${isSelected ? 'checked' : ''}
+                            onchange="toggleSelection(this)">
+                        </td>
+                        <td>${item.symbol}</td>
+                        <td>${item.name}</td>
+                        <td>${item.year}</td>
+                        <td>${item.scope1.toLocaleString()}</td>
+                        <td>${item.scope2.toLocaleString()}</td>
+                        <td>${item.scope3.toLocaleString()}</td>
+                        <td>${item.water.toLocaleString()}</td>
+                        <td>${item.total.toLocaleString()}</td>
+                    </tr>
+                `;
+            }).join('');
+    
+            document.getElementById('pageInfo').textContent = 
+                `Page ${currentPage} of ${Math.ceil(filteredData.length / itemsPerPage)}`;
+        }
+    
+        
+        function updateChartDisplay() {
+            const chartData = [...selectedItems].map(id => {
+                const [name, year] = id.split('-');
+                return fullData.find(d => d.name === name && d.year === parseInt(year));
+            }).filter(Boolean);
+    
+            if (currentView === 'bar') {
+                updateChart(chartData);
+            } else {
+                updateTrendChart();
+            }
+        }
+    
+        function updateChart(data) {
+            if (currentChart) currentChart.destroy();
+            if (!data || data.length === 0) return;
+    
+            const ctx = document.getElementById('combinedChart').getContext('2d');
+            currentChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: data.map(d => `${d.name} (${d.year})`),
+                    datasets: [
+                        {
+                            label: 'Scope 1',
+                            data: data.map(d => d.scope1),
+                            backgroundColor: TYPE_COLORS['Scope 1'],
+                            borderWidth: 1,
+                            barThickness: 20,
+                            datalabels: { color: '#333' }
+                        },
+                        {
+                            label: 'Scope 2',
+                            data: data.map(d => d.scope2),
+                            backgroundColor: TYPE_COLORS['Scope 2'],
+                            borderWidth: 1,
+                            barThickness: 20,
+                            datalabels: { color: '#333' }
+                        },
+                        {
+                            label: 'Scope 3',
+                            data: data.map(d => d.scope3),
+                            backgroundColor: TYPE_COLORS['Scope 3'],
+                            borderWidth: 1,
+                            barThickness: 20,
+                            datalabels: { color: '#333' }
+                        },
+                        {
+                            label: 'Water',
+                            data: data.map(d => d.water),
+                            backgroundColor: TYPE_COLORS['Water'],
+                            borderWidth: 1,
+                            barThickness: 20,
+                            datalabels: { color: '#333' }
+                        },
+                        {
+                            label: 'Total',
+                            data: data.map(d => d.total),
+                            backgroundColor: TYPE_COLORS['Total'],
+                            borderWidth: 1,
+                            barThickness: 20,
+                            datalabels: { color: '#333' }
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { 
+                            beginAtZero: true,
+                            title: { text: 'Tons of CO₂', display: true },
+                            ticks: { callback: value => value.toLocaleString() }
+                        },
+                        x: { 
+                            ticks: { 
+                                maxRotation: 45,
+                                minRotation: 45,
+                                autoSkip: false
+                            }
+                        }
+                    },
+                    plugins: {
+                        datalabels: {
+                            anchor: 'end',
+                            align: 'top',
+                            formatter: value => value?.toLocaleString() || '',
+                            font: { size: 10 }
+                        },
+                        legend: { 
+                            onClick: (e, legendItem, legend) => {
+                                const index = legendItem.datasetIndex;
+                                const meta = currentChart.getDatasetMeta(index);
+                                meta.hidden = !meta.hidden;
+                                currentChart.update();
+                            }
+                        }
+                    }
+                },
+                plugins: [ChartDataLabels]
+            });
+        }
+    
+        function updateTrendChart() {
+            if (trendChart) trendChart.destroy();
+            if (currentView !== 'trend') return;
+        
+            const selectedCompanies = [...new Set(
+                Array.from(selectedItems).map(id => id.split('-')[0])
+            )];
+        
+            if (selectedCompanies.length === 0) {
+                document.getElementById('trendChart').style.display = 'none';
+                return;
+            }
+            document.getElementById('trendChart').style.display = 'block';
+        
+            const trendData = selectedCompanies.flatMap(company => {
+                return ['Scope 1', 'Scope 2', 'Scope 3', 'Water', 'Total'].map(type => ({
+                    label: `${company} - ${type}`,
+                    data: generateCompanyData(company, type),
+                    borderColor: TYPE_COLORS[type],
+                    backgroundColor: 'rgba(0,0,0,0)',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    pointRadius: 5,
+                    pointHoverRadius: 7,
+                    datalabels: { display: false }
+                }));
+            });
+        
+            const ctx = document.getElementById('trendChart').getContext('2d');
+            trendChart = new Chart(ctx, {
+                type: 'line',
+                plugins: [ChartDataLabels],
+                data: {
+                    labels: Array.from({length: 11}, (_, i) => 2014 + i),
+                    datasets: trendData
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: {
+                        padding: {
+                            right: 40
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: 'Emissions (tons)' }
+                        },
+                        x: {
+                            type: 'linear',
+                            title: { display: true, text: 'Year' },
+                            ticks: { stepSize: 1 }
+                        }
+                    },
+                    plugins: {
+                        datalabels: {
+                            align: 'end',
+                            anchor: 'end',
+                            color: (context) => context.dataset.borderColor,
+                            font: {
+                                weight: 'bold',
+                                size: 10
+                            },
+                            offset: 10,
+                            formatter: (value, context) => {
+                                if (context.dataIndex === context.dataset.data.length - 1) {
+                                    const company = context.dataset.label.split(' - ')[0];
+                                    return `${company}`;
+                                }
+                                return null;
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: (items) => `Year: ${items[0].label}`,
+                                label: (context) => {
+                                    const value = context.parsed.y;
+                                    const type = context.dataset.label.split(' - ')[1];
+                                    return `${type}: ${value?.toLocaleString() || 'N/A'} tons`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            updateTrendLegend(selectedCompanies);
+        }
+    
+        function generateCompanyData(company, type) {
+            return Array.from({length: 11}, (_, i) => {
+                const year = 2014 + i;
+                return {
+                    x: year,
+                    y: getCompanyYearData(company, year, type)
+                };
+            });
+        }
+    
+        
+function getCompanyYearData(company, year, type) {
+    const record = fullData.find(d => 
+        d.name === company && d.year === year
+    );
+    const fieldMap = {
+        'scope1': 'scope1',
+        'scope2': 'scope2',
+        'scope3': 'scope3',
+        'water': 'water',
+        'total': 'total'
+    };
+    const field = fieldMap[type.toLowerCase().replace(' ', '')];
+    return record ? record[field] : null;
+}
+    
+        function updateTrendLegend(companies) {
+            const legendContainer = document.getElementById('trendLegend');
+            legendContainer.innerHTML = `
+                <div style="display:flex;flex-wrap:wrap;gap:15px;justify-content:center">
+                    ${Object.entries(TYPE_COLORS).map(([type, color]) => `
+                        <div class="legend-item">
+                            <span class="legend-color" style="background:${color}"></span>
+                            ${type}
+                        </div>
+                    `).join('')}
+                </div>
+                <div style="margin-top:10px;font-weight:500">
+                    Selected Companies: ${companies.join(', ')}
+                </div>
+            `;
+        }
+    
+        // ================== Interaction Functions ==================
+        function toggleSelection(checkbox) {
+            const id = checkbox.dataset.id;
+            if (checkbox.checked) {
+                selectedItems.add(id);
+                if (selectedItems.size > 50) {
+                    const first = Array.from(selectedItems)[0];
+                    selectedItems.delete(first);
+                    document.querySelector(`input[data-id="${first}"]`).checked = false;
+                }
+            } else {
+                selectedItems.delete(id);
+            }
+            applyFilters();
+        }
+    
+        function resetAll() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('symbolFilter').value = '';
+            document.getElementById('yearFilter').value = '';
+            selectedItems.clear();
+            applyFilters();
+        }
+    
+        function nextPage() {
+            if (currentPage < Math.ceil(currentFilteredData.length / itemsPerPage)) currentPage++;
+            updateTable(currentFilteredData);
+        }
+    
+        function prevPage() {
+            if (currentPage > 1) currentPage--;
+            updateTable(currentFilteredData);
+        }
+    
+        function switchView(viewType) {
+            currentView = viewType;
+            document.querySelectorAll('.view-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.textContent.includes(viewType));
+            });
+            document.querySelectorAll('.chart-view').forEach(view => {
+                view.classList.toggle('active', view.id === viewType + 'View');
+            });
+            applyFilters();
+        }
+    
+        function updateSelectionCounter() {
+            document.getElementById('selectionCounter').textContent = 
+                `Selected: ${selectedItems.size}/50`;
+        }
+    
+        
+        function exportToPDF() {
+            const canvas = document.querySelector(`#${currentView}View canvas`);
+            const pdf = new jspdf.jsPDF({ orientation: 'landscape' });
+            pdf.addImage(canvas.toDataURL(), 'PNG', 10, 10, 280, 150);
+            pdf.save('emission-chart.pdf');
+        }
+    
+        function exportToWord() {
+            const canvas = document.querySelector(`#${currentView}View canvas`);
+            const html = `<img src="${canvas.toDataURL()}" style="max-width:100%">`;
+            const blob = htmlDocx.asBlob(html);
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'emission-chart.docx';
+            link.click();
+        }
+    
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                showLoader(true);
+                updateDebugInfo('Start the initialization process...');
+                initData();
+            }, 300);
+    
+            document.getElementById('retryButton').addEventListener('click', () => {
+                document.getElementById('retryButton').style.display = 'none';
+                initData();
+            });
+        });
+    </script>
+</body>
+</html>
