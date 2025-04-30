@@ -50,7 +50,6 @@ To stop the services, use:
 
 ```bash
 docker compose down
-<br>
 ```
 
 <br><br>
