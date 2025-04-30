@@ -178,24 +178,18 @@ async def run_main_for_symbols(symbols_with_years: list[tuple[str, str | None]])
 
 def main():
     """
-       Entry point for running the ESG data extraction and update workflow for all companies in the database.
-       The function connects to MongoDB, fetches all companies, processes their CSR reports,
-       and updates their ESG data and goals.
-
-       Returns:
-       - None: The function performs the workflow and updates MongoDB records for each company.
+    Entry point for running the ESG data extraction and update workflow for all companies in the database.
+    For each company, it finds the latest CSR report year and runs the ESG extraction if not already present.
     """
-
     mongo_client = mongo.connect_to_mongo()
     if mongo_client is None:
-        return  # If MongoDB is not connected, terminate the program
+        return
 
-    # Access the database (not the collection directly)
     db = mongo_client["csr_reports"]
     companies_collection = db["companies"]
-    try:
-        companies = list(companies_collection.find({}))  # Get full company documents
 
+    try:
+        companies = list(companies_collection.find({}))  # Fetch all companies
         if not companies:
             logger.warning("⚠️ No company documents found in the database.")
             return
@@ -205,30 +199,40 @@ def main():
         for company in companies:
             symbol = company.get("symbol")
             security = company.get("security")
-            esg_data = company.get("esg_data")
-            if not symbol or esg_data is not None:
-                logger.warning("⚠️ Skipping company, either no symbol or ESG data already exists.")
+
+            if not symbol:
+                logger.warning("⚠️ Skipping company, no symbol present.")
+                continue
+
+            latest_year = get_latest_report_year(company.get("csr_reports", {}))
+            if not latest_year:
+                logger.warning(f"⚠️ No valid CSR report year for {symbol}. Skipping.")
+                continue
+
+            field_name_data = f"esg_data_{latest_year}"
+            field_name_goals = f"esg_goals_{latest_year}"
+
+            existing_doc = companies_collection.find_one({"symbol": symbol}, {field_name_data: 1})
+            if existing_doc and field_name_data in existing_doc:
+                logger.info(f"ESG data for {symbol} ({latest_year}) already exists. Skipping.")
                 continue
 
             try:
-                logger.info(f"🚀 Running ESG workflow for: {symbol}")
-                # Download & filter CSR report
-                cleaned_data, cleaned_goals = run_end_to_end_workflow(symbol, security, db)
+                logger.info(f"🚀 Running ESG workflow for: {symbol}, year: {latest_year}")
+                cleaned_data, cleaned_goals = run_end_to_end_workflow(symbol, security, db, None)
 
-                update_result_data = companies_collection.update_one(
-                    {"symbol": symbol},
-                    {"$set": {"esg_data": cleaned_data}}
-                )
+                if cleaned_data:
+                    companies_collection.update_one(
+                        {"symbol": symbol},
+                        {"$set": {field_name_data: cleaned_data}}
+                    )
+                if cleaned_goals:
+                    companies_collection.update_one(
+                        {"symbol": symbol},
+                        {"$set": {field_name_goals: cleaned_goals}}
+                    )
 
-                update_result_goals = companies_collection.update_one(
-                    {"symbol": symbol},
-                    {"$set": {"esg_goals": cleaned_goals}}
-                )
-
-                logger.success(
-                    f"✅ ESG Data fields updated for {symbol} "
-                )
-
+                logger.success(f"✅ ESG data updated for {symbol} ({latest_year})")
                 export_updated_seed_file(db)
                 logger.success("Updated seed file saved to mongo_seed.json.")
 
@@ -242,7 +246,6 @@ def main():
         logger.info("🛑 MongoDB connection closed.")
 
 
-import asyncio
 
 # Entry point
 if __name__ == "__main__":
