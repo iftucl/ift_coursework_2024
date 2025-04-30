@@ -17,7 +17,15 @@ def get_first_n_tokens(raw_text, n_tokens):
     """
     Extracts the first 'n' tokens from raw text using tiktoken tokenizer.
     Uses 'cl100k_base' encoding, which works for GPT models.
+
+    Args:
+        raw_text (str): The raw text to tokenize.
+        n_tokens (int): The number of tokens to extract.
+
+    Returns:
+        str: The first 'n' tokens decoded back to text.
     """
+
     encoding = tiktoken.get_encoding("cl100k_base")
     tokens = encoding.encode(raw_text)
     return str(encoding.decode(tokens[:n_tokens]))
@@ -27,6 +35,17 @@ def get_first_n_tokens(raw_text, n_tokens):
 
 # Function to create prompt for OpenAI validation task
 def create_validation_prompt(esg_data, filtered_text, company_name, ):
+    """
+    Creates a validation prompt for OpenAI to verify ESG data extracted from a report.
+
+    Args:
+        esg_data (dict): ESG data extracted from the report.
+        filtered_text (str): The filtered text of the ESG report.
+        company_name (str): The name of the company for context.
+
+    Returns:
+        str: The prompt formatted for OpenAI to validate the ESG data.
+    """
     first_tokens = get_first_n_tokens(filtered_text, 7000)
 
     prompt = f"""
@@ -64,7 +83,20 @@ IMPORTANT:
 # Function to validate ESG data using OpenAI
 def validate_esg_data_with_openai(company_name, filtered_text, esg_data):
     prompt = create_validation_prompt(company_name, filtered_text, esg_data)
+    """
+    Validates the ESG data for a company using OpenAI's GPT model.
 
+    Args:
+        company_name (str): The name of the company for context.
+        filtered_text (str): The filtered text of the ESG report.
+        esg_data (dict): ESG data extracted from the report.
+
+    Returns:
+        dict: The validated ESG data with updated validation status.
+
+    Raises:
+        Exception: If there is an error while communicating with OpenAI or processing the response.
+    """
     try:
         response = client.chat.completions.create(
             model="gpt-4",

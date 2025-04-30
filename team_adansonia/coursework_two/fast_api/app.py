@@ -9,6 +9,22 @@ app = FastAPI()
 
 @app.get("/companies/{symbol}")
 async def get_company(symbol: str, year: Optional[str] = None, db: Database = Depends(get_db)):
+    """
+    Retrieves company ESG data by stock symbol.
+
+    Args:
+        symbol (str): The stock symbol of the company.
+        year (Optional[str]): The specific year to filter ESG data (optional).
+        db (Database): MongoDB database dependency.
+
+    Returns:
+        dict:
+            - If `year` is provided: filtered ESG data for that year by category.
+            - If `year` is not provided: full company record excluding MongoDB's _id field.
+
+    Raises:
+        HTTPException: 404 if the company is not found in the database.
+    """
     print(f"🔔 Looking up company: {symbol}")  # Debug log
 
     # Access the 'companies' collection and exclude '_id' from the result

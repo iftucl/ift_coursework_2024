@@ -17,8 +17,20 @@ else:
 
 class CompanyData:
     """
-    A class representing a company's data.
-    """
+     A class representing a company's data.
+
+     Attributes:
+         symbol (str): The ticker symbol of the company.
+         security (str): The security name of the company.
+         gics_sector (str): The GICS sector the company belongs to.
+         gics_industry (str): The GICS industry the company belongs to.
+         country (str): The country where the company is based.
+         region (str): The region where the company is located.
+         website_url (str, optional): The company's website URL.
+         csr_reports (dict, optional): Dictionary holding CSR report URLs by year.
+         created_at (datetime): The time the company record was created.
+         updated_at (datetime): The last time the company record was updated.
+     """
 
     def __init__(self, symbol, security, gics_sector, gics_industry, country, region, website_url=None, csr_reports=None):
         self.symbol = symbol
@@ -34,7 +46,13 @@ class CompanyData:
         self.updated_at = datetime.datetime.utcnow()
 
     def to_dict(self):
-        """Convert the object to a dictionary."""
+        """
+               Converts the CompanyData object to a dictionary.
+
+               Returns:
+                   dict: A dictionary representation of the CompanyData instance.
+        """
+
         return {
             "symbol": self.symbol,
             "security": self.security,
@@ -51,7 +69,11 @@ class CompanyData:
 class CompanyDatabase:
     """
     A class to handle database operations for CompanyData.
+
+    Attributes:
+        collection (pymongo.collection.Collection): MongoDB collection to manage company data.
     """
+
 
     def __init__(self, db):
         """
@@ -61,9 +83,11 @@ class CompanyDatabase:
         self.collection = db["companies"]  # MongoDB collection
 
     def add_company(self, company):
+
         """
         Add a new company to the database.
         :param company: CompanyData object
+
         """
         if self.collection.find_one({"symbol": company.symbol}):
             print(f"⚠️ Company with symbol {company.symbol} already exists!")
@@ -132,6 +156,12 @@ class CompanyDatabase:
 
 # --- MongoDB Connection Setup ---
 def connect_to_mongo():
+    """
+    Connects to a MongoDB instance, based on whether the code is running inside Docker or locally.
+
+    Returns:
+        pymongo.MongoClient or None: The MongoDB client if successful, else None.
+    """
     try:
         # MongoDB Connection URI
         if is_running_in_docker():
@@ -187,8 +217,15 @@ def load_sql_to_pandas():
 
 
 def create_mongo_seed_file(df):
-    """Convert DataFrame to JSON and save for MongoDB import inside 'mongo_seed/' folder."""
+    """
+    Converts a Pandas DataFrame to a list of dictionaries and saves it as a JSON file for MongoDB import.
 
+    Args:
+        df (pandas.DataFrame): The DataFrame to convert and save.
+
+    Returns:
+        str: The file path of the generated seed file.
+    """
     # Define folder and file path
     seed_folder = os.path.join(ROOT_DIR, "team_adansonia/coursework_two/mongo-seed")
     seed_file = os.path.join(seed_folder, "seed_data.json")
@@ -209,6 +246,13 @@ def create_mongo_seed_file(df):
 
 
 def reset_database():
+    """
+    Prompts the user for confirmation and, if confirmed, resets the MongoDB database by dropping
+    the 'companies' collection and importing seed data.
+
+    Returns:
+        None
+    """
     confirmation = input("Are you sure you want to reset the database? Yes/No: ").strip().lower()
     if confirmation != "yes":
         print("❌ Database reset aborted.")
@@ -230,7 +274,12 @@ def reset_database():
 
 
 def import_seed_to_mongo():
-    """Automatically import the seed data from the generated JSON file into MongoDB."""
+    """
+      Imports seed data from a JSON file into the MongoDB database.
+
+      Returns:
+          pymongo.collection.Collection: The MongoDB collection after importing the data.
+    """
     # Step 1: Connect to MongoDB
     mongo_client = connect_to_mongo()  # Connect to MongoDB
     if mongo_client is None:

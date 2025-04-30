@@ -3,7 +3,7 @@ import os
 import re
 from dotenv import load_dotenv
 from loguru import logger
-from team_adansonia.coursework_two.validation.openai_validation import validate_esg_data_with_openai
+from team_adansonia.coursework_two.validation.deepseek_validation import validate_esg_data_with_deepseek
 
 #TODO: If number is not on the same page with metric, do not validate
 #TODO: Standardise years
@@ -46,6 +46,20 @@ expected_ranges = {
 }
 
 def validate_and_clean_data(raw_data: dict, filtered_text: str):
+    """
+    Cleans and validates raw ESG data by verifying the values and units, ensuring they conform to expected formats
+    and lie within predefined ranges. This function also checks if the value appears in the filtered ESG report text.
+
+    Parameters:
+    - raw_data (dict): The raw ESG data to be validated and cleaned, typically structured by categories and metrics.
+    - filtered_text (str): The filtered text from the ESG report used to check if values appear in the report.
+
+    Returns:
+    - cleaned (dict): A dictionary containing cleaned and validated ESG data with issues removed.
+    - issues (list): A list of dictionaries detailing any issues found during the validation process, including missing values,
+      unrecognized units, and mismatches between the raw data and filtered text.
+
+    """
     cleaned = {}
     issues = []
 
@@ -147,14 +161,26 @@ def validate_and_clean_data(raw_data: dict, filtered_text: str):
 
 
 def full_validation_pipeline(parsed_data, filtered_text, company_name):
+    """
+     Runs the full validation pipeline for ESG data by first performing internal validation, and then using OpenAI
+     for further validation. If OpenAI validation fails, it falls back to using the internally validated data.
 
+     Parameters:
+     - parsed_data (dict): The raw ESG data that needs validation.
+     - filtered_text (str): The filtered text from the ESG report used to verify the data.
+     - company_name (str): The name of the company to help contextualize the validation.
+
+     Returns:
+     - corrected_data (dict): The validated ESG data, which may have been further corrected by OpenAI.
+
+     """
     print("🔍 Step 1: Running internal validation...")
     cleaned_data, internal_issues = validate_and_clean_data(parsed_data, filtered_text)
 
     try:
-        print("🤖 Step 2: Validating with OpenAI...")
-        corrected_data = validate_esg_data_with_openai(cleaned_data, filtered_text, company_name)
-        print("\n✅ Corrected Data (OpenAI):")
+        print("🤖 Step 2: Validating with DeepSeek...")
+        corrected_data = validate_esg_data_with_deepseek(cleaned_data, filtered_text, company_name)
+        print("\n✅ Corrected Data (DeepSeek validation):")
         print(json.dumps(corrected_data, indent=2))
         return corrected_data
 

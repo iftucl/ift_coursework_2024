@@ -4,6 +4,15 @@ from fastapi import HTTPException
 
 
 def get_db():
+    """
+        Establishes a connection to the MongoDB instance and returns the 'csr_reports' database.
+
+        Returns:
+            Database: A reference to the 'csr_reports' MongoDB database.
+
+        Raises:
+            HTTPException (500): If the database connection fails due to connection issues or unexpected errors.
+    """
     try:
         # Ensure the URI is correct based on your environment
         mongo_uri = "mongodb://localhost:27019"  # Change if running in Docker

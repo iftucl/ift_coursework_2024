@@ -1,4 +1,5 @@
 import os
+import re
 
 from PyPDF2 import PdfReader
 from dotenv import load_dotenv
@@ -7,20 +8,37 @@ from dotenv import load_dotenv
 
 load_dotenv()
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+"""
+This module provides tools to extract emissions and sustainability goal information
+from corporate PDF reports using PyPDF2 and DeepSeek language models.
 
+Functions include:
+- Extracting emissions and goals data by page or paragraph
+- Formatting emissions data units
+- Summarizing goals and emissions via DeepSeek API
+"""
 # Extract emmision data text from pdf
 def extract_emissions_data_by_page(pdf_path):
+    """
+    Extracts emissions-related pages from a PDF based on keyword and year matching.
+
+    Args:
+        pdf_path (str): Path to the PDF file.
+
+    Returns:
+        str: Extracted text containing emissions-related content.
+    """
     try:
         reader = PdfReader(pdf_path)
         text = ""
         keywords = ["scope 1", "scope 2", "scope 3", "scope1", "scope2", "scope3"]
-        years = ["2023", "2024"]
+        YEAR_PATTERN = re.compile(r"\b(?:FY\s?\d{2,4}|\b20[1-3][0-9]\b)", re.IGNORECASE)
 
         for page in reader.pages:
             page_text = page.extract_text()
             if page_text:
                 lower_text = page_text.lower()
-                if any(kw in lower_text for kw in keywords) and any(yr in lower_text for yr in years):
+                if any(kw in lower_text for kw in keywords):
                     text += f"\n--- Page ---\n{page_text}\n"
 
         return text
@@ -33,17 +51,26 @@ def extract_emissions_data_by_page(pdf_path):
 
 # Extract goals text from pdf
 def extract_goals_by_page(pdf_path):
+    """
+    Extracts pages discussing sustainability or emissions goals.
+
+    Args:
+        pdf_path (str): Path to the PDF file.
+
+    Returns:
+        str: Extracted text containing goals-related content.
+    """
     try:
         reader = PdfReader(pdf_path)
         text = ""
         keywords = ["emission", "carbon", "net-zero", "target", "GHG", "climate", "CO2"]
-        years = ["2023", "2024"]
+        YEAR_PATTERN = re.compile(r"\b(?:FY\s?\d{2,4}|\b20[1-3][0-9]\b)", re.IGNORECASE)
 
         for page in reader.pages:
             page_text = page.extract_text()
             if page_text:
                 lower_text = page_text.lower()
-                if any(kw in lower_text for kw in keywords) and any(yr in lower_text for yr in years):
+                if any(kw in lower_text for kw in keywords) and YEAR_PATTERN.search(page_text):
                     text += f"\n--- Page ---\n{page_text}\n"
 
         return text
@@ -55,6 +82,15 @@ def extract_goals_by_page(pdf_path):
 
 
 def extract_goals_by_paragraph(pdf_path):
+    """
+    Extracts relevant paragraphs from a PDF that contain sustainability goals.
+
+    Args:
+        pdf_path (str): Path to the PDF file.
+
+    Returns:
+        str: Extracted text containing goal-related paragraphs.
+    """
     try:
         reader = PdfReader(pdf_path)
         text = ""
@@ -87,39 +123,23 @@ GOALS_PROMPT = """
 Your answer should be in plain text. Do not use bullet points or markdown formatting. \
 According to the given CSR report content, summarize emission reduction targets. \
 Include details such as the type of emissions, the reduction percentage (if available), and the target year (if available). \
-Ignore unrelated information. \
+Ignore unrelated information. Maximum 200 words. \
 ---------------------------------- \n \
 """
-
-'''
-# Find the emission reduction targets using ChatGPT
-def call_chatgpt_find_goals(company_name, pdf_text):  
-
-    load_dotenv()
-    client = OpenAI(
-        api_key=os.getenv('OPENAI_API')
-    )
-
-    prompt = f"{GOALS_PROMPT} {pdf_text}"
-
-    # Call the OpenAI ChatGPT API to analyze the content and find emission data
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system","content": GOALS_ROLE},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.7
-    )
-
-    # Extract the answer text from the response
-    answer = response.choices[0].message.content.strip()
-    return answer
-'''
 
 
 # Find the emission reduction targets using DeepSeek
 def call_deepseek_find_goals(company_name, pdf_text):
+    """
+    Uses DeepSeek LLM to summarize emissions reduction targets from PDF content.
+
+    Args:
+        company_name (str): Name of the company.
+        pdf_text (str): Relevant text extracted from PDF.
+
+    Returns:
+        str: Summary of emissions goals.
+    """
     load_dotenv()
     client = OpenAI(
         api_key= DEEPSEEK_API_KEY,
@@ -166,38 +186,6 @@ Scope 1 and 2 (total): 1,234 unit. \n \
 ---------------------------------- \n
 """
 
-"""
-
-# Find the specific emissions data in text using DeepSeek
-def call_deepseek_find_emission_data(company_name, pdf_text):
-    try:
-        load_dotenv()
-        client = OpenAI(
-            api_key= DEEPSEEK_API_KEY,
-            base_url="https://api.deepseek.com"
-        )
-
-        prompt = f"{EMISSIONS_PROMPT} {pdf_text}"
-
-        # Call the DeepSeek API with timeout
-        response = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[
-                {"role": "system", "content": EMISSIONS_ROLE},
-                {"role": "user", "content": prompt},
-            ],
-            stream=False
-        )
-
-        # Extract the answer text from the response
-        answer = response.choices[0].message.content.strip()
-        return answer
-
-    except Exception as e:
-        print(f"Error calling DeepSeek API for {company_name}: {e}")
-        return "N/A"
-"""
-
 # Convert data from sentence to number, including unit conversion
 # Sample input:
 #       Scope 1 (direct): 1,234 t CO2e.
@@ -206,6 +194,15 @@ def call_deepseek_find_emission_data(company_name, pdf_text):
 # Sample output:
 #       (1234, 2345, 3456)
 def data_formatting(text):
+    """
+    Converts textual emission data to a standardized numeric format with proper unit conversion.
+
+    Args:
+        text (re.Match): Regex match group containing numeric and unit data.
+
+    Returns:
+        str: Converted emission value in metric tonnes as string.
+    """
     # Sample input: "49,860.25 tons CO2e."
     try:
         text_value = text.group(1)
@@ -258,18 +255,6 @@ if __name__ == "__main__":
     company = "NVIDIA"
     pdf_path = "filtered_report.pdf"
 
-    '''
-    emissions_data_text = extract_emissions_data_by_page(pdf_path)
-    emissions_data = call_deepseek_find_emission_data(company, emissions_data_text)
-    print("--------------------------------")
-    print("Emissions Data:")
-    print(emissions_data)
-    formatted_emissions_data = data_formatting(emissions_data)
-    print("--------------------------------")
-    print("Formatted Emissions Data:")
-    print(formatted_emissions_data)
-    print("--------------------------------")
-    '''
     goals_text = extract_goals_by_page(pdf_path)
     goals = call_deepseek_find_goals(company, goals_text)
     print("--------------------------------")
