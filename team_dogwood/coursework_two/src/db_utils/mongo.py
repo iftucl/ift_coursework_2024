@@ -4,6 +4,7 @@ MongoDB collection class for interacting with the MongoDB database.
 
 import os
 import sys
+import re
 from datetime import datetime
 
 from typing import List
@@ -80,12 +81,42 @@ class MongCollection:
         """
         try:
             report = self.collection.find_one({"company": company.model_dump(exclude={"esg_reports"})})
+            report_parsed = [Document(**doc) for doc in report["report"]] if report else []
             if report:
                 logger.info(f"Report found for {company.security}.")
-                return report
+                return report_parsed
             else:
                 logger.warning(f"No report found for {company.security}.")
                 return None
         except Exception as e:
             logger.error(f"Error fetching document: {e}")
             return None
+        
+    def get_available_companies(self) -> List[str]:
+        """
+        List all unique company securities with parsed reports.
+
+        :return: A list of strings like ['AAPL', 'MSFT', …].
+        """
+        try:
+            return self.collection.distinct("company.security")
+        except Exception as e:
+            logger.error(f"Error listing companies from Mongo: {e}")
+            return []
+        
+    def get_available_years(self, mongo_doc: dict) -> List[int]:
+        """
+        Extract the report year from the report_metadata field in a parsed-report document.
+
+        :param mongo_doc: Document from get_report_by_company().
+        :return: List containing the year (e.g. [2023]), or empty list if not found.
+        """
+        year = mongo_doc.get("report_metadata", {}).get("year")
+        if isinstance(year, int):
+            return [year]
+        try:
+            # If year is a string that can be converted to int
+            return [int(year)]
+        except (TypeError, ValueError):
+            return []
+

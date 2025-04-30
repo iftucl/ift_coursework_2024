@@ -51,10 +51,6 @@ class DataBaseSettings(BaseSettings):
     MONGO_DB_NAME: str
     MONGO_COLLECTION_NAME: str
 
-    OPENMETADATA_SERVER_URL: str
-    OPENMETADATA_AUTH_PROVIDER: str
-    OPENMETADATA_AUTH_TOKEN: str
-
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

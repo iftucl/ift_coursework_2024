@@ -14,6 +14,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from src.extract.parse import main as parse_main
+from src.extract.query import main as query_main
 from config.schedule import schedule_settings
 
 
@@ -37,15 +38,21 @@ def get_cron_trigger(schedule: str) -> CronTrigger:
         raise ValueError(f"Unknown schedule: {schedule}")
 
 
-def run_parse():
+def run_parse_and_query():
     """
-    Run the async main() from parse.py.
+    Run the async main() from parse.py, then the main() from query.py.
     """
     logger.info(f"Running parse.main() at {datetime.now().isoformat()}")
     try:
         asyncio.run(parse_main())
     except Exception as e:
         logger.error(f"Error running parse.main(): {e}")
+        return
+    logger.info(f"Running query.main() at {datetime.now().isoformat()}")
+    try:
+        query_main()
+    except Exception as e:
+        logger.error(f"Error running query.main(): {e}")
 
 
 def main():
@@ -61,17 +68,30 @@ def main():
     parser.add_argument(
         "--run-now",
         action="store_true",
-        help="Run the script immediately before scheduling."
+        default=schedule_settings.RUN_NOW,
+        help=f"Run the script immediately before scheduling. Default: {schedule_settings.RUN_NOW}"
+    )
+    parser.add_argument(
+        "--run-once",
+        action="store_true",
+        default=schedule_settings.RUN_ONCE,
+        help=f"Run the script only once and exit. Default: {schedule_settings.RUN_ONCE}"
     )
     args = parser.parse_args()
 
+    if args.run_once:
+        run_parse_and_query()
+        # Do not schedule, exit after running once
+        logger.info("Run-once mode enabled. Exiting after single run.")
+        return
+
     if args.run_now:
-        run_parse()
+        run_parse_and_query()
 
     scheduler = BlockingScheduler()
     trigger = get_cron_trigger(args.schedule)
-    scheduler.add_job(run_parse, trigger)
-    logger.info(f"Scheduled parse.main() to run {args.schedule}ly. Press Ctrl+C to exit.")
+    scheduler.add_job(run_parse_and_query, trigger)
+    logger.info(f"Scheduled parse.main() and query.main() to run {args.schedule}ly. Press Ctrl+C to exit.")
     try:
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):

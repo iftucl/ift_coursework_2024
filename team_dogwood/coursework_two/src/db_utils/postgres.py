@@ -5,6 +5,7 @@ Methods for interacting with postgres database.
 import os
 import sys
 
+from typing import List, Dict
 import psycopg2
 from loguru import logger
 from psycopg2.extras import RealDictCursor
@@ -159,6 +160,26 @@ class PostgreSQLDB:
         WHERE report_id = %s
         """
         self.execute(query, (report_id,))
+    
+    def upsert_metrics(self, table: str, rows: List[Dict]) -> None:
+        """
+        Bulk UPSERT a list of metrics into the specified Postgres table.
+
+        :param db: PostgreSQLDB instance (open transaction).
+        :param table: Table name ('emissions', 'energy', or 'waste').
+        :param rows: List of metric dicts containing matching columns.
+        """
+        if not rows:
+            return
+        cols = list(rows[0].keys())
+        cols_csv = ", ".join(cols)
+        placeholders = ", ".join(["%s"] * len(cols))
+        updates = ", ".join(f"{c}=EXCLUDED.{c}" for c in cols if c != "indicator_id")
+        sql = (
+            f"INSERT INTO csr_metrics.{table} ({cols_csv}) VALUES ({placeholders}) "
+            f"ON CONFLICT (indicator_id) DO UPDATE SET {updates};"
+        )
+        self.execute(sql, [tuple(r[c] for c in cols) for r in rows])
 
     @staticmethod
     def _conn_postgres():

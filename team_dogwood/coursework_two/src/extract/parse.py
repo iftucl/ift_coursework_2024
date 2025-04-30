@@ -2,25 +2,6 @@
 Methods for text extraction from PDF documents.
 
 Main script extracts text from a PDF document using LlamaParse and saves the extracted document to MongoDB.
-
-Iman
-- share with grabriella files to use for sphinx documentation
-- schedule the script to run periodically
-- organize the scripts
-
-Sardor
-- reading from mongo for sardors script
-- data validation
-
-Siyu
-- visualisations - reading from sql tables
-- passing to UI (sardor to share code)
-
-# Remaining Tasks - Owners / Specialists
-# 1. Switch to sphinx-style docstrings (Gabriella)
-# 2. Finalise data catalogue, dictionary, data validation rules, etc. (To be updated once devs have finished)
-# 3. Create architecture diagrams 
-# 4. Write final report
 """
 import os
 import sys
