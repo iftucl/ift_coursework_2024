@@ -117,14 +117,16 @@ def main() -> None:
       --year:      Single year to process (requires --company).
     """
     parser = argparse.ArgumentParser(
-        description="Ingest ESG KPIs from Mongo ↦ GPT-4 ↦ PostgreSQL."
+        description="Ingest ESG KPIs from Mongo -> GPT-4 -> PostgreSQL."
     )
     parser.add_argument(
         "--company",
+        default=None,
         help="Ticker/security to process (e.g. AAPL). Omit to process all.",
     )
     parser.add_argument(
         "--year",
+        default=None,
         type=int,
         help="Report year to process (requires --company). Omit to process all years.",
     )
@@ -152,33 +154,30 @@ def main() -> None:
             energy_companies = set()
             waste_companies = set()
             # 4) Loop companies & years
-            for sec in companies:
-                doc = mongo.get_report_by_company(sec)
+            for company in companies:
+                doc = mongo.get_report_by_company(company)
                 if not doc:
                     continue
 
-                years = [args.year] if args.year else mongo.get_available_years(doc)
-                if args.year and args.company is None:
-                    logger.warning("--year requires --company; ignoring year filter.")
-                    years = mongo.get_available_years(doc)
+                years = [args.year] if (args.year and args.company) else mongo.get_available_years(doc)
 
                 if not years:
-                    logger.warning(f"No parsed years for {sec}; skipping.")
+                    logger.warning(f"No parsed years for {company}; skipping.")
                     continue
                 
                 index = VectorStoreIndex.from_documents(doc, embed_model=embed)
                 qe = index.as_query_engine(similarity_top_k=10, llm=llm)
 
                 for yr in years:
-                    logger.info(f"▶ {sec} / {yr}")
-                    prompt = ESG_PROMPT.format(company=sec, year=yr)
+                    logger.info(f"▶ {company} / {yr}")
+                    prompt = ESG_PROMPT.format(company=company, year=yr)
                     rsp = qe.query(prompt)
                     raw = getattr(rsp, "response", None) or rsp.response_text
 
                     try:
                         metrics = parse_and_strip_json(raw)
                     except json.JSONDecodeError:
-                        logger.error(f"Invalid JSON for {sec}/{yr}; skipping.")
+                        logger.error(f"Invalid JSON for {company}/{yr}; skipping.")
                         continue
 
                     metrics = validate_and_normalize(metrics)
@@ -196,18 +195,18 @@ def main() -> None:
                     # Metadata tracking
                     if emissions:
                         emissions_metrics_count += len(emissions)
-                        emissions_companies.add(sec)
+                        emissions_companies.add(company)
                     if energy:
                         energy_metrics_count += len(energy)
-                        energy_companies.add(sec)
+                        energy_companies.add(company)
                     if waste:
                         waste_metrics_count += len(waste)
-                        waste_companies.add(sec)
+                        waste_companies.add(company)
 
                     db.upsert_metrics("emissions", emissions)
                     db.upsert_metrics("energy", energy)
                     db.upsert_metrics("waste", waste)
-                    logger.success(f"Persisted {sec}/{yr} → Postgres.")
+                    logger.success(f"Persisted {company}/{yr} → Postgres.")
 
         # Update metadata tables after all companies processed
         upsert_metadata_table(
@@ -231,7 +230,7 @@ def main() -> None:
             metric_group="waste",
             num_companies=len(waste_companies),
         )
-        logger.success("✅ All done.")
+        logger.success("Query pipeline completed successfully.")
 
 
 if __name__ == "__main__":
