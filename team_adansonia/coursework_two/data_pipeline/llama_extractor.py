@@ -101,7 +101,7 @@ class LlamaExtractor(BaseModel):
                 This is a corporate sustainability report.
 
                 Extract the following energy metrics for all financial years available:
-                - Electricity consumption (total, renewable, non-renewable)
+                - Energy consumption (total, renewable, non-renewable)
 
                 For each metric, provide a JSON structure like:
                 {
@@ -142,7 +142,7 @@ class LlamaExtractor(BaseModel):
                 This is a corporate sustainability report.
 
                 Extract the following water-related metrics for all financial years available:
-                - Water usage (withdrawal, consumption, or any other relevant metrics)
+                - Water usage (withdrawal, intensity, consumption, or any other relevant metrics)
 
                 For each metric, provide a JSON structure like:
                 {

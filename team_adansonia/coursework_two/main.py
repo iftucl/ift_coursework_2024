@@ -57,7 +57,7 @@ async def run_end_to_end_workflow(company_symbol: str, company_security: str, db
 
     logger.info("✅ Raw extraction complete. Running validation and cleanup...")
 
-    final_data = full_validation_pipeline(raw_result, filtered_text, company_security)
+    final_data = full_validation_pipeline(raw_result, filtered_text, company_security, filtered_pdf_path)
 
     goals_text = extract_goals_by_page(filtered_pdf_path)
     goals = call_deepseek_find_goals(company_security, goals_text)
@@ -250,8 +250,7 @@ def main():
 # Entry point
 if __name__ == "__main__":
     symbols_with_years = [
-        ("BAC", None),
-        ("MSFT", "2021")
+        ("STX", None)
     ]
     # Run the async function correctly
     asyncio.run(run_main_for_symbols(symbols_with_years))

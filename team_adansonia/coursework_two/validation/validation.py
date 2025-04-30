@@ -4,6 +4,7 @@ import re
 from dotenv import load_dotenv
 from loguru import logger
 from team_adansonia.coursework_two.validation.deepseek_validation import validate_esg_data_with_deepseek
+from team_adansonia.coursework_two.validation.deepseek_validation_2 import validate_esg_data_with_deepseek
 
 #TODO: If number is not on the same page with metric, do not validate
 #TODO: Standardise years
@@ -160,7 +161,7 @@ def validate_and_clean_data(raw_data: dict, filtered_text: str):
     return cleaned, issues
 
 
-def full_validation_pipeline(parsed_data, filtered_text, company_name):
+def full_validation_pipeline(parsed_data, filtered_text, company_name, pdf_path):
     """
      Runs the full validation pipeline for ESG data by first performing internal validation, and then using OpenAI
      for further validation. If OpenAI validation fails, it falls back to using the internally validated data.
@@ -179,7 +180,7 @@ def full_validation_pipeline(parsed_data, filtered_text, company_name):
 
     try:
         print("🤖 Step 2: Validating with DeepSeek...")
-        corrected_data = validate_esg_data_with_deepseek(cleaned_data, filtered_text, company_name)
+        corrected_data = validate_esg_data_with_deepseek(cleaned_data, company_name, pdf_path)
         print("\n✅ Corrected Data (DeepSeek validation):")
         print(json.dumps(corrected_data, indent=2))
         return corrected_data
