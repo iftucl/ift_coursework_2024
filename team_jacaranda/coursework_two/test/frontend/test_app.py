@@ -1,31 +1,70 @@
+"""
+Module: test_app_structure
+
+This module contains tests to verify the structure and functionality of the frontend 
+`App.js` file located within the `modules/frontend/src/` directory. These tests ensure
+that the file includes essential elements like React hooks, JSX components, and event handling.
+
+Test cases:
+- Structural validation of the App.js file (checking for required elements like hooks, JSX structure, and HTML elements).
+- Functional validation to ensure that the App.js contains necessary event handling logic (e.g., `onClick` event binding and state update logic).
+"""
+
 import pytest
 import re
 import os
 
-# 结构检查：检查 App.js 代码结构是否合理
 def test_app_structure():
-    # 获取当前测试文件所在目录
+    """
+    Test the structure of the App.js file.
+
+    This test verifies that the `App.js` file contains the essential React elements, including 
+    the use of the `useState` hook, JSX structure, and required HTML elements such as `<input>` and `<button>`. 
+    It ensures the basic structure of the component is set up correctly.
+
+    It performs the following checks:
+    - Verifies that `useState` is used in the file.
+    - Verifies that the file contains a return statement with JSX.
+    - Verifies the inclusion of an `<input>` element.
+    - Verifies the inclusion of a `<button>` element.
+
+    :raises AssertionError: If any of the above checks fail.
+    """
+    # Get the directory where the test file is located
     current_dir = os.path.dirname(__file__)
     App_js_path = os.path.join(current_dir, "../../modules/frontend/src/App.js")
 
-    # 读取 App.js 文件内容
+    # Read the content of the App.js file
     with open(App_js_path, "r", encoding="utf-8") as f:
         app_content = f.read()
 
-    # 基本检查
-    assert "useState" in app_content, "App.js 应该使用 useState hook"
-    assert "return (" in app_content, "App.js 应该有一个返回的 JSX"
-    assert "<input" in app_content, "App.js 应该包含一个 input 元素"
-    assert "<button" in app_content, "App.js 应该包含一个 button 元素"
+    # Basic structure checks
+    assert "useState" in app_content, "App.js should use the useState hook."
+    assert "return (" in app_content, "App.js should have a return statement with JSX."
+    assert "<input" in app_content, "App.js should include an <input> element."
+    assert "<button" in app_content, "App.js should include a <button> element."
 
-# 功能检查（这里只能静态检查代码）
 def test_app_contains_add_functionality():
+    """
+    Test the functionality of the App.js file to check if it includes add functionality.
+
+    This test checks if the `App.js` file contains logic for handling button click events and 
+    updating state. Specifically, it verifies that an `onClick` event handler is present and that 
+    there is a state update logic, indicated by calls to functions that start with `set`.
+
+    It performs the following checks:
+    - Verifies that the file contains an `onClick` event handler.
+    - Verifies that a state update function (e.g., `setState`) is called within the file.
+
+    :raises AssertionError: If any of the above checks fail.
+    """
+    # Open the App.js file for reading
     with open("modules/frontend/src/App.js", "r", encoding="utf-8") as f:
         app_content = f.read()
 
-    # 检查是否有 onClick 事件绑定
-    assert "onClick" in app_content, "App.js 应该有按钮点击处理逻辑"
+    # Check if there is an onClick event handler bound to any element
+    assert "onClick" in app_content, "App.js should include a button click handler."
 
-    # 检查是否存在以 set 开头的状态更新函数调用
+    # Check if there is a state update function call (set function)
     set_call_pattern = re.compile(r'set\w+\s*\(')
-    assert re.search(set_call_pattern, app_content), "App.js 应该有状态更新逻辑（调用 setXXX 函数）"
+    assert re.search(set_call_pattern, app_content), "App.js should include state update logic (calling setXXX functions)."

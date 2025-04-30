@@ -1,3 +1,25 @@
+"""
+This module defines and manages the execution of a series of Python scripts in a data processing pipeline.
+
+It includes functions for executing shell commands, logging the results, tracking completed modules,
+and executing the pipeline with progress reporting. The pipeline logs progress and execution times
+of individual modules, ensuring each module is executed only once.
+
+Modules run by this pipeline:
+- `create_table.py`
+- `paragraph_extraction.py`
+- `retry_failed_reports.py`
+- `llm_analyse.py`
+- `llm_standardize.py`
+- `data_export.py`
+
+Functions:
+- `read_completed_modules`: Reads a list of completed modules from a file.
+- `write_completed_module`: Appends a completed module to a record file.
+- `run_command`: Executes a shell command and logs the result.
+- `main`: Orchestrates the pipeline execution, including dependency installation, module execution, and logging.
+"""
+
 import subprocess
 import logging
 import sys
@@ -32,8 +54,17 @@ modules = [
     "data_export.py",
 ]
 
-# Read list of completed modules from file
 def read_completed_modules():
+    """
+    Reads the list of modules that have already been completed from a file.
+
+    This function checks for a file containing the names of completed modules and returns
+    a set of these module names. If the file does not exist, an empty set is returned.
+
+    :return: A set of module names that have been completed.
+    :rtype: set
+    :raises FileNotFoundError: If the completed modules file is not found.
+    """
     try:
         with open(completed_file_path, "r") as f:
             completed_modules = f.read().splitlines()
@@ -41,13 +72,33 @@ def read_completed_modules():
     except FileNotFoundError:
         return set()
 
-# Append a completed module name to the record file
 def write_completed_module(module):
+    """
+    Appends the name of a completed module to the record file.
+
+    This function writes the provided module name to a file that tracks which modules
+    have been executed. Each module name is written on a new line.
+
+    :param module: The name of the module that has been completed.
+    :type module: str
+    :return: None
+    :raises: Any exceptions raised during file operations.
+    """
     with open(completed_file_path, "a") as f:
         f.write(module + "\n")
 
-# Run a shell command and log the result
 def run_command(command):
+    """
+    Executes a shell command and logs the result.
+
+    This function runs the specified command in the shell, logging the start and success of the execution.
+    If the command fails, the error is logged, and the script exits with a failure code.
+
+    :param command: The shell command to execute.
+    :type command: str
+    :return: None
+    :raises subprocess.CalledProcessError: If the command fails during execution.
+    """
     try:
         logging.info(f"Starting command: {command}")
         subprocess.run(command, check=True, shell=True)
@@ -57,8 +108,17 @@ def run_command(command):
         logging.error(str(e))
         sys.exit(1)
 
-# Main pipeline execution
 def main():
+    """
+    Orchestrates the execution of the full data processing pipeline.
+
+    This function installs the necessary dependencies, loads the list of completed modules,
+    and iterates over a predefined set of modules to execute. It tracks the execution progress
+    and logs each step. Each module is only executed once, and the completion is recorded.
+
+    :return: None
+    :raises: Any exceptions raised during the pipeline execution.
+    """
     logging.info("Starting the full pipeline for the data_storage module")
 
     # Install dependencies (only needed once)

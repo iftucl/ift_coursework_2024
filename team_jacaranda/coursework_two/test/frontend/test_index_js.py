@@ -1,39 +1,68 @@
+"""
+Module: test_index_imports_and_mounts
+
+This module contains a test function that verifies the correct imports and mounting logic 
+within the `index.js` file in a frontend project. Specifically, it ensures that:
+- The `App` component is imported correctly.
+- The `ReactDOM.createRoot` method is called for mounting.
+- The `root.render` method is invoked to render the `App` component.
+
+Since Python cannot directly mock or execute JavaScript files, this test performs static checks on 
+the content of the `index.js` file to confirm the required JavaScript functionality.
+
+Test case:
+- Ensures proper import and mounting of the `App` component in `index.js`.
+"""
+
 import pytest
 from unittest.mock import patch
 import os
 
 def test_index_imports_and_mounts():
-    # 获取当前测试文件所在目录
+    """
+    Test the imports and mounting logic in the `index.js` file.
+
+    This test checks that the `index.js` file contains the necessary JavaScript code for:
+    - Importing the `App` component with `import App from`.
+    - Calling `ReactDOM.createRoot` to initialize the app mounting point.
+    - Using `root.render` to render the `App` component.
+
+    :raises AssertionError: If any of the required imports or method calls are missing.
+    """
+    # Get the directory where the test file is located
     current_dir = os.path.dirname(__file__)
     index_js_path = os.path.join(current_dir, "../../modules/frontend/src/index.js")
 
-    # 读取 index.js 文件内容
+    # Read the content of the index.js file
     with open(index_js_path, "r", encoding="utf-8") as f:
         index_js_content = f.read()
 
-    # 确保 index.js 中有正确的导入和挂载语句
-    # 检查是否有 "import App from"（检查是否导入了 App 组件）
-    assert "import App from" in index_js_content
-    # 检查是否有 "createRoot"（检查是否调用了 ReactDOM.createRoot）
-    assert "createRoot" in index_js_content
-    # 检查是否有 "root.render"（检查是否调用了 root.render 渲染 App 组件）
-    assert "root.render" in index_js_content
+    # Perform assertions to check for the necessary imports and method calls
+    assert "import App from" in index_js_content, "App component import is missing in index.js."
+    assert "createRoot" in index_js_content, "ReactDOM.createRoot is missing in index.js."
+    assert "root.render" in index_js_content, "root.render is missing in index.js."
 
 '''
-# python中无法直接mock JS模块react-dom
-# 在Pytest环境下读取.js，但它不是Python模块
-# Python无法真正“执行”JS文件逻辑，除非用Node.js测试框架或JS bridge
-# 故需要删除此函数
+# Python cannot directly mock JS modules like react-dom.
+# In the Pytest environment, reading JS files doesn't execute them as they are not Python modules.
+# To properly test JavaScript logic, a Node.js test framework or JavaScript bridge is needed.
+# Therefore, this test function needs to be removed.
 def test_create_root_and_render():
-    # 使用 unittest.mock.patch 来模拟 createRoot 和 render 函数
+    """
+    Test the creation and rendering of the root element in `index.js`.
+
+    This test uses `unittest.mock.patch` to mock the `createRoot` and `render` methods from 
+    `react-dom` and verifies if these methods are called correctly when `index.js` is imported.
+
+    :raises AssertionError: If `createRoot` or `render` are not called as expected.
+    """
     with patch("react_dom.createRoot") as mock_create_root:
         mock_root = mock_create_root.return_value
         with patch.object(mock_root, "render") as mock_render:
-            # 调用 index.js 中的渲染逻辑（假设 index.js 里有直接执行挂载的代码）
-            # 这里只是模拟模块加载和渲染调用，而不是实际执行
-            import src.index  # 这行会触发 index.js 中的挂载逻辑
+            # Importing index.js triggers the mounting logic
+            import src.index  # This will trigger the root creation and render logic
             
-            # 验证 createRoot 和 render 是否被正确调用
+            # Verify that createRoot and render are called as expected
             mock_create_root.assert_called_once_with(mock_root)
             mock_render.assert_called_once()
 '''

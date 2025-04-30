@@ -1,3 +1,18 @@
+"""
+This module processes and standardizes CSR report data by converting indicator units 
+to a target unit using a machine learning model (LLM). It interacts with a PostgreSQL 
+database to fetch, process, and update the data.
+
+Key functions:
+- Fetch rows from the database that need unit standardization.
+- Build prompts for the LLM to convert units based on the CSR indicator.
+- Call the LLM API to get the conversion results.
+- Parse the response and update the database with standardized values.
+
+It uses `psycopg2` for PostgreSQL interaction, `dotenv` for environment variable management, 
+`tqdm` for progress tracking, and `concurrent.futures` for concurrent execution of row processing.
+"""
+
 import os
 import json
 import re
@@ -26,12 +41,26 @@ db_config = {
 }
 
 def get_connection():
+    """
+    Establishes and returns a connection to the PostgreSQL database using the specified configuration.
+
+    :return: psycopg2 connection object
+    :rtype: psycopg2.extensions.connection
+    """
     return psycopg2.connect(**db_config)
 
 # === Query rows to standardize ===
 def fetch_rows_to_standardize(conn):
+    """
+    Fetches rows from the database that require unit standardization.
+
+    :param conn: The psycopg2 connection object to the database.
+    :type conn: psycopg2.extensions.connection
+    :return: List of rows containing data to be standardized.
+    :rtype: list of tuples
+    """
     with conn.cursor() as cur:
-        cur.execute("""
+        cur.execute(""" 
             SELECT d.data_id, d.indicator_name, d.value_raw, d.unit_raw,
                    i.unit AS target_unit, i.description
             FROM csr_reporting.CSR_Data d
@@ -44,6 +73,22 @@ def fetch_rows_to_standardize(conn):
 
 # === Prompt builder ===
 def build_conversion_prompt(indicator_name, description, value_raw, unit_raw, target_unit):
+    """
+    Constructs a prompt for the LLM to convert a unit of measurement from the raw value to the target unit.
+
+    :param indicator_name: The name of the CSR indicator.
+    :type indicator_name: str
+    :param description: The description of the CSR indicator.
+    :type description: str
+    :param value_raw: The raw value to be converted.
+    :type value_raw: str
+    :param unit_raw: The unit of the raw value.
+    :type unit_raw: str
+    :param target_unit: The target unit to convert the value to.
+    :type target_unit: str
+    :return: The LLM prompt as a formatted string.
+    :rtype: str
+    """
     return f"""You are an intelligent assistant skilled in converting indicator units from company CSR reports.
 
 The indicator is "{indicator_name}", and its description is: {description}
@@ -66,6 +111,14 @@ Please note:
 
 # === Call DeepSeek API ===
 def call_llm(prompt):
+    """
+    Sends a request to the LLM (DeepSeek API) to process the unit conversion based on the given prompt.
+
+    :param prompt: The conversion prompt to send to the LLM.
+    :type prompt: str
+    :return: The response content from the LLM.
+    :rtype: str
+    """
     response = client.chat.completions.create(
         model="deepseek-chat",
         messages=[
@@ -78,6 +131,15 @@ def call_llm(prompt):
 
 # === Clean and parse LLM response ===
 def safe_json_parse(response_text):
+    """
+    Cleans and parses the raw response text from the LLM into a structured JSON format.
+
+    :param response_text: The raw response text from the LLM.
+    :type response_text: str
+    :return: The parsed JSON object containing the conversion result.
+    :rtype: dict
+    :raises ValueError: If the response cannot be parsed into valid JSON.
+    """
     cleaned = response_text.strip()
     cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
     cleaned = re.sub(r"\s*```$", "", cleaned)
@@ -87,6 +149,20 @@ def safe_json_parse(response_text):
 
 # === Update database with conversion results ===
 def update_standardized(conn, data_id, value_standardized, unit_standardized, unit_conversion_note=None):
+    """
+    Updates the database with the standardized value and unit for the given data ID.
+
+    :param conn: The psycopg2 connection object to the database.
+    :type conn: psycopg2.extensions.connection
+    :param data_id: The ID of the data row to update.
+    :type data_id: int
+    :param value_standardized: The standardized value to be saved.
+    :type value_standardized: str
+    :param unit_standardized: The unit of the standardized value.
+    :type unit_standardized: str
+    :param unit_conversion_note: Additional notes about the unit conversion (optional).
+    :type unit_conversion_note: str, optional
+    """
     with conn.cursor() as cur:
         cur.execute("""
             UPDATE csr_reporting.CSR_Data
@@ -99,6 +175,14 @@ def update_standardized(conn, data_id, value_standardized, unit_standardized, un
 
 # === Validate if value is a legal number ===
 def is_valid_number(value):
+    """
+    Checks if the given value is a valid numeric value (either integer or float).
+
+    :param value: The value to check.
+    :type value: str
+    :return: True if the value is valid, otherwise False.
+    :rtype: bool
+    """
     try:
         float(value)
         return True
@@ -107,6 +191,16 @@ def is_valid_number(value):
 
 # === Process a single row ===
 def process_row(conn, row):
+    """
+    Processes a single row of CSR data, including calling the LLM API and updating the database.
+
+    :param conn: The psycopg2 connection object to the database.
+    :type conn: psycopg2.extensions.connection
+    :param row: A tuple representing the CSR data to process.
+    :type row: tuple
+    :return: The data ID of the processed row, or None if processing failed.
+    :rtype: int or None
+    """
     data_id, indicator_name, value_raw, unit_raw, target_unit, description = row
 
     try:
@@ -150,6 +244,9 @@ def process_row(conn, row):
 
 # === Main function ===
 def main():
+    """
+    Main function to process all pending rows in the database by calling the process_row function concurrently.
+    """
     conn = get_connection()
     try:
         rows = fetch_rows_to_standardize(conn)
