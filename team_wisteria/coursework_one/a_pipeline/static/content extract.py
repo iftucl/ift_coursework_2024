@@ -23,10 +23,10 @@ nltk.download("punkt", quiet=True)
 # Regex patterns
 # -----------------------------------------------------------------------------
 field_patterns = {
-    "scope_1_emissions": { # 字段名
-        "keywords": ["Scope 1", "Direct GHG emissions"], # 记录该字段可能在文本中出现的常见描述
+    "scope_1_emissions": { # Field name
+        "keywords": ["Scope 1", "Direct GHG emissions"], # Record common descriptions that may appear in the text for this field
         "regex": r"(?:Scope\s*1[^0-9a-zA-Z]{0,15})[:\-]?\s*(\d{1,3}(?:[ ,]?\d{3})*(?:\.\d+)?)(?=\s*(tCO2[e]?\b|tons|tonnes)?)"
-    }, # 会去匹配 Scope 1 后面跟着的数字
+    }, # will match the number following Scope 1
     "scope_2_emissions": {
         "keywords": ["Scope 2", "Indirect emissions"],
         "regex": r"(?:Scope\s*2[^0-9a-zA-Z]{0,15})[:\-]?\s*(\d{1,3}(?:[ ,]?\d{3})*(?:\.\d+)?)(?=\s*(tCO2[e]?\b|tons|tonnes)?)"
@@ -89,7 +89,7 @@ class Config:
 
     # Postgres
     PG_HOST = os.getenv("PG_HOST", "localhost")
-    PG_PORT = int(os.getenv("PG_PORT", 5439))          # 容器映射宿主 5439→5432
+    PG_PORT = int(os.getenv("PG_PORT", 5439))          # Container mapping host 5439→5432
     PG_USER = os.getenv("PG_USER", "postgres")
     PG_PWD  = os.getenv("PG_PWD",  "postgres")
     PG_DB   = os.getenv("PG_DB",   "postgres")
@@ -98,7 +98,7 @@ class Config:
     # Output
     JSON_PATH = "csr_output.json"
 
-    # 👇 仅测试时填公司，留空处理全部
+    # 👇 Fill in the company only for testing, leave it blank for all
     TEST_COMPANIES: List[str] = []
 
 # -----------------------------------------------------------------------------
@@ -210,7 +210,7 @@ def extract(text: str, company: str, year: int, src: str) -> Dict[str, Any]:
 # -----------------------------------------------------------------------------
 
 def main():
-    # 🔍 若命令行带公司参数则优先生效
+    # 🔍 If the command line contains company parameters, they will take precedence.
     cli_companies = sys.argv[1:]
     companies = cli_companies or Config.TEST_COMPANIES
 
@@ -219,30 +219,30 @@ def main():
 
     pdf_records = db.fetch_pdf_records(companies)
     if not pdf_records:
-        print("⚠️  未找到匹配的 pdf_records！")
+        print("⚠️  No matching pdf_records found!")
         return
 
     results: List[Dict[str, Any]] = []
     for comp, yr, fname in tqdm(pdf_records, desc="Extracting"):
-        # 把 xxx.pdf 换成 xxx.txt
+        # Replace xxx.pdf with xxx.txt
         txt_key = fname.rsplit(".", 1)[0] + ".txt"
         try:
-            # 从 text bucket 读回文字
+           # Read text back from the text bucket
             text_bytes = minio_r.cli.get_object(Config.MINIO_BUCKET, txt_key).read()
             text = text_bytes.decode("utf-8")
         except S3Error:
-            print(f"⚠️  {comp}-{yr} 找不到对应的文本文件 {txt_key}")
+            print(f"⚠️  {comp}-{yr} cannot find the corresponding text file {txt_key}")
             continue
 
-        # 直接把纯文本送进 extract
+       # Send plain text directly to extract
         rec = extract(text, comp, yr, f"minio://{Config.MINIO_BUCKET}/{txt_key}")
         db.upsert(rec)
         results.append(rec)
 
-    # 写本地 JSON 方便人工检查
+    # Write local JSON for manual inspection
     with open(Config.JSON_PATH, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
-    print(f"✅ 完成！共 {len(results)} 条，结果写入 {Config.JSON_PATH} + DB csr_indicators")
+    print(f"✅ Done! Total {len(results)} results, written to {Config.JSON_PATH} + DB csr_indicators")
     db.close()
 
 if __name__ == "__main__":
