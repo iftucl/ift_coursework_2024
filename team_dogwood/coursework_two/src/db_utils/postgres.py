@@ -163,6 +163,7 @@ class PostgreSQLDB:
     
     def upsert_metrics(self, table: str, rows: List[Dict]) -> None:
         """
+        Create required schema and tables if they do not exist
         Bulk UPSERT a list of metrics into the specified Postgres table.
 
         :param db: PostgreSQLDB instance (open transaction).
@@ -175,11 +176,14 @@ class PostgreSQLDB:
         cols_csv = ", ".join(cols)
         placeholders = ", ".join(["%s"] * len(cols))
         updates = ", ".join(f"{c}=EXCLUDED.{c}" for c in cols if c != "indicator_id")
+        
+        # Upsert the data
         sql = (
             f"INSERT INTO csr_metrics.{table} ({cols_csv}) VALUES ({placeholders}) "
-            f"ON CONFLICT (indicator_id) DO UPDATE SET {updates};"
+            f"ON CONFLICT (indicator_id, year) DO UPDATE SET {updates};"
         )
-        self.execute(sql, [tuple(r[c] for c in cols) for r in rows])
+        for r in rows:
+            self.execute(sql, tuple(r[c] for c in cols))
 
     @staticmethod
     def _conn_postgres():

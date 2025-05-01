@@ -1,7 +1,6 @@
 
 import sys
 import os
-from typing import Optional
 from loguru import logger
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
@@ -20,7 +19,7 @@ def get_all_companies(db: PostgreSQLDB) -> list[Company]:
         exit()
 
     companies_list = []
-    for company_data in companies[:5]:  # TODO - remove this limit
+    for company_data in companies[:20]:  # TODO - remove this limit
         logger.debug(f"Processing company: {company_data['security']}")
         company = Company(**company_data)
         companies_list.append(company)

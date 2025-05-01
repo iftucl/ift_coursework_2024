@@ -17,7 +17,7 @@ import pandas as pd
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 
-from team_dogwood.coursework_two.src.db_utils.postgres import PostgreSQLDB
+from src.db_utils.postgres import PostgreSQLDB
 
 def create_metadata_table() -> None:
     """

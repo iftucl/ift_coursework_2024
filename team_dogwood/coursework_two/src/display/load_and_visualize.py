@@ -1,3 +1,7 @@
+"""
+Load and visualize ESG data from PostgreSQL database.
+"""
+
 import sys
 import os
 import pandas as pd
@@ -11,60 +15,49 @@ project_root = os.path.abspath(os.path.join(current_dir, ".."))
 sys.path.insert(0, project_root)
 
 from db_utils.postgres import PostgreSQLDB
+from data_models.metrics import IndicatorUnits, IndicatorNames, IndicatorCategory
+
 
 def load_all_esg_data():
-    postgres = PostgreSQLDB()
-    emissions = pd.DataFrame(postgres.fetch("SELECT * FROM emissions"))
-    energy = pd.DataFrame(postgres.fetch("SELECT * FROM energy"))
-    waste = pd.DataFrame(postgres.fetch("SELECT * FROM waste"))
+    """
+    Load all ESG metric data from PostgreSQL database and return as a DataFrame.
+    """
+    with PostgreSQLDB() as db:
+        # Fetch data from PostgreSQL tables
+        emissions = pd.DataFrame(db.fetch("SELECT * FROM csr_metrics.emissions;"))
+        energy = pd.DataFrame(db.fetch("SELECT * FROM csr_metrics.energy;"))
+        waste = pd.DataFrame(db.fetch("SELECT * FROM csr_metrics.waste;"))
 
-    emissions["table"] = "emissions"
-    energy["table"] = "energy"
-    waste["table"] = "waste"
+        emissions["table"] = "emissions"
+        energy["table"] = "energy"
+        waste["table"] = "waste"
 
-    df_all = pd.concat([emissions, energy, waste], ignore_index=True)
+        df_all = pd.concat([emissions, energy, waste], ignore_index=True)
 
-    df_all = df_all.rename(columns={
-        "company": "company_name",
-        "report_year": "year",
-        "figure": "value",
-    })
+        df_all = df_all.rename(columns={
+            "company": "company_name",
+            "year": "year",
+            "figure": "value",
+        })
 
     return df_all
 
-indicator_units = {
-    "IND_001": "tCO2e", "IND_002": "tCO2e", "IND_003": "tCO2e",
-    "IND_004": "MWh", "IND_005": "m³/year", "IND_006": "%",
-    "IND_007": "Tones", "IND_009": "%", "IND_010": "Metric tons"
-}
 
 def plot_company_all_three_categories(df_all, company_name):
-    indicator_names = {
-        "IND_001": "Scope 1 GHG Emissions",
-        "IND_002": "Scope 2 GHG Emissions",
-        "IND_003": "Scope 3 GHG Emissions",
-        "IND_004": "Total energy consumption",
-        "IND_005": "Water consumption",
-        "IND_006": "Water recycled/reused",
-        "IND_007": "Total waste generated",
-        "IND_009": "Product packaging recyclability",
-        "IND_010": "Packaging"
-    }
-
-    category_map = {
-        "Climate / Emissions": ["IND_001", "IND_002", "IND_003"],
-        "Energy": ["IND_004", "IND_005", "IND_006"],
-        "Waste": ["IND_007", "IND_009", "IND_010"]
-    }
-
+    """
+    Plot all three categories of ESG metrics for a given company. Return a base64 encoded image.
+    """
     fig, axs = plt.subplots(3, 1, figsize=(10, 15))
-    for ax, (category, indicator_ids) in zip(axs, category_map.items()):
+    for ax, (category, indicator_ids) in zip(axs, IndicatorCategory.MAP.items()):
         df_cat = df_all[(df_all["company_name"] == company_name) & (df_all["indicator_id"].isin(indicator_ids))]
 
         for ind_id in indicator_ids:
             sub_df = df_cat[df_cat["indicator_id"] == ind_id]
             if not sub_df.empty:
-                label = indicator_names.get(ind_id, ind_id)
+                try:
+                    label = IndicatorNames[ind_id].value
+                except KeyError:
+                    label = ind_id
                 sns.lineplot(x="year", y="value", data=sub_df, label=label, marker="o", ax=ax)
 
         ax.set_title(f"{company_name} - {category}")
@@ -82,18 +75,13 @@ def plot_company_all_three_categories(df_all, company_name):
     plt.close()
     return img_base64
 
+
 def compare_companies_metrics(df_all, company_names, indicators):
-    id_to_name = {
-        "IND_001": "Scope 1 GHG Emissions",
-        "IND_002": "Scope 2 GHG Emissions",
-        "IND_003": "Scope 3 GHG Emissions",
-        "IND_004": "Total energy consumption",
-        "IND_005": "Water consumption",
-        "IND_006": "Water recycled/reused",
-        "IND_007": "Total waste generated",
-        "IND_009": "Product packaging recyclability",
-        "IND_010": "Packaging"
-    }
+    """
+    Compare ESG metrics for multiple companies and return a base64 encoded image.
+    """
+    # Build id_to_name and name_to_id from IndicatorNames
+    id_to_name = {ind.name: ind.value for ind in IndicatorNames}
     name_to_id = {v: k for k, v in id_to_name.items()}
 
     indicator_ids = []
@@ -110,7 +98,7 @@ def compare_companies_metrics(df_all, company_names, indicators):
         axs = [axs]
 
     for ax, ind_id in zip(axs, indicator_ids):
-        ind_name = id_to_name.get(ind_id, ind_id)
+        ind_name = IndicatorNames[ind_id].value if ind_id in IndicatorNames.__members__ else ind_id
         df_plot = df_all[(df_all["company_name"].isin(company_names)) & (df_all["indicator_id"] == ind_id)]
 
         for company in company_names:
@@ -121,7 +109,10 @@ def compare_companies_metrics(df_all, company_names, indicators):
         ax.set_title(f"{ind_name} Comparison")
         ax.set_xlabel("Year")
         ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
-        unit = indicator_units.get(ind_id, "Value")
+        try:
+            unit = IndicatorUnits[ind_id].value
+        except KeyError:
+            unit = "Value"
         ax.set_ylabel(f"Value ({unit})")
         ax.grid(True)
         ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=len(company_names))
