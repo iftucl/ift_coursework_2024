@@ -181,7 +181,7 @@ poetry run python pipeline1/modules/main.py
 poetry run python pipeline1/modules/pdf_checker.py
 poetry run python pipeline1/modules/process_problematic.py
 ```
-This pipeline checks the availability of CSR reports in the data lake.
+This pipeline checks the availability of CSR reports in the data lake. The main.py file will take much time to download pdf from websites, so you can stop manually by ctrl +C if you think the samples are large engough to do the extraction and visualization. And then run the second and third order in sequence.
 
 2️⃣ **Pipeline 2: Content Extraction**
 ```bash
@@ -198,9 +198,9 @@ These scripts handle database operations and data lineage tracking.
 
 4️⃣ **Pipeline 4: Visualization**
 ```bash
-poetry run python pipeline4/modules/dashboard.py
+poetry run streamlit run pipeline4/modules/dashboard.py
 ```
-This starts the visualization dashboard.
+This starts the visualization dashboard on your own browser.
 
 ⚠️ **Important**: Run each pipeline in sequence and wait for completion before starting the next one.
 
