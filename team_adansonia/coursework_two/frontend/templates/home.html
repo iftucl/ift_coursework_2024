@@ -1,24 +1,336 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Company Search</title>
-    <link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
-    <div class="container">
-        <h1>Search for a Company</h1>
-        <form id="search-form">
-            <input type="text" id="symbol-input" placeholder="Enter symbol (e.g. AAPL)" required>
-            <button type="submit">Search</button>
-        </form>
+{% extends "base.html" %}
+
+{% block title %}Adansonia — Company Search{% endblock %}
+
+{% block content %}
+<div class="govuk-!-padding-top-6">
+  <h1 class="govuk-heading-xl">Adansonia ESG Watch</h1>
+  
+
+  <div class="govuk-grid-row">
+    <!-- Left Panel: Search + Filters -->
+    <div class="govuk-grid-column-one-third">
+      <h2 class="govuk-heading-l">Search for a Company</h2>
+      <div class="filters-panel">
+        <!-- Search box with icon -->
+        <div class="search-input-wrapper govuk-!-margin-bottom-2">
+          <input class="govuk-input" id="symbol_or_security" type="text" placeholder="Search by Symbol or Security" style="width: 100%;">
+        </div>
+
+        <!-- Filter groups -->
+        <details class="govuk-details" open>
+          <summary class="govuk-details__summary">
+            <span class="govuk-details__summary-text">GICS Sector <span class="filter-count" data-field="gics_sector"></span></span>
+          </summary>
+          <div class="govuk-details__text">
+            <p>
+              <a href="#" class="govuk-link" onclick="toggleCheckboxes('gics_sector', true); return false;">Select all</a> /
+              <a href="#" class="govuk-link" onclick="toggleCheckboxes('gics_sector', false); return false;">Deselect all</a>
+            </p>
+            <div id="gics_sector-checkboxes" class="govuk-checkboxes govuk-checkboxes--small"></div>
+          </div>
+        </details>
+
+        <details class="govuk-details">
+          <summary class="govuk-details__summary">
+            <span class="govuk-details__summary-text">GICS Industry <span class="filter-count" data-field="gics_industry"></span></span>
+          </summary>
+          <div class="govuk-details__text">
+            <p>
+              <a href="#" class="govuk-link" onclick="toggleCheckboxes('gics_industry', true); return false;">Select all</a> /
+              <a href="#" class="govuk-link" onclick="toggleCheckboxes('gics_industry', false); return false;">Deselect all</a>
+            </p>
+            <div id="gics_industry-checkboxes" class="govuk-checkboxes govuk-checkboxes--small"></div>
+          </div>
+        </details>
+
+        <details class="govuk-details">
+          <summary class="govuk-details__summary">
+            <span class="govuk-details__summary-text">Country <span class="filter-count" data-field="country"></span></span>
+          </summary>
+          <div class="govuk-details__text">
+            <p>
+              <a href="#" class="govuk-link" onclick="toggleCheckboxes('country', true); return false;">Select all</a> /
+              <a href="#" class="govuk-link" onclick="toggleCheckboxes('country', false); return false;">Deselect all</a>
+            </p>
+            <div id="country-checkboxes" class="govuk-checkboxes govuk-checkboxes--small"></div>
+          </div>
+        </details>
+
+        <details class="govuk-details">
+          <summary class="govuk-details__summary">
+            <span class="govuk-details__summary-text">Region <span class="filter-count" data-field="region"></span></span>
+          </summary>
+          <div class="govuk-details__text">
+            <p>
+              <a href="#" class="govuk-link" onclick="toggleCheckboxes('region', true); return false;">Select all</a> /
+              <a href="#" class="govuk-link" onclick="toggleCheckboxes('region', false); return false;">Deselect all</a>
+            </p>
+            <div id="region-checkboxes" class="govuk-checkboxes govuk-checkboxes--small"></div>
+          </div>
+        </details>
+
+        <!-- Reset filters button -->
+        <button id="reset-filters" class="govuk-button govuk-button--secondary" style="margin-top:1rem; width:100%;">Reset filters</button>
+      </div>
     </div>
 
-    <script>
-        document.getElementById("search-form").addEventListener("submit", function(event) {
-            event.preventDefault();
-            const symbol = document.getElementById("symbol-input").value;
-            window.location.href = `/company/${symbol}`;
-        });
-    </script>
-</body>
-</html>
+    <!-- Right Panel: Results Table -->
+    <div class="govuk-grid-column-two-thirds">
+      <p class="govuk-body govuk-!-font-weight-bold govuk-!-margin-bottom-2">
+        Showing <span id="count-display"></span> companies
+      </p>
+
+      <div class="table-wrapper" style="overflow-x:auto;">
+        <table class="govuk-table" id="company-table">
+          <thead class="govuk-table__head">
+            <tr class="govuk-table__row">
+              <th class="govuk-table__header sortable" data-key="symbol">Symbol <span class="sort-indicator"></span></th>
+              <th class="govuk-table__header sortable" data-key="security">Security <span class="sort-indicator"></span></th>
+              <th class="govuk-table__header sortable" data-key="gics_sector">GICS Sector <span class="sort-indicator"></span></th>
+              <th class="govuk-table__header sortable" data-key="gics_industry">GICS Industry <span class="sort-indicator"></span></th>
+              <th class="govuk-table__header sortable" data-key="country">Country <span class="sort-indicator"></span></th>
+              <th class="govuk-table__header sortable" data-key="region">Region <span class="sort-indicator"></span></th>
+              <th class="govuk-table__header">Website</th>
+            </tr>
+          </thead>
+          <tbody id="company-table-body" class="govuk-table__body">
+            <!-- Populated by JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  const rawData = {{ data | tojson | safe }};
+  const tableBody = document.getElementById("company-table-body");
+  const countDisplay = document.getElementById("count-display");
+
+  /* Global sort state */
+  let sortState = { key: "symbol", dir: "asc" };
+
+  // --------------------------- Utility functions ---------------------------
+  function uniqueValues(key) {
+    return [...new Set(rawData.map(c => c[key]).filter(Boolean))].sort();
+  }
+
+  function buildCheckboxGroup(field, containerId) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = "";
+    uniqueValues(field).forEach(value => {
+      const id = `${field}-${value.replace(/\s+/g, '-')}`;
+      container.innerHTML += `
+        <div class="govuk-checkboxes__item">
+          <input class="govuk-checkboxes__input" type="checkbox" id="${id}" name="${field}" value="${value}">
+          <label class="govuk-checkboxes__label" for="${id}">${value}</label>
+        </div>`;
+    });
+  }
+
+  function toggleCheckboxes(field, select) {
+    document.querySelectorAll(`input[name="${field}"]`).forEach(cb => cb.checked = select);
+    filterAndRender();
+  }
+
+  function getChecked(field) {
+    return [...document.querySelectorAll(`input[name="${field}"]:checked`)].map(cb => cb.value);
+  }
+
+  // --------------------------- Filtering + Rendering ---------------------------
+  function filterAndRender() {
+    const keyword = document.getElementById("symbol_or_security").value.trim().toLowerCase();
+    const checkedFilters = {
+      gics_sector: getChecked("gics_sector"),
+      gics_industry: getChecked("gics_industry"),
+      country: getChecked("country"),
+      region: getChecked("region")
+    };
+
+    // Update counts next to filter headings
+    document.querySelectorAll('.filter-count').forEach(span => {
+      const fld = span.dataset.field;
+      const cnt = checkedFilters[fld].length;
+      span.textContent = cnt ? `(${cnt})` : "";
+    });
+
+    let filtered = rawData.filter(company => {
+      const symbolMatch = company.symbol?.toLowerCase().includes(keyword);
+      const securityMatch = company.security?.toLowerCase().includes(keyword);
+
+      const sectorMatch = !checkedFilters.gics_sector.length || checkedFilters.gics_sector.includes(company.gics_sector);
+      const industryMatch = !checkedFilters.gics_industry.length || checkedFilters.gics_industry.includes(company.gics_industry);
+      const countryMatch = !checkedFilters.country.length || checkedFilters.country.includes(company.country);
+      const regionMatch = !checkedFilters.region.length || checkedFilters.region.includes(company.region);
+
+      return (symbolMatch || securityMatch) && sectorMatch && industryMatch && countryMatch && regionMatch;
+    });
+
+    // Sort filtered data
+    filtered.sort((a, b) => {
+      const valA = (a[sortState.key] || '').toString().toLowerCase();
+      const valB = (b[sortState.key] || '').toString().toLowerCase();
+      if (valA < valB) return sortState.dir === 'asc' ? -1 : 1;
+      if (valA > valB) return sortState.dir === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    renderTable(filtered);
+    updateSortIndicators();
+  }
+
+  function renderTable(data) {
+    tableBody.innerHTML = "";
+    countDisplay.textContent = data.length;
+
+    if (!data.length) {
+      tableBody.innerHTML = `<tr class="govuk-table__row"><td class="govuk-table__cell" colspan="7" style="text-align:center;">No companies match your criteria.</td></tr>`;
+      return;
+    }
+
+    data.forEach(company => {
+      const row = document.createElement("tr");
+      row.classList.add("govuk-table__row", "clickable-row");
+      row.style.cursor = "pointer";
+      row.addEventListener("click", () => {
+        window.location.href = `/company/${company.symbol}`;
+      });
+      row.innerHTML = `
+        <td class="govuk-table__cell">${company.symbol}</td>
+        <td class="govuk-table__cell">${company.security}</td>
+        <td class="govuk-table__cell">${company.gics_sector}</td>
+        <td class="govuk-table__cell">${company.gics_industry}</td>
+        <td class="govuk-table__cell">${company.country}</td>
+        <td class="govuk-table__cell">${company.region}</td>
+        <td class="govuk-table__cell">
+          ${company.website_url ? `<a href="${company.website_url}" target="_blank" onclick="event.stopPropagation()">Link</a>` : "—"}
+        </td>`;
+      tableBody.appendChild(row);
+    });
+  }
+
+  // --------------------------- Sorting helpers ---------------------------
+  function updateSortIndicators() {
+    document.querySelectorAll('th.sortable').forEach(th => {
+      const indicator = th.querySelector('.sort-indicator');
+      if (th.dataset.key === sortState.key) {
+        indicator.textContent = sortState.dir === 'asc' ? '▲' : '▼';
+      } else {
+        indicator.textContent = '';
+      }
+    });
+  }
+
+  // --------------------------- Event Listeners ---------------------------
+  document.addEventListener("DOMContentLoaded", function () {
+    // Build dynamic checkbox lists
+    ["gics_sector", "gics_industry", "country", "region"].forEach(field => {
+      buildCheckboxGroup(field, `${field}-checkboxes`);
+    });
+
+    // Input listener for keyword search
+    document.getElementById("symbol_or_security").addEventListener("input", filterAndRender);
+
+    // Change listeners for checkboxes
+    ["gics_sector", "gics_industry", "country", "region"].forEach(field => {
+      document.addEventListener("change", (e) => {
+        if (e.target.name === field) filterAndRender();
+      });
+    });
+
+    // Sort listeners for table headers
+    document.querySelectorAll('th.sortable').forEach(th => {
+      th.style.cursor = 'pointer';
+      th.addEventListener('click', () => {
+        const key = th.dataset.key;
+        if (sortState.key === key) {
+          sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+        } else {
+          sortState.key = key;
+          sortState.dir = 'asc';
+        }
+        filterAndRender();
+      });
+    });
+
+    // Reset filters
+    document.getElementById('reset-filters').addEventListener('click', () => {
+      ["gics_sector", "gics_industry", "country", "region"].forEach(field => toggleCheckboxes(field, false));
+      document.getElementById("symbol_or_security").value = '';
+      filterAndRender();
+    });
+
+    // Initial render
+    filterAndRender();
+  });
+</script>
+
+<style>
+  html {
+    font-size: 10px; /* GOV.UK default is 19px */
+  }
+  /* Filters Panel */
+  .filters-panel {
+    background-color: #f3f2f1;
+    padding: 1.5rem;
+    border: 1px solid #b1b4b6;
+    border-radius: 5px;
+    margin-bottom: 2rem;
+    position: sticky;
+    top: 2rem;
+  }
+
+  /* Search icon in input box */
+  .search-input-wrapper {
+    position: relative;
+  }
+  .search-input-wrapper::before {
+    content: "\1F50D"; /* magnifying glass unicode */
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+  .search-input-wrapper .govuk-input {
+    padding-left: 2.5rem;
+  }
+
+  /* Table styling */
+  .govuk-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  /* Sticky table header */
+  .govuk-table__head th {
+    position: sticky;
+    top: 0;
+    background: #ffffff;
+    z-index: 2;
+    box-shadow: 0 2px 0 0 #f3f2f1;
+  }
+
+  /* Zebra striping for table rows */
+  /*.govuk-table__body tr:nth-child(even) {
+    background-color: #fafafa;
+  }
+
+  /* Hover effect for clickable rows */
+  .clickable-row:hover {
+    background-color: #f3f2f1;
+    transition: background-color 0.2s ease;
+  }
+
+  /* Mobile adjustments */
+  @media (max-width: 768px) {
+    .filters-panel {
+      position: static; /* disable sticky on mobile */
+    }
+  }
+</style>
+
+
+{% endblock %}

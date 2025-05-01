@@ -51,6 +51,10 @@ async def get_company(symbol: str, year: Optional[str] = None, db: Database = De
 
     return company
 
+@app.get("/all")
+async def get_all_companies(db: Database = Depends(get_db)):
+    companies = list(db["companies"].find({}, {"_id": 0}))
+    return companies
 
 if __name__ == "__main__":
     uvicorn.run("team_adansonia.coursework_two.fast_api.app:app", host="127.0.0.1", port=8081, reload=True)

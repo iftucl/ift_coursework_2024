@@ -13,7 +13,7 @@ load_dotenv()
 if is_running_in_docker():
     ROOT_DIR = os.getenv("ROOT_DIR_DOCKER")
 else:
-    ROOT_DIR = os.getenv("ROOT_DIR_lOCAL")
+    ROOT_DIR = os.getenv("ROOT_DIR_LOCAL")
 
 class CompanyData:
     """
@@ -292,7 +292,7 @@ def import_seed_to_mongo():
     print("⚠️ All existing documents in the collection have been deleted.")
 
     # Step 3: Load the seed file into MongoDB
-    seed_file = os.path.join(ROOT_DIR, "team_adansonia\coursework_two\mongo-seed", "seed_data.json")
+    seed_file = os.path.join(ROOT_DIR, "team_adansonia/coursework_two/mongo-seed", "seed_data.json")
     if os.path.exists(seed_file):  # Check if the seed file exists
         with open(seed_file, "r") as f:
             try:
