@@ -9,13 +9,12 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import io
 import base64
+from PIL import Image
 
-current_dir = os.path.dirname(os.path.abspath(__file__))        
-project_root = os.path.abspath(os.path.join(current_dir, ".."))
-sys.path.insert(0, project_root)
+sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 
-from db_utils.postgres import PostgreSQLDB
-from data_models.metrics import IndicatorUnits, IndicatorNames, IndicatorCategory
+from src.db_utils.postgres import PostgreSQLDB
+from src.data_models.metrics import IndicatorUnits, IndicatorNames, IndicatorCategory
 
 
 def load_all_esg_data():
@@ -48,7 +47,7 @@ def plot_company_all_three_categories(df_all, company_name):
     Plot all three categories of ESG metrics for a given company. Return a base64 encoded image.
     """
     fig, axs = plt.subplots(3, 1, figsize=(10, 15))
-    for ax, (category, indicator_ids) in zip(axs, IndicatorCategory.MAP.items()):
+    for ax, (category, indicator_ids) in zip(axs, IndicatorCategory().MAP.items()):
         df_cat = df_all[(df_all["company_name"] == company_name) & (df_all["indicator_id"].isin(indicator_ids))]
 
         for ind_id in indicator_ids:
@@ -126,3 +125,19 @@ def compare_companies_metrics(df_all, company_names, indicators):
     buf.close()
     plt.close()
     return img_base64
+
+
+if __name__ == "__main__":
+    # Example usage
+    df_all = load_all_esg_data()
+    print(df_all.head())
+
+    # Plot for a specific company
+    image = plot_company_all_three_categories(df_all, "Accenture plc")
+    image_disp = Image.open(io.BytesIO(base64.b64decode(image)))
+    image_disp.show()
+
+    # Compare multiple companies
+    image_comp = compare_companies_metrics(df_all, ["Accenture plc", "Alaska Air Group Inc"], ["IND_001", "IND_002"])
+    image_comp_disp = Image.open(io.BytesIO(base64.b64decode(image_comp)))
+    image_comp_disp.show()
