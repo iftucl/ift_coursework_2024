@@ -5,16 +5,16 @@ from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
 
-# —— 1. 日志配置 —— 
+# —— 1.Log Configuration —— 
 logging.basicConfig(
     filename='process_reports.log',
     level=logging.INFO,
     format='%(asctime)s %(levelname)s:%(message)s'
 )
 
-# —— 2. MinIO 客户端 —— 
+# —— 2. MinIO Client —— 
 client = Minio(
-    "localhost:9000",         # 或者 "127.0.0.1:9000"
+    "localhost:9000",        # or "127.0.0.1:9000"
     access_key="ift_bigdata",
     secret_key="minio_password",
     secure=False
@@ -23,29 +23,29 @@ client = Minio(
 input_bucket = "report1"
 output_bucket = "report"
 
-# —— 3. 单个文件处理函数 —— 
+# —— 3. Single file processing function —— 
 def process_pdf(obj_name: str):
-    # 生成对应的 txt 名称
+    # Generate the corresponding txt name
     txt_name = obj_name.rsplit(".", 1)[0] + ".txt"
     
-    # —— 跳过已存在的 txt —— 
+    # —— Skip existing txt —— 
     try:
-        # 如果能 stat 成功，说明已经转换过了
+        # If stat succeeds, it means it has been converted.
         client.stat_object(output_bucket, txt_name)
-        logging.info(f"⏭ 跳过已存在：{txt_name}")
+        logging.info(f"⏭ Skip already exists：{txt_name}")
         return
     except S3Error:
-        # 不存在则继续
+        # If not present, continue
         pass
 
     try:
-        # 下载 PDF
+        # Download PDF
         resp = client.get_object(input_bucket, obj_name)
         pdf_bytes = resp.read()
         resp.close()
         resp.release_conn()
 
-        # 提取文本
+        # Extract text
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         text = []
         for p in range(doc.page_count):
@@ -53,7 +53,7 @@ def process_pdf(obj_name: str):
         doc.close()
         txt_data = "\n".join(text).encode("utf-8")
 
-        # 上传 TXT
+        # Upload TXT
         client.put_object(
             bucket_name=output_bucket,
             object_name=txt_name,
@@ -64,34 +64,34 @@ def process_pdf(obj_name: str):
 
         logging.info(f"✔ {obj_name} -> {txt_name}")
     except Exception as e:
-        logging.error(f"✘ {obj_name} 处理失败：{e}")
+        logging.error(f"✘ {obj_name} Handling failure：{e}")
 
-# —— 4. 并发执行 —— 
+# —— 4. Concurrent Execution —— 
 if __name__ == "__main__":
-    # 1) 列出所有 PDF 对象
+    # 1) List all PDF objects
     all_pdfs = [
         obj.object_name
         for obj in client.list_objects(input_bucket, recursive=True)
         if obj.object_name.lower().endswith(".pdf")
     ]
 
-    # 2) 读取已存在的 txt
+    # 2) Read existing txt
     existing_txts = {
         obj.object_name
         for obj in client.list_objects(output_bucket, recursive=True)
         if obj.object_name.lower().endswith(".txt")
     }
 
-    # 3) 过滤：只留还没生成 txt 的
+    # 3) Filter: Only keep those that have not yet generated txt
     pending_pdfs = [
         pdf for pdf in all_pdfs
         if (pdf.rsplit(".", 1)[0] + ".txt") not in existing_txts
     ]
 
     total = len(pending_pdfs)
-    logging.info(f"发现 {len(all_pdfs)} 个 PDF，{len(existing_txts)} 个已转换，剩余 {total} 个待处理。")
+    logging.info(f"{len(all_pdfs)} PDFs found, {len(existing_txts)} converted, {total} remaining to be processed.")
 
-    # 4) 使用线程池并发处理
+    # 4) Using thread pool for concurrent processing
     with ThreadPoolExecutor(max_workers=8) as pool:
         futures = {pool.submit(process_pdf, name): name for name in pending_pdfs}
         for i, fut in enumerate(as_completed(futures), 1):
