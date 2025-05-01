@@ -321,4 +321,6 @@ def main():
         return  # If MongoDB is not connected, terminate the program
 
     # Access the database (not the collection directly)
-main()
+
+if __name__ == "__main__":
+       main()
