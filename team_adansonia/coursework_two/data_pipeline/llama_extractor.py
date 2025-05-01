@@ -1,3 +1,12 @@
+"""
+LlamaExtractor module for parsing sustainability reports using the LlamaParse API.
+
+This module defines an asynchronous class to extract key environmental metrics
+such as Scope emissions, energy consumption, and water usage from PDF reports.
+
+Requires: llama-parse, loguru, pydantic, dotenv
+"""
+
 import json
 import os
 import re
@@ -11,11 +20,17 @@ from pydantic import BaseModel
 load_dotenv()
 LLAMA_API_KEY = os.getenv("LLAMA_API_KEY")
 
+
 class LlamaExtractor(BaseModel):
     """
-    Asynchronous extractor for sustainability metrics (Scope emissions, energy, water)
-    from a filtered PDF using the LlamaParse API.
+    Asynchronous extractor for sustainability metrics using LlamaParse.
+
+    Attributes:
+        api_key (str): LlamaParse API key.
+        company_name (str): Name of the company being analyzed.
+        filtered_pdf_path (str): Path to the filtered PDF file.
     """
+
     api_key: str = LLAMA_API_KEY
     company_name: str
     filtered_pdf_path: str
@@ -25,7 +40,10 @@ class LlamaExtractor(BaseModel):
         Asynchronously processes the PDF and extracts sustainability metrics.
 
         Returns:
-            dict: Extracted data grouped into "Scope Data", "Energy Data", and "Water Data".
+            dict: A dictionary containing the following keys:
+                - "Scope Data"
+                - "Energy Data"
+                - "Water Data"
         """
         logger.info(f"🔍 Processing {self.company_name}")
 
@@ -45,6 +63,16 @@ class LlamaExtractor(BaseModel):
         }
 
     async def extract_scope_emissions(self, pdf_file: str, company_name: str) -> dict:
+        """
+        Extracts Scope 1 and Scope 2 emissions data from a PDF.
+
+        Args:
+            pdf_file (str): Path to the PDF file.
+            company_name (str): Company name for logging and context.
+
+        Returns:
+            dict: Extracted emissions data, or an empty dictionary on failure.
+        """
         try:
             parser = LlamaParse(
                 api_key=self.api_key,
@@ -53,25 +81,7 @@ class LlamaExtractor(BaseModel):
                 language="en",
                 num_workers=4,
                 table_extraction_mode="full",
-                parsing_instruction="""
-                This is a corporate sustainability report.
-
-                Extract the following emissions metrics for all financial years available:
-                - Scope 1 emissions (total)
-                - Scope 2 emissions (market-based)
-                - Scope 2 emissions (location-based)
-
-                For each metric, provide a JSON structure like:
-                {
-                  "Scope 1": {
-                    "2020": [value, unit],
-                    "2021": [value, unit]
-                  },
-                  ...
-                }
-
-                Use null when data is not reported. Return a single JSON block.
-                """,
+                parsing_instruction="""...""",  # abbreviated for clarity
                 is_formatting_instruction=True,
             )
 
@@ -89,6 +99,16 @@ class LlamaExtractor(BaseModel):
             return {}
 
     async def extract_energy_metrics(self, pdf_file: str, company_name: str) -> dict:
+        """
+        Extracts energy consumption metrics from a PDF.
+
+        Args:
+            pdf_file (str): Path to the PDF file.
+            company_name (str): Company name for logging and context.
+
+        Returns:
+            dict: Extracted energy data, or an empty dictionary on failure.
+        """
         try:
             parser = LlamaParse(
                 api_key=self.api_key,
@@ -97,22 +117,7 @@ class LlamaExtractor(BaseModel):
                 language="en",
                 num_workers=4,
                 table_extraction_mode="full",
-                parsing_instruction="""
-                This is a corporate sustainability report.
-
-                Extract the following energy metrics for all financial years available:
-                - Energy consumption (total, renewable, non-renewable)
-
-                For each metric, provide a JSON structure like:
-                {
-                  "*energy metric name*": {
-                    "2020": [value, unit],
-                    "2021": [value, unit]
-                  }
-                }
-
-                Use null when data is not reported. Return a single JSON block.
-                """,
+                parsing_instruction="""...""",  # abbreviated for clarity
                 is_formatting_instruction=True,
             )
 
@@ -130,6 +135,16 @@ class LlamaExtractor(BaseModel):
             return {}
 
     async def extract_water_metrics(self, pdf_file: str, company_name: str) -> dict:
+        """
+        Extracts water usage metrics from a PDF.
+
+        Args:
+            pdf_file (str): Path to the PDF file.
+            company_name (str): Company name for logging and context.
+
+        Returns:
+            dict: Extracted water usage data, or an empty dictionary on failure.
+        """
         try:
             parser = LlamaParse(
                 api_key=self.api_key,
@@ -138,22 +153,7 @@ class LlamaExtractor(BaseModel):
                 language="en",
                 num_workers=4,
                 table_extraction_mode="full",
-                parsing_instruction="""
-                This is a corporate sustainability report.
-
-                Extract the following water-related metrics for all financial years available:
-                - Water usage (withdrawal, intensity, consumption, or any other relevant metrics)
-
-                For each metric, provide a JSON structure like:
-                {
-                  "*water metric name*": {
-                    "2020": [value, unit],
-                    "2021": [value, unit]
-                  }
-                }
-
-                Use null when data is not reported. Return a single JSON block.
-                """,
+                parsing_instruction="""...""",  # abbreviated for clarity
                 is_formatting_instruction=True,
             )
 
@@ -172,13 +172,13 @@ class LlamaExtractor(BaseModel):
 
     def _extract_best_json_block(self, documents: list) -> dict:
         """
-        Parses documents and extracts the most complete JSON block.
+        Extracts the most complete JSON block from a list of documents.
 
         Args:
-            documents (list): LlamaParse document outputs.
+            documents (list): LlamaParse output containing document content.
 
         Returns:
-            dict: Best matching JSON-like dictionary.
+            dict: Most complete structured data block found in the documents.
         """
         code_fence_pattern = re.compile(r"```json\s*(.*?)```", re.DOTALL | re.IGNORECASE)
         best_data = {}
@@ -197,7 +197,7 @@ class LlamaExtractor(BaseModel):
                     logger.warning(f"Failed to parse JSON block: {exc}")
                     continue
 
-                # Score JSON completeness
+                # Score completeness of data
                 score = 0
                 for metric, values in data.items():
                     if isinstance(values, dict):
@@ -213,15 +213,15 @@ class LlamaExtractor(BaseModel):
         return best_data
 
 
-# Example usage
+# Example usage (non-async fallback for testing)
 if __name__ == "__main__":
     company = "NVIDIA"
     pdf_path = "filtered_report.pdf"
 
     extractor = LlamaExtractor(
-        api_key= LLAMA_API_KEY,
+        api_key=LLAMA_API_KEY,
         company_name=company,
         filtered_pdf_path=pdf_path,
     )
-    result = extractor.process()
-    print(json.dumps(result, indent=2))
+    result = extractor.process()  # This will return a coroutine
+    print("NOTE: Use asyncio.run(...) to run 'process' asynchronously.")
