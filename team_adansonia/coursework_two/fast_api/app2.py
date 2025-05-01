@@ -9,8 +9,27 @@ from team_adansonia.coursework_two.data_pipeline.csr_utils import get_latest_rep
 
 app = FastAPI()
 
+
 @app.get("/companies/{symbol}")
 async def get_company_new(symbol: str, year: Optional[str] = None, db: Database = Depends(get_db)):
+    """
+    Retrieve ESG (Environmental, Social, and Governance) data for a given company symbol.
+
+    This endpoint attempts to retrieve the ESG data and goals for a company from the database.
+    If the requested year is not provided, it uses the latest available CSR report year.
+    If ESG data is missing, it attempts to refresh the data by running the pipeline.
+
+    Parameters:
+    - symbol (str): The ticker symbol of the company.
+    - year (Optional[str]): The specific year for which ESG data is requested. If not provided, the latest year is used.
+    - db (Database): The MongoDB database dependency injected via FastAPI.
+
+    Returns:
+    - dict: A dictionary containing the company symbol, year, ESG data, ESG goals, and other company metadata.
+
+    Raises:
+    - HTTPException: If the company is not found or if ESG data is unavailable.
+    """
     symbol = symbol.upper()
     company = db["companies"].find_one({"symbol": symbol}, {"_id": 0})
 
@@ -50,5 +69,7 @@ async def get_company_new(symbol: str, year: Optional[str] = None, db: Database 
 
     return result
 
+
 if __name__ == "__main__":
+    # Run the FastAPI application on localhost with port 8081
     uvicorn.run("team_adansonia.coursework_two.fast_api.app2:app", host="127.0.0.1", port=8081, reload=True)

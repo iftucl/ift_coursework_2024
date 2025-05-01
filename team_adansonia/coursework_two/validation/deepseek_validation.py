@@ -3,167 +3,198 @@ import os
 import re
 import requests
 import tiktoken
+import fitz  # PyMuPDF
 from dotenv import load_dotenv
 
-# Load environment variables
+# Load API key from .env
 load_dotenv()
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 
-# API configuration
 url = "https://api.deepseek.com/v1/chat/completions"
 headers = {
     "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
     "Content-Type": "application/json"
 }
 
-
 def get_first_n_tokens(raw_text, n_tokens):
     """
-    Extract the first `n_tokens` from a given text using the tiktoken tokenizer.
+    Truncates a given text to the first `n_tokens` tokens using tiktoken encoding.
 
-    Args:
-        raw_text (str): Full raw text from an ESG report.
-        n_tokens (int): Number of tokens to extract.
+    Parameters:
+        raw_text (str): The full text input.
+        n_tokens (int): Number of tokens to include.
 
     Returns:
-        str: Truncated string consisting of the first `n_tokens` tokens.
+        str: Truncated string containing only the first `n_tokens`.
     """
     encoding = tiktoken.get_encoding("cl100k_base")
     tokens = encoding.encode(raw_text)
     return encoding.decode(tokens[:n_tokens])
 
+def extract_metric_keywords(esg_data):
+    """
+    Recursively extract top-level keys that contain metric-like values from ESG data.
+
+    Parameters:
+        esg_data (dict): ESG data dictionary.
+
+    Returns:
+        list[str]: A list of potential metric keywords found in the ESG data.
+    """
+    keywords = []
+
+    def recurse(data):
+        if isinstance(data, dict):
+            for k, v in data.items():
+                if isinstance(v, dict):
+                    if any(isinstance(val, (int, float, str)) for val in v.values()):
+                        keywords.append(k)
+                    recurse(v)
+
+    recurse(esg_data)
+    return list(set(keywords))
+
+def extract_relevant_pages(pdf_path, keywords):
+    """
+    Extract pages from the PDF that mention any of the specified keywords.
+
+    Parameters:
+        pdf_path (str): Path to the PDF file.
+        keywords (list[str]): List of keywords to match.
+
+    Returns:
+        str: Concatenated text from relevant pages.
+    """
+    doc = fitz.open(pdf_path)
+    relevant_text = ""
+
+    for page in doc:
+        text = page.get_text()
+        if any(keyword.lower() in text.lower() for keyword in keywords):
+            relevant_text += text + "\n"
+
+    return relevant_text
 
 def create_validation_prompt(esg_data, filtered_text, company_name):
     """
-    Create a structured prompt for the Deepseek API to validate ESG data.
+    Construct a prompt for DeepSeek API to validate ESG data using relevant text excerpts.
 
-    Args:
-        esg_data (dict): ESG metrics extracted from a report.
-        filtered_text (str): Cleaned text content from the ESG report.
-        company_name (str): Name of the company for contextual grounding.
+    Parameters:
+        esg_data (dict): Extracted ESG data.
+        filtered_text (str): Text from PDF pages with relevant keywords.
+        company_name (str): Name of the company being evaluated.
 
     Returns:
-        str: Formatted prompt to be sent to the LLM.
+        str: A formatted prompt string for validation.
     """
     first_tokens = get_first_n_tokens(filtered_text, 7000)
-    prompt = f"""
+    return f"""
 You are an ESG data validator.
 
 You are given:
 1. The company name: {company_name}.
-2. The first 10,000 tokens of the filtered ESG report text.
+2. The filtered ESG report text (only pages with relevant metrics).
 3. ESG data extracted from the report (as JSON).
 
 Your task:
-- For each metric in the ESG data, assign a validation status based on the provided text:
-  - If the metric or related unit is clearly verified in the text (i.e., it matches or is explicitly mentioned), mark it as "validated": "yes".
-  - If the metric or unit is clearly not mentioned or doesn't seem realistic based on the text, mark it as "validated": "no".
-  - If the metric or unit is uncertain or not mentioned because the text was cut off but seems realistic, mark it as "validated": "maybe".
+- For each metric in the ESG data, assign a validation status based on the text:
+  - "validated": "yes" if clearly verified
+  - "validated": "no" if not present or unrealistic
+  - "validated": "maybe" if uncertain or partially visible
 
-IMPORTANT:
-- Do not add explanations. Only provide the corrected JSON with the validation status.
-- Maintain the original structure of the ESG data.
-- Use the company name to help you identify if the metric is realistic or relevant for the company.
+Respond ONLY with the corrected JSON.
 
 --- Company Name ---
 {company_name}
 
---- Filtered Text (First 10,000 Tokens) ---
+--- ESG Report (Filtered Pages) ---
 {first_tokens}
 
 --- ESG Data (Extracted Metrics) ---
 {json.dumps(esg_data, indent=2)}
-"""
-    return prompt.strip()
-
+""".strip()
 
 def extract_json_from_markdown(text):
     """
-    Extract JSON from markdown-formatted code block returned by the model.
+    Extract JSON content from a markdown-formatted block of text.
 
-    Args:
-        text (str): Full text content from the model output.
+    Parameters:
+        text (str): Raw text that may include a markdown JSON block.
 
     Returns:
-        str: Clean JSON string for parsing.
+        str: Extracted JSON string.
     """
     match = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
     return match.group(1).strip() if match else text.strip()
 
-
-def validate_esg_data_with_deepseek(esg_data, filtered_text, company_name):
+def validate_esg_data_with_deepseek(esg_data, company_name, pdf_path):
     """
-    Send ESG data and report content to Deepseek for validation and parse the returned results.
+    Validates ESG data against filtered text from a PDF using DeepSeek's LLM.
 
-    Args:
-        company_name (str): The name of the company whose ESG data is being validated.
-        filtered_text (str): Cleaned ESG report text for validation.
-        esg_data (dict): Extracted ESG data to be validated.
+    Parameters:
+        pdf_path (str): Path to the filtered CSR report PDF.
+        esg_data (dict): Extracted ESG metrics.
+        company_name (str): The company name for context.
 
     Returns:
-        dict: Validated ESG data with updated validation status.
+        dict: ESG data with updated 'validated' fields based on LLM's analysis.
 
     Raises:
-        Exception: If the API response is invalid or fails.
+        Exception: If API call fails or response is invalid.
     """
     try:
+        keywords = extract_metric_keywords(esg_data)
+        filtered_text = extract_relevant_pages(pdf_path, keywords)
         prompt = create_validation_prompt(esg_data, filtered_text, company_name)
 
         payload = {
             "model": "deepseek-chat",
-            "messages": [
-                {"role": "user", "content": prompt}
-            ],
+            "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.3
         }
 
         response = requests.post(url, headers=headers, json=payload)
         print("Status Code:", response.status_code)
-        print("Raw Response Text:", response.text)
 
         if response.status_code != 200:
-            raise ValueError(f"Error from Deepseek: {response.status_code} - {response.text}")
+            raise ValueError(f"Error: {response.status_code} - {response.text}")
 
         raw_content = response.json()["choices"][0]["message"]["content"]
         clean_json_str = extract_json_from_markdown(raw_content)
         return json.loads(clean_json_str)
 
     except Exception as e:
-        raise Exception(f"Failed to validate ESG data with Deepseek: {e}")
-
+        raise Exception(f"Validation failed: {e}")
 
 def main():
     """
-    Run a sample ESG validation using sample input.
-    This is a test/demo for the validation pipeline.
+    Main execution entry point for validating ESG data using DeepSeek AI.
+
+    - Loads a sample ESG data dictionary.
+    - Loads and filters a local PDF.
+    - Sends validation request to DeepSeek and prints the result.
     """
-    company_name = "Example Corp"
-    filtered_text = """
-    This is a filtered portion of an ESG report.
-    It discusses various environmental metrics, energy usage, and sustainability goals.
-    """
+    company_name = "Nvidia Corporation"
+    pdf_path = "filtered_report.pdf"  # Path to the downloaded PDF
     esg_data = {
-        "energy_usage": {
-            "metric": "energy_usage",
-            "value": "150 MWh",
-            "unit": "MWh",
-            "validated": "maybe"
+        "Scope Data": {
+            "Scope 1": {"FY24": 14390, "Units": "MT CO₂e", "validated": "maybe"},
+            "Scope 2 (market-based)": {"FY24": 40555, "Units": "MT CO₂e"}
         },
-        "water_usage": {
-            "metric": "water_usage",
-            "value": "5000 gallons",
-            "unit": "gallons",
-            "validated": "maybe"
+        "Energy Data": {
+            "Electricity consumption": {"2024": 612008, "Units": "MWh"}
+        },
+        "Water Data": {
+            "water_withdrawal": {"2024": 382636, "Units": "m³"}
         }
     }
 
     try:
-        validated = validate_esg_data_with_deepseek(company_name, filtered_text, esg_data)
+        validated = validate_esg_data_with_deepseek(pdf_path, esg_data, company_name)
         print("✅ Validated ESG Data:")
         print(json.dumps(validated, indent=2))
     except Exception as e:
-        print(f"❌ Validation failed: {e}")
-
+        print(f"❌ {e}")
 
 if __name__ == "__main__":
     main()

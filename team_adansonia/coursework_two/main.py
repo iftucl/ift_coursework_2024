@@ -1,9 +1,30 @@
+"""
+End-to-End ESG Data Extraction and MongoDB Integration Script
+
+This module orchestrates the full data pipeline for extracting Environmental, Social,
+and Governance (ESG) data from CSR reports using AI-powered tools (LLaMA and DeepSeek),
+processing it, validating it, storing it in MongoDB, and exporting the result to a seed JSON file.
+
+Main Functions:
+- run_end_to_end_workflow: Processes a company's CSR report and extracts ESG data and goals.
+- run_main_for_symbols: Batch processes a list of company symbols and updates the database.
+- export_updated_seed_file: Dumps the MongoDB 'companies' collection to a JSON seed file.
+- main: Main loop for processing all companies in the database (used for bulk updates).
+"""
+
 import json
 import os
 from dotenv import load_dotenv
 from team_adansonia.coursework_two.data_pipeline.goals_extractor import call_deepseek_find_goals, extract_goals_by_page
-from team_adansonia.coursework_two.data_pipeline.llama_extractor import LlamaExtractor  # Assuming you have this in a separate script
-from team_adansonia.coursework_two.data_pipeline.csr_utils import get_company_data_by_symbol, download_pdf, filter_pdf_pages, get_latest_report_url, process_csr_report, get_latest_report_year # Assuming CSR functions in csr_utils.py
+from team_adansonia.coursework_two.data_pipeline.llama_extractor import LlamaExtractor
+from team_adansonia.coursework_two.data_pipeline.csr_utils import (
+    get_company_data_by_symbol,
+    download_pdf,
+    filter_pdf_pages,
+    get_latest_report_url,
+    process_csr_report,
+    get_latest_report_year,
+)
 from team_adansonia.coursework_two.validation.validation import full_validation_pipeline
 from loguru import logger
 import tempfile
@@ -20,7 +41,26 @@ YEAR_PATTERN = re.compile(r"\b(?:FY\s?\d{2,4}|\b20[1-3][0-9]\b)", re.IGNORECASE)
 load_dotenv()
 LLAMA_API_KEY = os.getenv("LLAMA_API_KEY")
 
+
 async def run_end_to_end_workflow(company_symbol: str, company_security: str, db, year=None):
+    """
+    Executes the full ESG extraction workflow for a single company.
+
+    Steps:
+    1. Fetch CSR report (filtered).
+    2. Run LLaMA extractor on PDF.
+    3. Run ESG data validation pipeline.
+    4. Extract goals using DeepSeek.
+
+    Parameters:
+    - company_symbol (str): The stock ticker symbol of the company.
+    - company_security (str): The full name of the company.
+    - db: MongoDB database connection.
+    - year (int or None): Optional CSR report year to target.
+
+    Returns:
+    - tuple: (validated_esg_data: dict, esg_goals: dict)
+    """
     company_data = get_company_data_by_symbol(company_symbol, db)
     if not company_data:
         logger.error(f"No company data found for symbol {company_symbol}")
@@ -64,26 +104,23 @@ async def run_end_to_end_workflow(company_symbol: str, company_security: str, db
 
     return final_data, goals
 
-#Udpate mongo seed
+
 def export_updated_seed_file(db, seed_file="seed_data.json"):
     """
-    Exports the updated company data from MongoDB to a seed file. The function retrieves all unique company
-    records from the database, processes them (e.g., handles dates and ObjectIds), and writes the data to a JSON file.
+    Exports current MongoDB company data into a JSON seed file.
+
+    Handles ISO conversion for dates and string conversion for ObjectIds.
 
     Parameters:
     - db: MongoDB database connection.
-    - seed_file (str): The name of the file where the data will be saved (default is "seed_data.json").
+    - seed_file (str): Filename for the seed output (default: "seed_data.json").
 
     Returns:
-    - None: The function directly writes the updated data to a file.
-
-    Example:
+    - None
     """
     ROOT_DIR = os.getenv("ROOT_DIR_lOCAL")
     path = os.path.join(ROOT_DIR, "team_adansonia/coursework_two/mongo-seed", seed_file)
-    print(
-        f"Exporting updated seed file to {seed_file}..."
-    )
+    print(f"Exporting updated seed file to {seed_file}...")
 
     collection = db["companies"]
     unique_data = []
@@ -108,10 +145,18 @@ def export_updated_seed_file(db, seed_file="seed_data.json"):
         json.dump(unique_data, f, indent=4)
 
     print(f"✅ Exported {len(unique_data)} unique documents to {seed_file}")
-    return
 
 
 async def run_main_for_symbols(symbols_with_years: list[tuple[str, str | None]]):
+    """
+    Executes the ESG extraction pipeline for a given list of company symbols and target years.
+
+    Parameters:
+    - symbols_with_years (list[tuple[str, str | None]]): List of (symbol, year) pairs.
+
+    Returns:
+    - None
+    """
     mongo_client = mongo.connect_to_mongo()
     if mongo_client is None:
         return
@@ -176,10 +221,12 @@ async def run_main_for_symbols(symbols_with_years: list[tuple[str, str | None]])
         mongo_client.close()
         logger.info("🛑 MongoDB connection closed.")
 
+
 def main():
     """
-    Entry point for running the ESG data extraction and update workflow for all companies in the database.
-    For each company, it finds the latest CSR report year and runs the ESG extraction if not already present.
+    Runs the full ESG data extraction workflow for every company in the MongoDB database.
+
+    Only processes companies that are missing ESG data for the latest CSR report year.
     """
     mongo_client = mongo.connect_to_mongo()
     if mongo_client is None:
@@ -189,7 +236,7 @@ def main():
     companies_collection = db["companies"]
 
     try:
-        companies = list(companies_collection.find({}))  # Fetch all companies
+        companies = list(companies_collection.find({}))
         if not companies:
             logger.warning("⚠️ No company documents found in the database.")
             return
@@ -219,7 +266,7 @@ def main():
 
             try:
                 logger.info(f"🚀 Running ESG workflow for: {symbol}, year: {latest_year}")
-                cleaned_data, cleaned_goals = run_end_to_end_workflow(symbol, security, db, None)
+                cleaned_data, cleaned_goals = asyncio.run(run_end_to_end_workflow(symbol, security, db, None))
 
                 if cleaned_data:
                     companies_collection.update_one(
@@ -246,11 +293,7 @@ def main():
         logger.info("🛑 MongoDB connection closed.")
 
 
-
 # Entry point
 if __name__ == "__main__":
-    symbols_with_years = [
-        ("STX", None)
-    ]
-    # Run the async function correctly
+    symbols_with_years = [("NVDA", "2022")]
     asyncio.run(run_main_for_symbols(symbols_with_years))
