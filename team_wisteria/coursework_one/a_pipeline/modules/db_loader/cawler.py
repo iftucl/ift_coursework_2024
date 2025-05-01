@@ -22,7 +22,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 
-# 引入 Postgres 管理类
+# Import Postgres management class
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.abspath(os.path.join(current_dir, "..", "..", "..", "..", ".."))
 sys.path.append(project_root)
@@ -30,7 +30,7 @@ sys.path.append(project_root)
 from team_wisteria.coursework_one.a_pipeline.modules.url_parser.database import PostgresManager
 
 # ---------------------------------------------
-#                   配置区
+#              Configuration Area
 # ---------------------------------------------
 class Config:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -59,7 +59,7 @@ class Config:
     MINIO_BUCKET = "report1"
 
 # ---------------------------------------------
-#               初始化日志及目录
+#         Initialize logs and directories
 # ---------------------------------------------
 os.makedirs(Config.REPORTS_DIR, exist_ok=True)
 os.makedirs(Config.LOGS_DIR, exist_ok=True)
@@ -75,13 +75,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------
-#       爬虫主类：ResponsibilityReportsScraper
+#        ResponsibilityReportsScraper
 # ---------------------------------------------
 class ResponsibilityReportsScraper:
     """
-    从 responsibilityreports.com 抓取全量公司链接，
-    对每个公司页面扫描所有 a 标签，筛选出候选 PDF 链接，
-    下载并存储到 MinIO 和 Postgres，保持 filename 一致。
+Grab all company links from responsibilityreports.com.
+Scan all the tags for each company page, filter out candidate PDF links,
+Download and store to MinIO and Postgres, keep the filename consistent。
     """
 
     def __init__(self):
@@ -91,14 +91,14 @@ class ResponsibilityReportsScraper:
         self.current_user_agent = random.choice(Config.USER_AGENTS)
         self.driver_pool = []
 
-        # 初始化 MinIO 客户端
+        # Initialize MinIO client
         self.minio_client = Minio(
             Config.MINIO_ENDPOINT,
             access_key=Config.MINIO_ACCESS_KEY,
             secret_key=Config.MINIO_SECRET_KEY,
             secure=False
         )
-        # 初始化 Postgres 管理器
+        # Initialize the Postgres manager
         self.pg_manager = PostgresManager(
             host="localhost", port=5439, user="postgres", password="postgres"
         )
@@ -128,7 +128,7 @@ class ResponsibilityReportsScraper:
         except S3Error:
             return False
 
-    # ------------ 获取全量公司链接 ------------
+   # ------------ Get all company links ------------
     def get_all_company_links(self) -> List[str]:
         driver = self.get_driver()
         company_urls = []
@@ -144,14 +144,14 @@ class ResponsibilityReportsScraper:
                 if href:
                     company_urls.append(href)
         except Exception as e:
-            logger.error(f"获取公司列表失败: {str(e)}")
+            logger.error(f"Failed to obtain company list: {str(e)}")
         finally:
             self.return_driver(driver)
         company_urls = list(set(company_urls))
-        logger.info(f"共抓取到 {len(company_urls)} 家公司链接")
+        logger.info(f"A total of {len(company_urls)} company links were crawled")
         return company_urls
 
-    # ------------ 提取所有候选 PDF 链接 ------------
+    # ------------ Extract all candidate PDF links ------------
     def get_all_pdf_links(self, company_url: str) -> List[Dict[str, Any]]:
         driver = self.get_driver()
         pdf_info_list = []
@@ -177,13 +177,13 @@ class ResponsibilityReportsScraper:
                         "link_text": text
                     })
         except Exception as e:
-            logger.error(f"获取公司报告PDF候选链接失败: {company_url} - {str(e)}")
+            logger.error(f"Extract all candidate PDF links: {company_url} - {str(e)}")
         finally:
             self.return_driver(driver)
-        logger.info(f"[公司详情] {company_url} - 找到 {len(pdf_info_list)} 个候选PDF链接")
+        logger.info(f"[Company Details] {company_url} - Found {len(pdf_info_list)} candidate PDF links")
         return pdf_info_list
 
-    # ------------ 下载 PDF 文件并存储 ------------
+    # ------------ Download and store the PDF file ------------
     def download_pdf(self, pdf_url: str, company_name: str, year: int) -> bool:
         safe_company = re.sub(r"[^a-zA-Z0-9_-]+", "_", company_name)
         filename = f"{safe_company}_{year}.pdf"
@@ -202,21 +202,21 @@ class ResponsibilityReportsScraper:
                     content = response.content
                     file_hash = hashlib.md5(content).hexdigest()
 
-                    # 去重：数据库和 MinIO
+                    # Deduplication: Database and MinIO
                     if self.file_exists_in_db(file_hash):
-                        logger.info(f"跳过已存储文件(数据库): {filename}")
+                        logger.info(f"Skip stored files (database): {filename}")
                         return False
                     if self.file_exists_in_minio(filename):
-                        logger.info(f"跳过已存储文件(MinIO): {filename}")
+                        logger.info(f"Skip stored files (MinIO): {filename}")
                         return False
 
                     with self.lock:
                         if file_hash in self.seen_hashes:
-                            logger.info(f"已跳过重复PDF: {pdf_url}")
+                            logger.info(f"Duplicate PDF skipped: {pdf_url}")
                             return False
                         self.seen_hashes.add(file_hash)
 
-                    # 上传到 MinIO
+                    # Upload to MinIO
                     self.minio_client.put_object(
                         Config.MINIO_BUCKET,
                         filename,
@@ -224,9 +224,9 @@ class ResponsibilityReportsScraper:
                         length=len(content),
                         content_type="application/pdf"
                     )
-                    logger.info(f"上传 MinIO 成功: {filename}")
+                    logger.info(f"Upload MinIO successfully: {filename}")
 
-                    # 插入到 Postgres
+                    # Inserting into Postgres
                     record = {
                         "company": company_name,
                         "year": year,
@@ -236,20 +236,20 @@ class ResponsibilityReportsScraper:
                         "created_at": datetime.datetime.now().isoformat()
                     }
                     self.pg_manager.insert_pdf_record(record)
-                    logger.info(f"插入数据库成功: {filename}")
+                    logger.info(f"Insert database successfully: {filename}")
                     return True
                 else:
-                    logger.warning(f"下载状态码={response.status_code}, 重试中...")
+                    logger.warning(f"Download status code = {response.status_code}, retrying...")
                     time.sleep(2 ** attempt)
             except S3Error as e:
-                logger.error(f"MinIO 上传失败: {e}")
+                logger.error(f"MinIO Upload failed: {e}")
                 return False
             except Exception as e:
-                logger.warning(f"下载或存储失败(第{attempt+1}次): {e}")
+                logger.warning(f"Download or save failed ({attempt+1}th time): {e}")
                 time.sleep(2 ** attempt)
         return False
 
-    # ------------ 验证 PDF 文件（用于本地保留时） ------------
+    # ------------ Validate PDF files (when used for local retention) ------------
     def validate_pdf(self, filepath: str) -> bool:
         try:
             with pdfplumber.open(filepath) as pdf:
@@ -257,15 +257,15 @@ class ResponsibilityReportsScraper:
                 return len(text) >= Config.PDF_MIN_LENGTH and \
                        any(kw in text.lower() for kw in Config.VALID_KEYWORDS)
         except Exception as e:
-            logger.error(f"PDF验证异常: {filepath} - {str(e)}")
+            logger.error(f"PDF verification exception: {filepath} - {str(e)}")
         return False
 
-    # ------------ 处理单个公司 ------------
+    # ------------ Dealing with a single company ------------
     def process_company(self, company_url: str) -> Dict[str, Any]:
         result = {"company_url": company_url, "downloaded": [], "failed": []}
         pdf_candidates = self.get_all_pdf_links(company_url)
         if not pdf_candidates:
-            logger.info(f"[{company_url}] 未找到候选PDF链接")
+            logger.info(f"[{company_url}] No candidate PDF link found")
             return result
         company_name = company_url.rstrip('/').split('/')[-1]
         for info in pdf_candidates:
@@ -280,24 +280,24 @@ class ResponsibilityReportsScraper:
                 result["failed"].append(pdf_url)
         return result
 
-    # ------------ 主流程 ------------
+    # ------------ Main Process ------------
     def run(self):
-        logger.info("开始爬取 responsibilityreports.com 全量数据...")
+        logger.info("Start crawling the full data of responsibilityreports.com...")
         all_company_links = self.get_all_company_links()
-        logger.info(f"共采集到 {len(all_company_links)} 家公司链接，开始下载报告...")
+        logger.info(f"A total of {len(all_company_links)} company links have been collected. Start downloading the report...")
         with ThreadPoolExecutor(max_workers=Config.MAX_WORKERS) as executor:
             futures = {executor.submit(self.process_company, url): url for url in all_company_links}
             for future in as_completed(futures):
                 url = futures[future]
                 try:
                     res = future.result()
-                    logger.info(f"[DONE] {url} 成功下载 {len(res['downloaded'])} 份PDF")
+                    logger.info(f"[DONE] {url} Successfully downloaded {len(res['downloaded'])} PDFs")
                 except Exception as e:
-                    logger.error(f"[ERROR] {url} 异常: {str(e)}")
+                    logger.error(f"[ERROR] {url} abnormal: {str(e)}")
         self.cleanup_drivers()
-        logger.info("全部爬取完成!")
+        logger.info("All crawling completed!")
 
-    # ------------ 清理浏览器实例 ------------
+    # ------------ Clean up the browser instance ------------
     def cleanup_drivers(self):
         with self.lock:
             while self.driver_pool:
@@ -305,10 +305,9 @@ class ResponsibilityReportsScraper:
                 try:
                     drv.quit()
                 except Exception as e:
-                    logger.error(f"driver.quit() 出错: {str(e)}")
-
+                    logger.error(f"driver.quit() error: {str(e)}")
 # ---------------------------------------------
-#                   程序入口
+#                 Program entry
 # ---------------------------------------------
 if __name__ == "__main__":
     scraper = ResponsibilityReportsScraper()
