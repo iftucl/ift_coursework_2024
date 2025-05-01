@@ -19,8 +19,8 @@ services:
             max-file: "3"
         ports:
           - '5439:5432'
-        # volumes:
-        #   - ./postgres-data:/var/lib/postgresql/data
+        volumes:
+          - ./postgres-data:/var/lib/postgresql/data
         healthcheck:
           test: ["CMD-SHELL", "pg_isready"]
           interval: 10s
@@ -81,91 +81,3 @@ services:
         mc anonymous set public minio/csreport;
         tail -f /dev/null
         "
-    jenkins:
-      image: jenkins/jenkins:lts
-      build:
-        context: team_dogwood/coursework_one/orchestration/jenkins
-        dockerfile: Dockerfile
-      restart: unless-stopped
-      container_name: jenkins
-      ports:
-        - "8080:8080"
-        - "50000:50000"
-      volumes:
-        - jenkins_home:/var/jenkins_home
-      privileged: true
-      user: root  # Need this to handle Docker socket permissions
-      environment:
-        - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
-    
-    openmetadata_db:
-      image: mysql:8.0
-      container_name: openmetadata_db
-      environment:
-        MYSQL_ROOT_PASSWORD: openmetadata_root_password
-        MYSQL_DATABASE: openmetadata_db
-        MYSQL_USER: openmetadata_user
-        MYSQL_PASSWORD: openmetadata_password
-      ports:
-        - "3307:3306"
-      networks:
-        - iceberg_net
-      healthcheck:
-        test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-        interval: 10s
-        timeout: 5s
-        retries: 10
-
-    openmetadata_es:
-      image: docker.elastic.co/elasticsearch/elasticsearch:7.17.10
-      container_name: openmetadata_es
-      environment:
-        - discovery.type=single-node
-        - ES_JAVA_OPTS=-Xms512m -Xmx512m
-        - xpack.security.enabled=false
-      ports:
-        - "9201:9200"
-      networks:
-        - iceberg_net
-      healthcheck:
-        test: ["CMD-SHELL", "curl -f http://localhost:9200 || exit 1"]
-        interval: 10s
-        timeout: 5s
-        retries: 10
-  
-    openmetadata_server:
-      image: openmetadata/server:1.2.3
-      container_name: openmetadata_server
-      depends_on:
-        openmetadata_db:
-          condition: service_healthy
-        openmetadata_es:
-          condition: service_healthy
-      environment:
-        - OPENMETADATA_DATABASE_HOST=openmetadata_db
-        - OPENMETADATA_DATABASE_PORT=3306
-        - OPENMETADATA_DATABASE_USER=openmetadata_user
-        - OPENMETADATA_DATABASE_PASSWORD=openmetadata_password
-        - OPENMETADATA_DATABASE_DB=openmetadata_db
-        - ELASTICSEARCH_HOST=openmetadata_es
-        - ELASTICSEARCH_PORT=9200
-        - SERVER_HOST_API=http://openmetadata_server:8585/api
-        - AUTHORIZER_CLASS_NAME=org.openmetadata.service.security.NoopAuthorizer
-        - AUTHENTICATION_PROVIDER=no-auth
-      ports:
-        - "8585:8585"
-      networks:
-        - iceberg_net
-      healthcheck:
-        test: ["CMD", "curl", "-f", "http://localhost:8585/api/health"]
-        interval: 10s
-        timeout: 5s
-        retries: 10
-
-networks:
-  iceberg_net:
-
-volumes:
-  jenkins_home:
-# --- OpenMetadata Stack ---
-  
