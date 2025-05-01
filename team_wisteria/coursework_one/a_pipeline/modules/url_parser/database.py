@@ -37,8 +37,8 @@ class PostgresManager:
     
     def insert_pdf_record(self, record: Dict):
         """
-        插入一条记录；若同 company+year 已存在，则更新 filename、url、file_hash，
-        保证 Postgres 中的 filename 与 MinIO 保持一致。
+        Insert a record; if the same company+year already exists, update filename, url, 
+        and file_hash to ensure that the filename in Postgres is consistent with that in MinIO.
         """
         try:
             self.cur.execute("""
