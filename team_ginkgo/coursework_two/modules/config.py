@@ -1,3 +1,6 @@
+"""
+Configuration file containing database credentials and DeepSeek API settings.
+"""
 # Database Configuration
 DB_CONFIG = {
     "dbname": "fift",

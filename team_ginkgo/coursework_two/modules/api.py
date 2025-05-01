@@ -1,10 +1,15 @@
+"""
+API module for the FastAPI application.
+This module defines the API endpoints and middleware configurations.
+"""
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware  
 from db import get_connection
 
 app = FastAPI()
 
-
+# Add CORS middleware to allow cross-origin requests
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  
@@ -15,6 +20,12 @@ app.add_middleware(
 
 @app.get("/reports")
 def get_reports():
+    """
+    Fetch all CSR reports with indicators from the database.
+
+    :return: A list of dictionaries containing report data.
+    :rtype: list
+    """
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""

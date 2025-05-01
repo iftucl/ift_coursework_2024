@@ -1,3 +1,7 @@
+"""
+This module contains functions for downloading, processing, and updating CSR reports data.
+"""
+
 import os
 import fitz
 import requests
@@ -32,14 +36,20 @@ driver_service = Service(ChromeDriverManager().install())
 global_driver = webdriver.Chrome(service=driver_service, options=chrome_options)
 
 # Query reports to process
-def fetch_reports_from_db(): ## delete limit 10 when upload to github
+def fetch_reports_from_db():
+    """
+    Fetches reports from the database that need to be processed.
+
+    :return: A list of tuples containing symbol, report_url, and report_year.
+    :rtype: list
+    """
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
         SELECT symbol, report_url, report_year
         FROM ginkgo.csr_reports_with_indicators
         WHERE report_url IS NOT NULL
-        LIMIT 10;   
+        LIMIT 100;   
     """)
     rows = cursor.fetchall()
     cursor.close()
@@ -48,6 +58,16 @@ def fetch_reports_from_db(): ## delete limit 10 when upload to github
 
 # Download PDF file
 def try_requests_download(url, path):
+    """
+    Attempts to download a PDF file using the requests library.
+
+    :param url: The URL of the PDF file to download.
+    :type url: str
+    :param path: The local path where the PDF file will be saved.
+    :type path: str
+    :return: True if the download was successful, False otherwise.
+    :rtype: bool
+    """
     try:
         r = requests.get(url, timeout=15)
         if r.status_code == 200:
@@ -61,6 +81,16 @@ def try_requests_download(url, path):
         return False
 
 def try_selenium_download(url, path):
+    """
+    Attempts to download a PDF file using Selenium.
+
+    :param url: The URL of the PDF file to download.
+    :type url: str
+    :param path: The local path where the PDF file will be saved.
+    :type path: str
+    :return: True if the download was successful, False otherwise.
+    :rtype: bool
+    """
     try:
         global_driver.get(url)
         time.sleep(6)
@@ -79,6 +109,18 @@ def try_selenium_download(url, path):
     return False
 
 def download_pdf(url, symbol, year):
+    """
+    Downloads a PDF file using either requests or Selenium.
+
+    :param url: The URL of the PDF file to download.
+    :type url: str
+    :param symbol: The symbol associated with the report.
+    :type symbol: str
+    :param year: The year of the report.
+    :type year: int
+    :return: The path where the PDF file was saved, or None if the download failed.
+    :rtype: str or None
+    """
     filename = f"{symbol}_{year}.pdf"
     save_path = os.path.join(DOWNLOAD_DIR, filename)
     if try_requests_download(url, save_path):
@@ -90,6 +132,14 @@ def download_pdf(url, symbol, year):
 
 # Call DeepSeek API
 def call_deepseek_api(text):
+    """
+    Calls the DeepSeek API to extract Scope 1, 2, 3 emissions and Water Consumption from a text.
+
+    :param text: The text content to be analyzed.
+    :type text: str
+    :return: The JSON response from the API, or None if the call failed.
+    :rtype: str or None
+    """
     prompt = f"""The following is a section from a company's CSR report that includes Scope 1, Scope 2, Scope 3 emissions and Water Consumption.
 Please extract the numerical values for Scope 1, Scope 2, Scope 3 (emissions) and Water Consumption. 
 
@@ -132,6 +182,16 @@ Text content:
 
 # Resolve real symbol
 def resolve_real_symbol(symbol, year):
+    """
+    Resolves the real symbol for a given symbol and year.
+
+    :param symbol: The symbol to resolve.
+    :type symbol: str
+    :param year: The year of the report.
+    :type year: int
+    :return: The resolved symbol, or None if not found.
+    :rtype: str or None
+    """
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -146,6 +206,22 @@ def resolve_real_symbol(symbol, year):
 
 # Update database
 def update_database(symbol, year, scope_1, scope_2, scope_3, water_consumption):
+    """
+    Updates the database with the extracted emissions and water consumption data.
+
+    :param symbol: The symbol associated with the report.
+    :type symbol: str
+    :param year: The year of the report.
+    :type year: int
+    :param scope_1: The Scope 1 emissions.
+    :type scope_1: float or None
+    :param scope_2: The Scope 2 emissions.
+    :type scope_2: float or None
+    :param scope_3: The Scope 3 emissions.
+    :type scope_3: float or None
+    :param water_consumption: The water consumption.
+    :type water_consumption: float or None
+    """
     conn = get_connection()
     cursor = conn.cursor()
     try:
@@ -170,6 +246,12 @@ def update_database(symbol, year, scope_1, scope_2, scope_3, water_consumption):
 
 # Main processing function
 def process_single_download(row):
+    """
+    Processes a single report download, extraction, and database update.
+
+    :param row: A tuple containing symbol, report_url, and report_year.
+    :type row: tuple
+    """
     symbol, url, year = row
     symbol = symbol.strip()
     print(f"\nProcessing: {symbol} - {year}")
@@ -222,6 +304,9 @@ def process_single_download(row):
 
 # Entry point
 def main():
+    """
+    The main entry point for the script. Fetches reports from the database, processes them, and updates the database.
+    """
     rows = fetch_reports_from_db()
     if not rows:
         print("No records to process")

@@ -1,12 +1,30 @@
+"""
+This module provides functions to interact with the PostgreSQL database.
+It includes functions to establish a connection and create/update tables.
+"""
+
 import psycopg2
 from config import DB_CONFIG
 
 
 def get_connection():
+    """
+    Establishes a connection to the PostgreSQL database.
+
+    :return: A connection object to the database.
+    :rtype: psycopg2.extensions.connection
+    """
     return psycopg2.connect(**DB_CONFIG)
 
 
 def create_reports_with_indicators():
+    """
+    Creates or updates the 'csr_reports_with_indicators' table in the database.
+    The table is created if it doesn't exist, and additional columns for indicators are added if they don't exist.
+    Default units are set for the indicators if not already defined.
+
+    :raises Exception: If an error occurs during the database operations.
+    """
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -55,6 +73,7 @@ def create_reports_with_indicators():
     except Exception as e:
         # Rollback when exception occurs
         conn.rollback()
+        raise e
 
     finally:
         # Close connection in finally block

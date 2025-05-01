@@ -1,7 +1,7 @@
-api module
-==========
+db module
+=========
 
-.. automodule:: api
+.. automodule:: db
    :members:
    :show-inheritance:
    :undoc-members:
