@@ -13,7 +13,7 @@ from coursework_one.a_pipeline.modules.url_parser.database import PostgresManage
 from coursework_one.a_pipeline.modules.db_loader.crawler import Config
 
 def sync_minio_to_postgres():
-    # 1. 建立客户端
+    # 1. Create a client
     minio_client = Minio(
         Config.MINIO_ENDPOINT,
         access_key=Config.MINIO_ACCESS_KEY,
@@ -21,13 +21,13 @@ def sync_minio_to_postgres():
         secure=False
     )
     pg = PostgresManager(
-        host="localhost",         # 根据你的实际改
-        port="5439",              # 改成你 Postgres 端口
+        host="localhost",         
+        port="5439",              
         user="postgres",
         password="postgres",
         dbname="postgres"
     )
-    # 2. 清空旧记录
+  # 2. Clear old records
     pg.cur.execute("""
     SELECT EXISTS (
         SELECT FROM information_schema.tables 
@@ -38,9 +38,9 @@ def sync_minio_to_postgres():
     exists = pg.cur.fetchone()[0]
 
     if exists:
-        print("✅ 表 pdf_records 存在，可以安全 TRUNCATE")
+        print("✅ Table pdf_records exists and can be TRUNCATE safely")
     else:
-        print("❌ 表 pdf_records 不存在，需要先创建")
+        print("❌ Table pdf_records does not exist and needs to be created first")
 
     pg.cur.execute(f"""
     SELECT COUNT(*)
@@ -64,12 +64,12 @@ def sync_minio_to_postgres():
     
 
 
-    # 3. 遍历 MinIO 桶
+    # 3. Traverse MinIO buckets
     success_count=0
     for obj in minio_client.list_objects(Config.MINIO_BUCKET, recursive=True):
         filename = obj.object_name  # e.g. "Apple Inc_2022.pdf"
         print(f"Dealing with: {filename}")
-        # 4. 从文件名拆 company & year
+        # 4. Remove company & year from the file name
         try:
             base, ext = filename.rsplit('.', 1)
             company, year_str = base.rsplit('_', 1)
@@ -79,15 +79,15 @@ def sync_minio_to_postgres():
             continue
         
 
-        # 5. 取回对象计算哈希
+       # 5. Retrieve the object and calculate the hash
         data = minio_client.get_object(Config.MINIO_BUCKET, filename)
         content = data.read()
         content_hash = hashlib.md5(content).hexdigest()
 
-        # 6. 构造 record 并 UPSERT
+        # 6. Construct record and UPSERT
         record = {
             "company": company,
-            "url": "",               # MinIO 对象没有原始 URL，这里留空
+            "url": "",               # MinIO objects do not have a raw URL, leave this blank
             "year": year,
             "file_hash": content_hash,
             "filename": filename
@@ -96,12 +96,12 @@ def sync_minio_to_postgres():
         print(f"[Sync] Upserted {filename}")
         success_count += 1
 
-    # 7. 收尾
+    # 7. Finishing
     pg.close()
     print("[Sync] Done.")
-    print(f"[Sync] ✅ 同步完成，共处理 {success_count} 个文件。")
+    print(f"[Sync] ✅ Sync completed, processing {success_count} files in total.")
 
 if __name__ == "__main__":
-    print("开始同步 MinIO → Postgres")
+    print("Start syncing MinIO → Postgres")
     sync_minio_to_postgres()
 
