@@ -4,7 +4,7 @@ Make sure the following are running before starting the frontend:
 
 1. **Docker is running**
 
-2. **FastAPI backend is running at** `http://localhost:8801`
+2. **FastAPI backend is running at** `http://localhost:8081`
 
    (This should expose the route: `GET /companies/{symbol}`)
 

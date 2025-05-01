@@ -8,7 +8,7 @@ import sqlite3
 import pandas as pd
 import dotenv
 from team_adansonia.coursework_two.utils.dockercheck import is_running_in_docker
-load_dotenv()
+load_dotenv(override=True)
 
 if is_running_in_docker():
     ROOT_DIR = os.getenv("ROOT_DIR_DOCKER")

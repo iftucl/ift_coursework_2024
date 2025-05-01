@@ -1,7 +1,7 @@
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
 from fastapi import HTTPException
-
+import os
 
 def get_db():
     """
@@ -15,7 +15,10 @@ def get_db():
     """
     try:
         # Ensure the URI is correct based on your environment
-        mongo_uri = "mongodb://localhost:27019"  # Change if running in Docker
+        if os.path.exists("/.dockerenv"):
+            mongo_uri = "mongodb://mongo_db_cw:27017"
+        else:
+            mongo_uri = "mongodb://localhost:27019"
         print(f"🔌 Attempting to connect to MongoDB at {mongo_uri}")
 
         client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
