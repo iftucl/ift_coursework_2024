@@ -104,12 +104,27 @@ docs/_build/index.html
 
 ---
 
-## ✅ 生成文档后怎么用？
+## ✅ 生成html文档后怎么用？
 
 你可以：
 
 - 本地用浏览器打开 `docs/_build/index.html` 查看文档
 - 把 `docs/` 上传到 GitHub 并用 [GitHub Pages](https://pages.github.com/) 部署文档（设置 Pages 源目录为 `docs/_build/`）
 - 生成 PDF 或其他格式文档（可通过 `sphinx-build -b latexpdf` 等实现）
+
+---
+
+### 🛠️ 第七步：生成 LaTeX 文件并构建 PDF
+
+```bash
+poetry run sphinx-build -b latex docs/ docs/_latex/
+cd docs/_latex/
+.\make.bat all-pdf
+```
+
+> 你最终会在该目录下得到一个 PDF，如：
+```
+docs/_latex/ProjectName.pdf
+```
 
 ---
