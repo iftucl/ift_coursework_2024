@@ -157,7 +157,7 @@ def _commit_bulk_batch(collection, operations, info_list):
 
         # Log each operation (Inserted/Updated)
         for info in info_list:
-            print(f"📋 {info['operation']}: {info['company_name']} ({info['report_year']}) - {info['indicator_name']}")
+            print(f" {info['operation']}: {info['company_name']} ({info['report_year']}) - {info['indicator_name']}")
     except Exception as e:
         print(f" Error during batch bulk write: {e}")
 
