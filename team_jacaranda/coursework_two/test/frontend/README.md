@@ -3,7 +3,7 @@
 To run all frontend-related tests with coverage:
 
 # Method one:
-# Run "test_app.py, test_index_css.py, test_index_js.py, test_tailwind_config.py" one by one.
+Run "test_app.py, test_index_css.py, test_index_js.py, test_tailwind_config.py" one by one.
 
 # Method two:
 ```bash
