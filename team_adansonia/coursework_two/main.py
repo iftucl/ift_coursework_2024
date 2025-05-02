@@ -188,9 +188,21 @@ async def run_main_for_symbols(symbols_with_years: list[tuple[str, str | None]])
                 continue
 
             try:
-                logger.info(f"🚀 Running ESG workflow for: {symbol}, year: {year or latest_year}")
                 field_name_data = f"esg_data_{year}" if year else f"esg_data_{latest_year}"
                 field_name_goals = f"esg_goals_{year}" if year else f"esg_goals_{latest_year}"
+
+                # Set the status to processing
+                companies_collection.update_one(
+                    {"symbol": symbol},
+                    {"$set": {field_name_data: "processing"}}
+                )
+                companies_collection.update_one(
+                    {"symbol": symbol},
+                    {"$set": {field_name_goals: "processing"}}
+                )
+
+                logger.info(f"🚀 Running ESG workflow for: {symbol}, year: {year or latest_year}")
+
 
                 existing_doc = companies_collection.find_one({"symbol": symbol}, {field_name_data: 1})
                 if existing_doc and field_name_data in existing_doc:
@@ -215,6 +227,11 @@ async def run_main_for_symbols(symbols_with_years: list[tuple[str, str | None]])
                 logger.success("Updated seed file saved to mongo_seed.json.")
 
             except Exception as e:
+                #remove status from the company
+                companies_collection.update_one(
+                    {"symbol": symbol},
+                    {"$unset": {field_name_data: "", field_name_goals: ""}}
+                )
                 logger.error(f"❌ Failed to process {symbol}: {e}")
 
     finally:

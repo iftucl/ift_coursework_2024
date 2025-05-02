@@ -104,6 +104,46 @@ async def get_company_new(symbol: str, year: Optional[str] = None, db: Database 
 
     return result
 
+@app.get("/extract_data/{symbol}")
+async def extract_data(symbol: str, year: Optional[str] = None, db: Database = Depends(get_db)):
+    """
+    Extracts ESG data for a specific company and year.
+
+    Args:
+        symbol (str): The stock symbol of the company.
+        year (Optional[str]): The specific year to filter ESG data (optional).
+    """
+    print(f"🔔 Looking up company: {symbol}")  # Debug log
+    symbol = symbol.upper()
+    company = db["companies"].find_one({"symbol": symbol}, {"_id": 0})
+
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    # Try to determine the target year from CSR report info
+    csr_reports = company.get("csr_reports", {})
+    target_year = int(year) if year else get_latest_report_year(csr_reports)
+
+    if not target_year:
+        raise HTTPException(status_code=404, detail=f"No valid CSR report years found for {symbol}")
+
+    esg_data_key = f"esg_data_{target_year}"
+    esg_goals_key = f"esg_goals_{target_year}"
+
+    #check if the company is already processing
+    if company.get(esg_data_key) == "processing" or company.get(esg_goals_key) == "processing":
+        raise HTTPException(status_code=429, detail=f"Company {symbol} is already being processed")
+
+    # If data for that year is missing, try to refresh
+    if esg_data_key not in company:
+        await run_main_for_symbols([(symbol, str(target_year))])
+        print(f"🔄 Successfully extracted ESG data for {symbol} {target_year}")
+
+        if not company or esg_data_key not in company:
+            raise HTTPException(status_code=404, detail=f"No ESG data found for {symbol} {target_year}")
+
+
+
 @app.get("/all")
 async def get_all_companies(db: Database = Depends(get_db)):
     companies = list(db["companies"].find({}, {"_id": 0}))
