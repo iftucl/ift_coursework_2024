@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <h2 class="text-center mb-4">CSR Dashboard</h2>
+
+  <!-- 搜索区域 -->
+  <div class="row mb-4">
+    <div class="col-md-3">
+      <label for="company-select" class="form-label">Company:</label>
+      <select id="company-select" class="form-select">
+        {% for company in company_list %}
+        <option value="{{ company }}">{{ company }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label for="year-select" class="form-label">Year:</label>
+      <select id="year-select" class="form-select" multiple size="6">
+        {% for year in available_years %}
+        <option value="{{ year }}">{{ year }}</option>
+        {% endfor %}
+      </select>      
+    </div>
+    <div class="col-md-3">
+      <label for="metric-select" class="form-label">Indicator:</label>
+      <select id="metric-select" class="form-select">
+        {% for metric in esg_choices %}
+        <option value="{{ metric }}">{{ metric }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3 d-flex align-items-end">
+      <button class="btn btn-primary w-100" onclick="dashboardSearch()">Search</button>
+    </div>
+  </div>
+
+  <!-- 图表+表格 -->
+  <div class="row mb-4">
+    <div class="col-md-6">
+      <h5 class="text-center">Chart</h5>
+      <canvas id="dashboardChart" width="400" height="400" style="background:white;"></canvas>
+    </div>
+    <div class="col-md-6">
+      <h5 class="text-center">Table</h5>
+      <div class="table-responsive">
+        <table class="table table-bordered" id="dashboardTable">
+          <thead>
+            <tr>
+              <th>Year</th>
+              <th>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- 动态填充 -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary -->
+  <div class="row">
+    <div class="col-12">
+      <h5 class="text-center">Summary or Data Quality Issues</h5>
+      <div id="dashboardSummary" class="p-3 bg-light rounded" style="min-height:100px;">
+        <!-- 动态填充 -->
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  let dashboardChart = null;
+
+  window.dashboardSearch = function(){
+    const company = document.getElementById("company-select").value;
+    const yearSel = document.getElementById("year-select");
+    const years = Array.from(yearSel.selectedOptions).map(opt => opt.value);
+    const metric = document.getElementById("metric-select").value;
+
+    if (!company || !years.length || !metric) {
+      alert("Please select company, years, and indicator!");
+      return;
+    }
+
+    fetch("/api/dashboard_data", {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ company: company, metric: metric, years: years })
+    })
+    .then(r => r.json())
+    .then(data => {
+      const ctx = document.getElementById("dashboardChart").getContext('2d');
+      if (dashboardChart) dashboardChart.destroy();
+      dashboardChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: data.years,
+          datasets: [{
+            label: `${company} - ${metric}`,
+            data: data.values,
+            borderColor: '#007bff',
+            backgroundColor: 'rgba(0,123,255,0.1)',
+            fill: true
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            title: { display: true, text: 'Trend Over Selected Years' }
+          }
+        }
+      });
+
+      const tableBody = document.querySelector("#dashboardTable tbody");
+      tableBody.innerHTML = "";
+      data.years.forEach((year, idx) => {
+        tableBody.innerHTML += `<tr><td>${year}</td><td>${data.values[idx]}</td></tr>`;
+      });
+
+      document.getElementById("dashboardSummary").textContent = data.summary;
+    })
+    .catch(err => console.error(err));
+  }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESG Data Search</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        fieldset { margin-bottom: 15px; padding: 10px; }
+        .company-item { margin: 5px 0; cursor: pointer; }
+        .selected-item { display: inline-block; margin: 2px; padding: 4px 8px; background: #eef; border-radius: 4px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        th { background: #f7f7f7; }
+    </style>
+</head>
+<body>
+
+<h1>ESG Data Search</h1>
+
+<form id="search-form" method="post" action="{{ url_for('search_results') }}">
+    <!-- Company Selector -->
+    <fieldset>
+        <legend>Select Companies</legend>
+        <input type="text" id="company-search" placeholder="Type company name">
+        <div id="company-results"></div>
+        <div id="selected-companies"></div>
+    </fieldset>
+
+    <!-- Thematic Area & Metrics -->
+    <fieldset>
+        <legend>Select Metrics by Thematic Area</legend>
+        {% for area, metrics in thematic_area_choices.items() %}
+        <fieldset>
+            <legend>{{ area }}</legend>
+            {% for m in metrics %}
+            <label>
+                <input type="checkbox" name="selected_metrics" value="{{ m }}"> {{ m }}
+            </label><br>
+            {% endfor %}
+        </fieldset>
+        {% endfor %}
+    </fieldset>
+
+    <!-- Year Selector -->
+    <fieldset>
+        <legend>Select Years</legend>
+        {% for y in available_years %}
+        <label>
+            <input type="checkbox" name="selected_years" value="{{ y }}"> {{ y }}
+        </label>
+        {% endfor %}
+    </fieldset>
+
+    <button type="submit">Search</button>
+</form>
+
+<!-- Results Table -->
+{% if search_results %}
+<table>
+    <thead>
+        <tr>
+            <th>Company</th>
+            <th>Thematic Area</th>
+            <th>Metric</th>
+            {% for y in available_years %}
+            <th>{{ y }}</th>
+            {% endfor %}
+            <th>Goal</th>
+            <th>Progress</th>
+            <th>Target Value</th>
+            <th>Target Unit</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in search_results %}
+        <tr>
+            <td>{{ row.company_name }}</td>
+            <td>{{ row.thematic_area }}</td>
+            <td>{{ row.esg_metric }}</td>
+            {% for y in available_years %}
+            <td>{{ row['year_' + y] or '-' }}</td>
+            {% endfor %}
+            <td>{{ row.goal_text or '-' }}</td>
+            <td>{{ row.progress_text or '-' }}</td>
+            <td>{{ row.target_value or '-' }}</td>
+            <td>{{ row.target_unit or '-' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+<script>
+$(function() {
+    // AJAX for company search
+    $('#company-search').on('input', function() {
+        const q = $(this).val();
+        if (!q) { $('#company-results').empty(); return; }
+        $.getJSON('{{ url_for("api_search_companies") }}', { q }, function(data) {
+            const container = $('#company-results').empty();
+            data.forEach(item => {
+                const div = $('<div>').addClass('company-item').text(item.company_name)
+                    .data('info', item)
+                    .appendTo(container);
+            });
+        });
+    });
+
+    // Select company
+    $('#company-results').on('click', '.company-item', function() {
+        const info = $(this).data('info');
+        const key = info.company_name; // 只用 company_name
+        if ($('input[value="' + key + '"]').length) return; // already selected
+        const chip = $('<span>').addClass('selected-item').text(info.company_name)
+            .appendTo('#selected-companies');
+        $('<input>').attr({ type: 'hidden', name: 'company_tickers', value: key })
+            .appendTo('#search-form');
+        $('#company-results').empty();
+        $('#company-search').val('');
+    });
+});
+</script>
+
+</body>
+</html>
+
+

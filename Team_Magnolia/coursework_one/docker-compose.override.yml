@@ -1,0 +1,202 @@
+version: "3.8"
+
+services:
+
+  ############################
+  # 1) MongoDB for CW1 & CW2
+  ############################
+  mongo_db:
+    container_name: mongo_db_cw
+    image: mongo:latest
+    ports:
+      - "27019:27017"
+    volumes:
+      - mongo_data_cw:/data/db
+    networks:
+      - iceberg_net
+
+  #########################
+  # 2) PostgreSQL for CW1
+  #########################
+  postgres_db:
+    container_name: postgres_db_cw
+    image: postgres:10.5
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - PGUSER=postgres
+    ports:
+      - "5439:5432"
+    volumes:
+      - postgres_data_cw:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - iceberg_net
+
+  #################################
+  # 3) Seed PostgreSQL (CW1 helper)
+  #################################
+  postgres_seed:
+    container_name: postgres_seed_cw
+    restart: on-failure
+    build:
+      # 从项目根目录开始构建，这样 Dockerfile 中的 COPY 路径才正确
+      context: .
+      dockerfile: 000.Database/SQL/Dockerfile
+    environment:
+      - POSTGRES_DATABASE=postgres_feeder
+      - POSTGRES_HOST=postgres_db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres_feeder
+      - POSTGRES_PASSWORD=postgres_feeder
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+    networks:
+      - iceberg_net
+
+  ##########################
+  # 4) pgAdmin (optional)
+  ##########################
+  pgadmin:
+    container_name: pg_admin_cw
+    image: dpage/pgadmin4
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: root
+    ports:
+      - "5051:80"
+    networks:
+      - iceberg_net
+
+  ##########################
+  # 5) MinIO Server (CW2)
+  ##########################
+  miniocw:
+    container_name: miniocw
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=ift_bigdata
+      - MINIO_ROOT_PASSWORD=minio_password
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data_cw:/data
+    networks:
+      - iceberg_net
+
+  ################################
+  # 6) MinIO Client for bucket init
+  ################################
+  minio_client_cw:
+    container_name: minio_client_cw
+    image: minio/mc
+    entrypoint: >
+      /bin/sh -c "
+        until mc alias set minio http://miniocw:9000 ift_bigdata minio_password; do
+          echo 'waiting for minio...' && sleep 2;
+        done;
+        mc rm -r --force minio/csreport || true;
+        mc mb minio/csreport;
+        mc anonymous set public minio/csreport;
+        tail -f /dev/null
+      "
+    depends_on:
+      - miniocw
+    networks:
+      - iceberg_net
+
+  ##########################
+  # 7) Selenium (CW1)
+  ##########################
+  selenium:
+    container_name: selenium_csr_cw
+    image: selenium/standalone-chromium:latest
+    shm_size: "2g"
+    ports:
+      - "4444:4444"
+      - "7900:7900"
+    networks:
+      - iceberg_net
+
+  ####################################
+  # 8) Magnolia Scraper Service (CW1)
+  ####################################
+  magnolia_scraper:
+    container_name: magnolia_scraper_cw
+    build:
+      context: ./Team_Magnolia/coursework_one
+      dockerfile: Dockerfile
+    environment:
+      - DOCKER_ENV=true
+      - MONGO_URI=mongodb://mongo_db:27017
+      - MINIO_HOST=miniocw:9000
+      - POSTGRES_HOST=postgres_db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - SELENIUM_URL=http://selenium:4444/wd/hub
+    depends_on:
+      - mongo_db
+      - miniocw
+      - postgres_db
+      - selenium
+    networks:
+      - iceberg_net
+
+  ###################################################
+  # 9) Coursework Two CLI & Batch‐Extract (CW2)
+  ###################################################
+  coursework_two:
+    container_name: coursework_two_cw
+    build:
+      context: ./Team_Magnolia/coursework_two
+      dockerfile: Dockerfile
+    volumes:
+      - ./Team_Magnolia/coursework_two:/app
+      - poetry_cache:/root/.cache/pypoetry
+    working_dir: /app
+    entrypoint: ["bash","-lc"]
+    command:
+      - >
+        "
+        poetry install --with dev &&
+        python Main.py batch-extract --prefix \"2024/\" &&
+        tail -f /dev/null
+        "
+    environment:
+      - MINIO_ENDPOINT=http://miniocw:9000
+      - MINIO_ACCESS_KEY=ift_bigdata
+      - MINIO_SECRET_KEY=minio_password
+      - MINIO_BUCKET=csreport
+      - MINIO_SECURE="false"
+      - MONGO_URI=mongodb://mongo_db:27017
+      - MONGO_DB=csr_extraction
+      - POSTGRES_URI=postgresql://postgres:postgres@postgres_db:5432/postgres
+      - POSTGRES_SCHEMA=csr_reporting
+      - GROQ_API_KEY=${GROQ_API_KEY}
+    depends_on:
+      - mongo_db
+      - miniocw
+      - postgres_db
+    networks:
+      - iceberg_net
+
+# 指明 iceberg_net 为外部网络
+networks:
+  iceberg_net:
+    external: true
+
+# 只在 override 里声明你需要的 volume 名称（和根文件中匿名 volume 保持一致即可）
+volumes:
+  mongo_data_cw:
+  postgres_data_cw:
+  minio_data_cw:
+  poetry_cache:

@@ -1,0 +1,41 @@
+# tools/scheduler.py  (新增小脚本)
+# ------------------------------------------------------------
+import argparse, time, logging
+from apscheduler.schedulers.blocking import BlockingScheduler
+from apscheduler.triggers.cron import CronTrigger
+from subprocess import run
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+def _run_batch(prefix: str | None, limit: int | None):
+    cmd = ["python", "Main.py", "batch-extract"]
+    if prefix: cmd += ["--prefix", prefix]
+    if limit:  cmd += ["--limit",  str(limit)]
+    logging.info("▶  %s", " ".join(cmd))
+    run(cmd, check=True)
+
+def main():
+    p = argparse.ArgumentParser("Batch-Extract Scheduler")
+    p.add_argument("--frequency", choices=["daily", "weekly", "monthly"], required=True)
+    p.add_argument("--prefix",    default=None, help="e.g. '2024/'")
+    p.add_argument("--limit",     type=int, default=None)
+    args = p.parse_args()
+
+    cron_map = {
+        "daily":   CronTrigger(hour=2,  minute=0),          # 每天 02:00
+        "weekly":  CronTrigger(day_of_week="sun", hour=3),  # 每周日 03:00
+        "monthly": CronTrigger(day=1, hour=4),              # 每月 1 号 04:00
+    }
+
+    sched = BlockingScheduler(timezone="UTC")   # 若需本地时区换成 'Asia/Shanghai'
+    sched.add_job(_run_batch, cron_map[args.frequency],
+                  kwargs=dict(prefix=args.prefix, limit=args.limit),
+                  id="cw2_batch_extract")
+    logging.info("Scheduler started – frequency=%s", args.frequency)
+    try:
+        sched.start()
+    except (KeyboardInterrupt, SystemExit):
+        pass
+
+if __name__ == "__main__":
+    main()
