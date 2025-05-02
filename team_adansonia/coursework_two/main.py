@@ -12,9 +12,17 @@ Main Functions:
 - main: Main loop for processing all companies in the database (used for bulk updates).
 """
 
-import json
 import os
+import re
+import json
+import tempfile
+import asyncio
+from loguru import logger
+from bson import ObjectId
+from datetime import datetime
 from dotenv import load_dotenv
+from mongo_db import company_data as mongo
+from validation.validation import full_validation_pipeline
 from data_pipeline.goals_extractor import call_deepseek_find_goals, extract_goals_by_page
 from data_pipeline.llama_extractor import LlamaExtractor
 from data_pipeline.csr_utils import (
@@ -25,14 +33,6 @@ from data_pipeline.csr_utils import (
     process_csr_report,
     get_latest_report_year,
 )
-from team_adansonia.coursework_two.validation.validation import full_validation_pipeline
-from loguru import logger
-import tempfile
-import re
-from team_adansonia.coursework_two.mongo_db import company_data as mongo
-from bson import ObjectId
-from datetime import datetime
-import asyncio
 
 KEYWORDS = ["gallons", "MWh", "pounds", "m3", "water usage", "electricity", "energy", "scope 1", "scope 2", "deforestation", "plastic"]
 YEAR_PATTERN = re.compile(r"\b(?:FY\s?\d{2,4}|\b20[1-3][0-9]\b)", re.IGNORECASE)
@@ -311,5 +311,5 @@ def main():
 
 # Entry point
 if __name__ == "__main__":
-    symbols_with_years = [("MMM", "2022")]
+    symbols_with_years = [("MMM", "2023")]
     asyncio.run(run_main_for_symbols(symbols_with_years))

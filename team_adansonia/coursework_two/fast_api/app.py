@@ -3,13 +3,13 @@ from fastapi import FastAPI, Depends, HTTPException
 from pymongo.database import Database
 from typing import Optional
 from fastapi.encoders import jsonable_encoder
-from team_adansonia.coursework_two.fast_api.db import init_db, close_db, get_db  # Adjust according to your actual folder structure
+from fast_api.db import init_db, close_db, get_db  # Adjust according to your actual folder structure
 from fastapi import APIRouter, Depends, HTTPException
 from pymongo.database import Database
 from typing import Optional
 import re
-from team_adansonia.coursework_two.main import run_main_for_symbols
-from team_adansonia.coursework_two.data_pipeline.csr_utils import get_latest_report_year
+from main import run_main_for_symbols
+from data_pipeline.csr_utils import get_latest_report_year
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
@@ -150,4 +150,4 @@ async def get_all_companies(db: Database = Depends(get_db)):
     return companies
 
 if __name__ == "__main__":
-    uvicorn.run("team_adansonia.coursework_two.fast_api.app:app", host="127.0.0.1", port=8081, reload=True)
+    uvicorn.run("fast_api.app:app", host="127.0.0.1", port=8081, reload=True)

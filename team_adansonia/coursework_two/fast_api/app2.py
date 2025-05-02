@@ -3,9 +3,9 @@ from fastapi import FastAPI, Depends, HTTPException
 from pymongo.database import Database
 from typing import Optional
 from fastapi.encoders import jsonable_encoder
-from team_adansonia.coursework_two.fast_api.db import get_db
-from team_adansonia.coursework_two.main import run_main_for_symbols
-from team_adansonia.coursework_two.data_pipeline.csr_utils import get_latest_report_year  # ✅ Import utility function
+from fast_api.db import get_db
+from main import run_main_for_symbols
+from data_pipeline.csr_utils import get_latest_report_year  # ✅ Import utility function
 
 app = FastAPI()
 

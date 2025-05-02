@@ -7,8 +7,8 @@ import httpx
 
 app = FastAPI()
 
-app.mount("/static", StaticFiles(directory="team_adansonia/coursework_two/frontend/static"), name="static")
-templates = Jinja2Templates(directory="team_adansonia/coursework_two/frontend/templates")
+app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
+templates = Jinja2Templates(directory="frontend/templates")
 
 # Home page: search form
 @app.get("/", response_class=HTMLResponse)
@@ -40,4 +40,4 @@ async def company(request: Request, symbol: str):
     return templates.TemplateResponse("company.html", {"request": request, "symbol": symbol, "data": data})
 
 if __name__ == "__main__":
-    uvicorn.run("team_adansonia.coursework_two.frontend.main:app", host="127.0.0.1", port=8080, reload=True)
+    uvicorn.run("frontend.main:app", host="127.0.0.1", port=8080, reload=True)
