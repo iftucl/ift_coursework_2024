@@ -91,13 +91,13 @@ Welcome to 项目的文档!
 ### 🌍 第六步：生成 HTML 文档
 
 ```bash
-poetry run sphinx-build -b html docs/ docs/_build/
+poetry run sphinx-build -b html docs/ docs/_build/html
 ```
 
 打开：
 
 ```
-docs/_build/index.html
+docs/_build/html/index.html
 ```
 
 即可浏览完整文档（包括所有模块、函数、类等的说明）。
@@ -108,8 +108,8 @@ docs/_build/index.html
 
 你可以：
 
-- 本地用浏览器打开 `docs/_build/index.html` 查看文档
-- 把 `docs/` 上传到 GitHub 并用 [GitHub Pages](https://pages.github.com/) 部署文档（设置 Pages 源目录为 `docs/_build/`）
+- 本地用浏览器打开 `docs/_build/html/index.html` 查看文档
+- 把 `docs/` 上传到 GitHub 并用 [GitHub Pages](https://pages.github.com/) 部署文档（设置 Pages 源目录为 `docs/_build/html`）
 - 生成 PDF 或其他格式文档（可通过 `sphinx-build -b latexpdf` 等实现）
 
 ---
@@ -117,14 +117,14 @@ docs/_build/index.html
 ### 🛠️ 第七步：生成 LaTeX 文件并构建 PDF
 
 ```bash
-poetry run sphinx-build -b latex docs/ docs/_latex/
-cd docs/_latex/
+poetry run sphinx-build -b latex docs/ docs/_build/latex
+cd docs/_build/latex
 .\make.bat all-pdf
 ```
 
 > 你最终会在该目录下得到一个 PDF，如：
 ```
-docs/_latex/ProjectName.pdf
+docs/_build/latex/ProjectName.pdf
 ```
 
 ---

@@ -1,14 +1,14 @@
 .. Bigdata_cw2_Jacaranda documentation master file, created by
-   sphinx-quickstart on Fri May  2 13:58:12 2025.
+   sphinx-quickstart on Fri May  2 18:47:57 2025.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
 Bigdata_cw2_Jacaranda documentation
 ===================================
 
-Welcome to the Bigdata_cw2_Jacaranda project documentation!
-This site contains technical documentation for all modules, FastAPI backend, and tests.
-
+Add your content using ``reStructuredText`` syntax. See the
+`reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
+documentation for details.
 
 
 .. toctree::
