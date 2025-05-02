@@ -7,7 +7,7 @@ import datetime
 import sqlite3
 import pandas as pd
 import dotenv
-from team_adansonia.coursework_two.utils.dockercheck import is_running_in_docker
+from utils.dockercheck import is_running_in_docker
 load_dotenv(override=True)
 
 if is_running_in_docker():
@@ -292,7 +292,7 @@ def import_seed_to_mongo():
     print("⚠️ All existing documents in the collection have been deleted.")
 
     # Step 3: Load the seed file into MongoDB
-    seed_file = os.path.join(ROOT_DIR, "team_adansonia/coursework_two/mongo-seed", "seed_data.json")
+    seed_file = os.path.join(ROOT_DIR, "mongo-seed", "seed_data.json")
     if os.path.exists(seed_file):  # Check if the seed file exists
         with open(seed_file, "r") as f:
             try:
@@ -312,8 +312,8 @@ def import_seed_to_mongo():
     return collection
 # --- Main Function for Testing ---
 def main():
-    df = load_sql_to_pandas()
-    create_mongo_seed_file(df)
+    #df = load_sql_to_pandas()
+    #create_mongo_seed_file(df)
     mongo_client = connect_to_mongo()
     import_seed_to_mongo()
 
@@ -323,4 +323,4 @@ def main():
     # Access the database (not the collection directly)
 
 if __name__ == "__main__":
-       main()
+    main()

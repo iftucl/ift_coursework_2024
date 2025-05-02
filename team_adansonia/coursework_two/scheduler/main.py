@@ -6,7 +6,7 @@ from apscheduler.triggers.cron import CronTrigger
 # Add parent directory to import path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from team_adansonia.scheduler_test import say_hello  # now this works!
+from scheduler_test import say_hello  # now this works!
 
 if __name__ == "__main__":
     scheduler = BlockingScheduler()

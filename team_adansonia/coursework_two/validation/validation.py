@@ -3,7 +3,7 @@ import os
 import re
 from dotenv import load_dotenv
 from loguru import logger
-from team_adansonia.coursework_two.validation.deepseek_validation import validate_esg_data_with_deepseek
+from validation.deepseek_validation import validate_esg_data_with_deepseek
 
 #TODO: If number is not on the same page with metric, do not validate
 #TODO: Standardise years

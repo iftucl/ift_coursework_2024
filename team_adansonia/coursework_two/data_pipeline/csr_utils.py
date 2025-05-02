@@ -6,7 +6,7 @@ import pdfplumber
 from pymongo import MongoClient
 from loguru import logger
 import os
-from team_adansonia.coursework_two.mongo_db import company_data as mongo
+from mongo_db import company_data as mongo
 KEYWORDS = ["gallons", "MWh", "pounds", "m3", "water usage", "electricity", "energy", "scope 1", "scope 2", "deforestation", "plastic"]
 YEAR_PATTERN = re.compile(r"\b(?:FY\s?\d{2,4}|\b20[1-3][0-9]\b)", re.IGNORECASE)
 

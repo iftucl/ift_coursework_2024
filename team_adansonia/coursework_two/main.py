@@ -15,9 +15,9 @@ Main Functions:
 import json
 import os
 from dotenv import load_dotenv
-from team_adansonia.coursework_two.data_pipeline.goals_extractor import call_deepseek_find_goals, extract_goals_by_page
-from team_adansonia.coursework_two.data_pipeline.llama_extractor import LlamaExtractor
-from team_adansonia.coursework_two.data_pipeline.csr_utils import (
+from data_pipeline.goals_extractor import call_deepseek_find_goals, extract_goals_by_page
+from data_pipeline.llama_extractor import LlamaExtractor
+from data_pipeline.csr_utils import (
     get_company_data_by_symbol,
     download_pdf,
     filter_pdf_pages,
