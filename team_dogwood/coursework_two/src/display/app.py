@@ -1,20 +1,26 @@
 import sys
 import os
 
-current_dir = os.path.dirname(os.path.abspath(__file__))        
-project_root = os.path.abspath(os.path.join(current_dir, ".."))
-sys.path.insert(0, project_root)
+sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from src.display.load_and_visualize import load_all_esg_data, plot_company_all_three_categories, compare_companies_metrics
 
 import io
 import base64
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static")
 
 df_all = load_all_esg_data()
+
+# Serve the frontend
+@app.route("/", methods=["GET"])
+def index():
+    # Serve index.html from the current directory (src/display/)
+    return send_from_directory(os.path.dirname(__file__), "index.html")
 
 @app.route('/plot-company', methods=["POST"])
 def plot_company_api():
@@ -64,4 +70,4 @@ def compare_companies_api():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5550, debug=True)
