@@ -10,7 +10,7 @@ Main functionality:
 - API endpoints for accessing and querying CSR data, indicators, and reports.
 
 To run the application:
-- Run `poetry run uvicorn FastAPI.main:app --host 0.0.0.0 --port 8000 --reload`
+- Run `poetry run uvicorn my_fastapi.main:app --host 0.0.0.0 --port 8000 --reload`
 - Run `ngrok http --url=csr.jacaranda.ngrok.app 8000`
 - Access Swagger UI at `http://127.0.0.1:8000/docs`
 - Original JSON schema can be found at `http://127.0.0.1:8000/openapi.json`

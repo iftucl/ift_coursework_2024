@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>modules.data_storage.create_table &#8212; Bigdata_cw2_Jacaranda 1.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/alabaster.css?v=27fed22d" />
+    <script src="../../../_static/documentation_options.js?v=f2a433a1"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+   
+  <link rel="stylesheet" href="../../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for modules.data_storage.create_table</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Database setup module for CSR reporting system.</span>
+
+<span class="sd">This module connects to a PostgreSQL database, creates necessary schema and tables</span>
+<span class="sd">for storing CSR indicators and associated data, and populates the indicators table </span>
+<span class="sd">with predefined environmental indicators and keywords.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">psycopg2</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">psycopg2.extras</span><span class="w"> </span><span class="kn">import</span> <span class="n">execute_values</span>
+
+<span class="c1"># --- PostgreSQL Configuration ---</span>
+<span class="n">db_config</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;dbname&quot;</span><span class="p">:</span> <span class="s2">&quot;fift&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="s2">&quot;postgres&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;password&quot;</span><span class="p">:</span> <span class="s2">&quot;postgres&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;host&quot;</span><span class="p">:</span> <span class="s2">&quot;host.docker.internal&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;port&quot;</span><span class="p">:</span> <span class="mi">5439</span>
+<span class="p">}</span>
+
+
+<div class="viewcode-block" id="create_table_and_insert_data">
+<a class="viewcode-back" href="../../../modules.data_storage.html#modules.data_storage.create_table.create_table_and_insert_data">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">create_table_and_insert_data</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create the schema and tables required for CSR data reporting and </span>
+<span class="sd">    insert predefined indicator metadata into the `CSR_indicators` table.</span>
+
+<span class="sd">    This includes:</span>
+<span class="sd">    - Creating the `csr_reporting` schema if it does not exist.</span>
+<span class="sd">    - Creating the `CSR_indicators` table to store CSR indicator metadata.</span>
+<span class="sd">    - Creating the `CSR_Data` table to store extracted CSR data.</span>
+<span class="sd">    - Inserting predefined indicators and associated keywords.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        psycopg2.Error: If any error occurs during schema/table creation or data insertion.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Create schema if not exists</span>
+    <span class="n">create_schema_sql</span> <span class="o">=</span> <span class="s2">&quot;CREATE SCHEMA IF NOT EXISTS csr_reporting;&quot;</span>
+
+    <span class="c1"># Create CSR_indicators Table</span>
+    <span class="n">create_indicators_table_sql</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">    CREATE TABLE IF NOT EXISTS csr_reporting.CSR_indicators (</span>
+<span class="s2">        indicator_id SERIAL PRIMARY KEY,</span>
+<span class="s2">        indicator_name VARCHAR(255),</span>
+<span class="s2">        theme VARCHAR(100),</span>
+<span class="s2">        unit VARCHAR(50),</span>
+<span class="s2">        description TEXT,</span>
+<span class="s2">        keywords TEXT[],</span>
+<span class="s2">        is_target BOOLEAN</span>
+<span class="s2">    );</span>
+<span class="s2">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># Create CSR_Data Table</span>
+    <span class="n">create_data_table_sql</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">    CREATE TABLE IF NOT EXISTS csr_reporting.CSR_Data (</span>
+<span class="s2">        data_id SERIAL PRIMARY KEY,</span>
+<span class="s2">        security VARCHAR(255),</span>
+<span class="s2">        report_year INT,</span>
+<span class="s2">        indicator_id INT,</span>
+<span class="s2">        indicator_name VARCHAR(255),</span>
+<span class="s2">        value_raw TEXT,</span>
+<span class="s2">        unit_raw VARCHAR(50),</span>
+<span class="s2">        value_standardized NUMERIC,</span>
+<span class="s2">        unit_standardized VARCHAR(50),</span>
+<span class="s2">        source_excerpt JSONB,</span>
+<span class="s2">        extraction_time TIMESTAMP,</span>
+<span class="s2">        pdf_page TEXT,</span>
+<span class="s2">        llm_response_raw TEXT,</span>
+<span class="s2">        unit_conversion TEXT,</span>
+<span class="s2">        FOREIGN KEY (indicator_id) REFERENCES csr_reporting.CSR_indicators (indicator_id)</span>
+<span class="s2">    );</span>
+<span class="s2">    &quot;&quot;&quot;</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">conn</span> <span class="o">=</span> <span class="n">psycopg2</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="o">**</span><span class="n">db_config</span><span class="p">)</span>
+        <span class="n">cur</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span>
+
+        <span class="c1"># Create schema and tables</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">create_schema_sql</span><span class="p">)</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">create_indicators_table_sql</span><span class="p">)</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">create_data_table_sql</span><span class="p">)</span>
+        <span class="n">conn</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;✅ Tables CSR_indicators and CSR_Data created successfully.&quot;</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;❌ Error occurred: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Keywords for each indicator</span>
+    <span class="n">keywords_dict</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;Total GHG Emissions&quot;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="s2">&quot;Total GHG emissions&quot;</span><span class="p">,</span> <span class="s2">&quot;Carbon emissions&quot;</span><span class="p">,</span> <span class="s2">&quot;Greenhouse gas emissions&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;CO₂ emissions&quot;</span><span class="p">,</span> <span class="s2">&quot;GHG emissions&quot;</span>
+        <span class="p">],</span>
+        <span class="s2">&quot;Carbon Intensity&quot;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="s2">&quot;Carbon intensity&quot;</span><span class="p">,</span> <span class="s2">&quot;Carbon emissions per unit revenue&quot;</span><span class="p">,</span> <span class="s2">&quot;Carbon emissions per dollar&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Emissions intensity&quot;</span><span class="p">,</span> <span class="s2">&quot;GHG intensity&quot;</span>
+        <span class="p">],</span>
+        <span class="s2">&quot;Renewable Energy Usage Ratio&quot;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="s2">&quot;Renewable energy usage&quot;</span><span class="p">,</span> <span class="s2">&quot;Renewable energy ratio&quot;</span><span class="p">,</span> <span class="s2">&quot;Solar energy usage&quot;</span><span class="p">,</span> <span class="s2">&quot;Wind energy usage&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Percentage of renewable energy&quot;</span><span class="p">,</span> <span class="s2">&quot;Green energy&quot;</span><span class="p">,</span> <span class="s2">&quot;Proportion of clean energy&quot;</span><span class="p">,</span> <span class="s2">&quot;Sustainable energy mix&quot;</span>
+        <span class="p">],</span>
+        <span class="s2">&quot;Energy Intensity&quot;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="s2">&quot;Energy intensity&quot;</span><span class="p">,</span> <span class="s2">&quot;Energy consumption per revenue&quot;</span><span class="p">,</span> <span class="s2">&quot;Energy efficiency&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Energy usage per unit of output&quot;</span><span class="p">,</span> <span class="s2">&quot;Energy use per dollar&quot;</span><span class="p">,</span> <span class="s2">&quot;Energy consumed per sales&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Energy productivity&quot;</span>
+        <span class="p">],</span>
+        <span class="s2">&quot;Water Replenishment&quot;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="s2">&quot;Water replenishment&quot;</span><span class="p">,</span> <span class="s2">&quot;Water recovery rate&quot;</span><span class="p">,</span> <span class="s2">&quot;Water recycling rate&quot;</span><span class="p">,</span> <span class="s2">&quot;Water return&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Water reinjection&quot;</span><span class="p">,</span> <span class="s2">&quot;Percentage of water restored&quot;</span><span class="p">,</span> <span class="s2">&quot;Water reused&quot;</span><span class="p">,</span> <span class="s2">&quot;Water returned to environment&quot;</span>
+        <span class="p">],</span>
+        <span class="s2">&quot;Packaging Recyclable&quot;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="s2">&quot;Recyclable packaging&quot;</span><span class="p">,</span> <span class="s2">&quot;Packaging recyclability&quot;</span><span class="p">,</span> <span class="s2">&quot;Sustainable packaging&quot;</span><span class="p">,</span> <span class="s2">&quot;Green packaging&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Recyclable materials&quot;</span><span class="p">,</span> <span class="s2">&quot;Recyclable content in packaging&quot;</span><span class="p">,</span> <span class="s2">&quot;Packaging recyclable content&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Recycled materials in packaging&quot;</span><span class="p">,</span> <span class="s2">&quot;Recycled content&quot;</span><span class="p">,</span> <span class="s2">&quot;Environment-friendly packaging&quot;</span><span class="p">,</span> <span class="s2">&quot;Eco-packaging&quot;</span>
+        <span class="p">],</span>
+        <span class="s2">&quot;Waste Reduced&quot;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="s2">&quot;Waste reduction&quot;</span><span class="p">,</span> <span class="s2">&quot;Waste prevented&quot;</span><span class="p">,</span> <span class="s2">&quot;Waste prevention&quot;</span><span class="p">,</span> <span class="s2">&quot;Waste minimization&quot;</span><span class="p">,</span> <span class="s2">&quot;Waste avoidance&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Waste management&quot;</span><span class="p">,</span> <span class="s2">&quot;Recycling rates&quot;</span><span class="p">,</span> <span class="s2">&quot;Reduction of solid waste&quot;</span><span class="p">,</span> <span class="s2">&quot;Decreased waste output&quot;</span>
+        <span class="p">]</span>
+    <span class="p">}</span>
+
+    <span class="c1"># List of CSR indicators and their metadata</span>
+    <span class="n">indicators_data</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="c1"># Climate Change</span>
+        <span class="p">(</span><span class="s2">&quot;Total GHG Emissions&quot;</span><span class="p">,</span> <span class="s2">&quot;Climate Change&quot;</span><span class="p">,</span> <span class="s2">&quot;metric tons CO₂e&quot;</span><span class="p">,</span>
+         <span class="s2">&quot;Measures the total greenhouse gas emissions generated by the company in production, operations, supply chain, etc., covering Scope 1 (direct emissions), Scope 2 (indirect emissions), and Scope 3 (supply chain emissions).&quot;</span><span class="p">,</span>
+         <span class="n">keywords_dict</span><span class="p">[</span><span class="s2">&quot;Total GHG Emissions&quot;</span><span class="p">],</span> <span class="kc">False</span><span class="p">),</span>
+        <span class="p">(</span><span class="s2">&quot;Total GHG Emissions Target&quot;</span><span class="p">,</span> <span class="s2">&quot;Climate Change&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span>
+         <span class="s2">&quot;The company sets targets for greenhouse gas emissions reduction (e.g., &#39;Reduce by 20% by 2030&#39;).&quot;</span><span class="p">,</span>
+         <span class="n">keywords_dict</span><span class="p">[</span><span class="s2">&quot;Total GHG Emissions&quot;</span><span class="p">],</span> <span class="kc">True</span><span class="p">),</span>
+        <span class="p">(</span><span class="s2">&quot;Scope 1 Emissions&quot;</span><span class="p">,</span> <span class="s2">&quot;Climate Change&quot;</span><span class="p">,</span> <span class="s2">&quot;metric tons CO₂e&quot;</span><span class="p">,</span>
+         <span class="s2">&quot;Scope 1: Direct greenhouse gas emissions from company operations.&quot;</span><span class="p">,</span>
+         <span class="p">[</span><span class="s2">&quot;Scope&quot;</span><span class="p">,</span> <span class="s2">&quot;Scope 1&quot;</span><span class="p">,</span> <span class="s2">&quot;Direct emissions&quot;</span><span class="p">,</span> <span class="s2">&quot;Direct GHG emissions&quot;</span><span class="p">,</span> <span class="s2">&quot;Operational emissions&quot;</span><span class="p">],</span> <span class="kc">False</span><span class="p">),</span>
+        <span class="p">(</span><span class="s2">&quot;Scope 2 Emissions&quot;</span><span class="p">,</span> <span class="s2">&quot;Climate Change&quot;</span><span class="p">,</span> <span class="s2">&quot;metric tons CO₂e&quot;</span><span class="p">,</span>
+         <span class="s2">&quot;Scope 2: Indirect emissions from energy use within the company.&quot;</span><span class="p">,</span>
+         <span class="p">[</span><span class="s2">&quot;Scope&quot;</span><span class="p">,</span> <span class="s2">&quot;Scope 2&quot;</span><span class="p">,</span> <span class="s2">&quot;Indirect emissions&quot;</span><span class="p">,</span> <span class="s2">&quot;Energy-related emissions&quot;</span><span class="p">,</span> <span class="s2">&quot;Energy consumption emissions&quot;</span><span class="p">],</span> <span class="kc">False</span><span class="p">),</span>
+        <span class="p">(</span><span class="s2">&quot;Scope 3 Emissions&quot;</span><span class="p">,</span> <span class="s2">&quot;Climate Change&quot;</span><span class="p">,</span> <span class="s2">&quot;metric tons CO₂e&quot;</span><span class="p">,</span>
+         <span class="s2">&quot;Scope 3: Greenhouse gas emissions from the supply chain.&quot;</span><span class="p">,</span>
+         <span class="p">[</span><span class="s2">&quot;Scope&quot;</span><span class="p">,</span> <span class="s2">&quot;Scope 3&quot;</span><span class="p">,</span> <span class="s2">&quot;Supply chain emissions&quot;</span><span class="p">,</span> <span class="s2">&quot;Indirect supply chain emissions&quot;</span><span class="p">,</span> <span class="s2">&quot;Supply chain-related emissions&quot;</span><span class="p">],</span> <span class="kc">False</span><span class="p">),</span>
+        <span class="p">(</span><span class="s2">&quot;Carbon Intensity&quot;</span><span class="p">,</span> <span class="s2">&quot;Climate Change&quot;</span><span class="p">,</span> <span class="s2">&quot;g CO₂e / $ revenue&quot;</span><span class="p">,</span>
+         <span class="s2">&quot;Measures the carbon emissions per unit of revenue, helping to evaluate the company&#39;s energy efficiency and environmental impact.&quot;</span><span class="p">,</span>
+         <span class="n">keywords_dict</span><span class="p">[</span><span class="s2">&quot;Carbon Intensity&quot;</span><span class="p">],</span> <span class="kc">False</span><span class="p">),</span>
+        <span class="p">(</span><span class="s2">&quot;Carbon Intensity Target&quot;</span><span class="p">,</span> <span class="s2">&quot;Climate Change&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span>
+         <span class="s2">&quot;The company sets a target to reduce carbon intensity (e.g., &#39;Reduce by 5</span><span class="si">% a</span><span class="s2">nnually&#39;).&quot;</span><span class="p">,</span>
+         <span class="n">keywords_dict</span><span class="p">[</span><span class="s2">&quot;Carbon Intensity&quot;</span><span class="p">],</span> <span class="kc">True</span><span class="p">),</span>
+        <span class="p">(</span><span class="s2">&quot;Carbon Neutrality Target&quot;</span><span class="p">,</span> <span class="s2">&quot;Climate Change&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span>
+         <span class="s2">&quot;The company&#39;s target for achieving net-zero carbon emissions through emission reductions and carbon offsets.&quot;</span><span class="p">,</span>
+         <span class="p">[</span><span class="s2">&quot;Carbon neutrality&quot;</span><span class="p">,</span> <span class="s2">&quot;Net-zero carbon emissions&quot;</span><span class="p">,</span> <span class="s2">&quot;Carbon offsetting&quot;</span><span class="p">,</span> <span class="s2">&quot;Zero carbon target&quot;</span><span class="p">,</span> <span class="s2">&quot;Carbon reduction targets&quot;</span><span class="p">],</span> <span class="kc">True</span><span class="p">),</span>
+
+        <span class="c1"># Energy</span>
+        <span class="p">(</span><span class="s2">&quot;Renewable Energy Usage Ratio&quot;</span><span class="p">,</span> <span class="s2">&quot;Energy&quot;</span><span class="p">,</span> <span class="s2">&quot;%&quot;</span><span class="p">,</span> <span class="s2">&quot;Measures the proportion of renewable energy in the company&#39;s total energy consumption.&quot;</span><span class="p">,</span>
+         <span class="n">keywords_dict</span><span class="p">[</span><span class="s2">&quot;Renewable Energy Usage Ratio&quot;</span><span class="p">],</span> <span class="kc">False</span><span class="p">),</span>
+        <span class="p">(</span><span class="s2">&quot;Renewable Energy Usage Target&quot;</span><span class="p">,</span> <span class="s2">&quot;Energy&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span>
+         <span class="s2">&quot;The company sets a target for the percentage of renewable energy usage.&quot;</span><span class="p">,</span>
+         <span class="p">[</span><span class="s2">&quot;Renewable energy target&quot;</span><span class="p">,</span> <span class="s2">&quot;Renewable energy goal&quot;</span><span class="p">,</span> <span class="s2">&quot;Green energy target&quot;</span><span class="p">],</span> <span class="kc">True</span><span class="p">),</span>
+        <span class="p">(</span><span class="s2">&quot;Energy Intensity&quot;</span><span class="p">,</span> <span class="s2">&quot;Energy&quot;</span><span class="p">,</span> <span class="s2">&quot;kWh / $ revenue&quot;</span><span class="p">,</span> <span class="s2">&quot;Measures energy consumption per unit of revenue.&quot;</span><span class="p">,</span>
+         <span class="n">keywords_dict</span><span class="p">[</span><span class="s2">&quot;Energy Intensity&quot;</span><span class="p">],</span> <span class="kc">False</span><span class="p">),</span>
+        <span class="p">(</span><span class="s2">&quot;Energy Intensity Target&quot;</span><span class="p">,</span> <span class="s2">&quot;Energy&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span>
+         <span class="s2">&quot;The company sets a target for energy consumption intensity.&quot;</span><span class="p">,</span>
+         <span class="p">[</span><span class="s2">&quot;Energy reduction target&quot;</span><span class="p">,</span> <span class="s2">&quot;Energy efficiency goal&quot;</span><span class="p">,</span> <span class="s2">&quot;Energy consumption per unit target&quot;</span><span class="p">],</span> <span class="kc">True</span><span class="p">),</span>
+
+        <span class="c1"># Water Resources</span>
+        <span class="p">(</span><span class="s2">&quot;Water Reduction Target&quot;</span><span class="p">,</span> <span class="s2">&quot;Water Resources&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span>
+         <span class="s2">&quot;The company&#39;s target for reducing water resource usage.&quot;</span><span class="p">,</span>
+         <span class="p">[</span><span class="s2">&quot;Water conservation target&quot;</span><span class="p">,</span> <span class="s2">&quot;Water usage minimization target&quot;</span><span class="p">],</span> <span class="kc">True</span><span class="p">),</span>
+        <span class="p">(</span><span class="s2">&quot;Water Replenishment&quot;</span><span class="p">,</span> <span class="s2">&quot;Water Resources&quot;</span><span class="p">,</span> <span class="s2">&quot;%&quot;</span><span class="p">,</span> <span class="s2">&quot;Measures the percentage of water used by the company that is replenished or returned to the environment.&quot;</span><span class="p">,</span>
+         <span class="n">keywords_dict</span><span class="p">[</span><span class="s2">&quot;Water Replenishment&quot;</span><span class="p">],</span> <span class="kc">False</span><span class="p">),</span>
+        <span class="p">(</span><span class="s2">&quot;Water Replenishment Target&quot;</span><span class="p">,</span> <span class="s2">&quot;Water Resources&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span>
+         <span class="s2">&quot;The company&#39;s target for water replenishment rate.&quot;</span><span class="p">,</span>
+         <span class="p">[</span><span class="s2">&quot;Water restoration goal&quot;</span><span class="p">,</span> <span class="s2">&quot;Water return target&quot;</span><span class="p">,</span> <span class="s2">&quot;Water reinjection target&quot;</span><span class="p">],</span> <span class="kc">True</span><span class="p">),</span>
+
+        <span class="c1"># Packaging</span>
+        <span class="p">(</span><span class="s2">&quot;Packaging Recyclable&quot;</span><span class="p">,</span> <span class="s2">&quot;Packaging&quot;</span><span class="p">,</span> <span class="s2">&quot;%&quot;</span><span class="p">,</span> <span class="s2">&quot;Measures the proportion of recyclable components in product packaging.&quot;</span><span class="p">,</span>
+         <span class="n">keywords_dict</span><span class="p">[</span><span class="s2">&quot;Packaging Recyclable&quot;</span><span class="p">],</span> <span class="kc">False</span><span class="p">),</span>
+        <span class="p">(</span><span class="s2">&quot;Packaging Recyclable Target&quot;</span><span class="p">,</span> <span class="s2">&quot;Packaging&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span>
+         <span class="s2">&quot;The company sets a target for the proportion of recyclable packaging.&quot;</span><span class="p">,</span>
+         <span class="p">[</span><span class="s2">&quot;Sustainable packaging goal&quot;</span><span class="p">,</span> <span class="s2">&quot;Recycled content in packaging target&quot;</span><span class="p">],</span> <span class="kc">True</span><span class="p">),</span>
+
+        <span class="c1"># Waste</span>
+        <span class="p">(</span><span class="s2">&quot;Waste Reduced&quot;</span><span class="p">,</span> <span class="s2">&quot;Waste&quot;</span><span class="p">,</span> <span class="s2">&quot;%&quot;</span><span class="p">,</span> <span class="s2">&quot;Measures the reduction in waste across various categories.&quot;</span><span class="p">,</span>
+         <span class="n">keywords_dict</span><span class="p">[</span><span class="s2">&quot;Waste Reduced&quot;</span><span class="p">],</span> <span class="kc">False</span><span class="p">),</span>
+        <span class="p">(</span><span class="s2">&quot;Waste Reduction Target&quot;</span><span class="p">,</span> <span class="s2">&quot;Waste&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span>
+         <span class="s2">&quot;The company sets a target for waste reduction.&quot;</span><span class="p">,</span>
+         <span class="p">[</span><span class="s2">&quot;Waste prevention goal&quot;</span><span class="p">,</span> <span class="s2">&quot;Recycling rate target&quot;</span><span class="p">],</span> <span class="kc">True</span><span class="p">)</span>
+    <span class="p">]</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">insert_sql</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">        INSERT INTO csr_reporting.CSR_indicators (indicator_name, theme, unit, description, keywords, is_target)</span>
+<span class="s2">        VALUES </span><span class="si">%s</span><span class="s2">;</span>
+<span class="s2">        &quot;&quot;&quot;</span>
+        <span class="n">execute_values</span><span class="p">(</span><span class="n">cur</span><span class="p">,</span> <span class="n">insert_sql</span><span class="p">,</span> <span class="n">indicators_data</span><span class="p">)</span>
+        <span class="n">conn</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;✅ Data inserted into CSR_indicators table successfully.&quot;</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;❌ Error occurred: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">conn</span><span class="p">:</span>
+            <span class="n">cur</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="n">conn</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></div>
+
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">create_table_and_insert_data</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../../index.html">Bigdata_cw2_Jacaranda</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../modules.html">modules package</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../my_fastapi.html">my_fastapi package</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../test.html">test package</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../../index.html">Documentation overview</a><ul>
+  <li><a href="../../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, Roger.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

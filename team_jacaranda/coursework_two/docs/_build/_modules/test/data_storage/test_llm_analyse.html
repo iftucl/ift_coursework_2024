@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>test.data_storage.test_llm_analyse &#8212; Bigdata_cw2_Jacaranda 1.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/alabaster.css?v=27fed22d" />
+    <script src="../../../_static/documentation_options.js?v=f2a433a1"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+   
+  <link rel="stylesheet" href="../../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for test.data_storage.test_llm_analyse</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Module for testing the LLM (Large Language Model) analysis functions.</span>
+<span class="sd">This module contains various test cases to ensure the correct behavior of</span>
+<span class="sd">functions like build_prompt, process_row, update_result, and others in</span>
+<span class="sd">the llm_analyse module.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">builtins</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">modules.data_storage</span><span class="w"> </span><span class="kn">import</span> <span class="n">llm_analyse</span>
+
+<div class="viewcode-block" id="DummyCursor">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_analyse.DummyCursor">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DummyCursor</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A dummy database cursor class to simulate database cursor behavior.</span>
+<span class="sd">    </span>
+<span class="sd">    This class is used to simulate cursor behavior for database operations</span>
+<span class="sd">    during testing, specifically for testing the update_result function.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize the DummyCursor instance.</span>
+
+<span class="sd">        This initializes the cursor state, including flags for query execution </span>
+<span class="sd">        and query parameters.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">executed</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_query</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_params</span> <span class="o">=</span> <span class="kc">None</span>
+
+<div class="viewcode-block" id="DummyCursor.execute">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_analyse.DummyCursor.execute">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">execute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Simulate executing a database query.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            query (str): The SQL query string to be executed.</span>
+<span class="sd">            params (tuple): The parameters to be passed to the query.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">executed</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_query</span> <span class="o">=</span> <span class="n">query</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_params</span> <span class="o">=</span> <span class="n">params</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Enter the context for the cursor.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            DummyCursor: The current DummyCursor instance.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__exit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exc_type</span><span class="p">,</span> <span class="n">exc</span><span class="p">,</span> <span class="n">tb</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Exit the context for the cursor.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            exc_type (Exception): The exception type (if any).</span>
+<span class="sd">            exc (Exception): The exception instance (if any).</span>
+<span class="sd">            tb (traceback): The traceback object (if any).</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            bool: False to propagate the exception (if any).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+
+
+
+<div class="viewcode-block" id="DummyConnection">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_analyse.DummyConnection">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DummyConnection</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A dummy database connection class to simulate database connection behavior.</span>
+<span class="sd">    </span>
+<span class="sd">    This class is used to simulate database connection operations during testing.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize the DummyConnection instance.</span>
+
+<span class="sd">        This initializes flags for commit, rollback, and connection closure.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">committed</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rolled_back</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">closed</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cursor_obj</span> <span class="o">=</span> <span class="n">DummyCursor</span><span class="p">()</span>
+
+<div class="viewcode-block" id="DummyConnection.cursor">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_analyse.DummyConnection.cursor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">cursor</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Simulate getting a cursor from the connection.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            DummyCursor: A dummy cursor instance.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor_obj</span></div>
+
+
+<div class="viewcode-block" id="DummyConnection.commit">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_analyse.DummyConnection.commit">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">commit</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Simulate committing a transaction.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">committed</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="DummyConnection.rollback">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_analyse.DummyConnection.rollback">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">rollback</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Simulate rolling back a transaction.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rolled_back</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="DummyConnection.close">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_analyse.DummyConnection.close">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Simulate closing the connection.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">closed</span> <span class="o">=</span> <span class="kc">True</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="test_build_prompt_target_vs_non_target">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_analyse.test_build_prompt_target_vs_non_target">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_build_prompt_target_vs_non_target</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test the build_prompt function for target vs non-target classes.</span>
+<span class="sd">    </span>
+<span class="sd">    This test verifies that the output prompt varies based on whether the</span>
+<span class="sd">    target class is specified or not.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">sample_excerpt</span> <span class="o">=</span> <span class="p">[{</span><span class="s2">&quot;page&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="s2">&quot;Sample paragraph content.&quot;</span><span class="p">}]</span>
+    <span class="n">prompt_target</span> <span class="o">=</span> <span class="n">llm_analyse</span><span class="o">.</span><span class="n">build_prompt</span><span class="p">(</span>
+        <span class="s2">&quot;Carbon Neutrality Target&quot;</span><span class="p">,</span> <span class="s2">&quot;Target description&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">,</span> <span class="n">sample_excerpt</span><span class="p">,</span> <span class="mi">2025</span>
+    <span class="p">)</span>
+    <span class="n">prompt_nontarget</span> <span class="o">=</span> <span class="n">llm_analyse</span><span class="o">.</span><span class="n">build_prompt</span><span class="p">(</span>
+        <span class="s2">&quot;Carbon Intensity&quot;</span><span class="p">,</span> <span class="s2">&quot;Indicator description&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="n">sample_excerpt</span><span class="p">,</span> <span class="mi">2025</span>
+    <span class="p">)</span>
+    <span class="k">assert</span> <span class="s2">&quot;goal-oriented&quot;</span> <span class="ow">in</span> <span class="n">prompt_target</span> <span class="ow">and</span> <span class="s2">&quot;multiple sentences allowed&quot;</span> <span class="ow">in</span> <span class="n">prompt_target</span>
+    <span class="k">assert</span> <span class="s2">&quot;numeric value&quot;</span> <span class="ow">in</span> <span class="n">prompt_nontarget</span> <span class="ow">and</span> <span class="s2">&quot;</span><span class="se">\&quot;</span><span class="s2">unit</span><span class="se">\&quot;</span><span class="s2">&quot;</span> <span class="ow">in</span> <span class="n">prompt_nontarget</span></div>
+
+
+
+<div class="viewcode-block" id="test_is_valid_number">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_analyse.test_is_valid_number">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_is_valid_number</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test the is_valid_number function for valid and invalid number inputs.</span>
+<span class="sd">    </span>
+<span class="sd">    This test checks if the function correctly identifies valid numeric values</span>
+<span class="sd">    and handles invalid inputs like strings, None, or empty values.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">assert</span> <span class="n">llm_analyse</span><span class="o">.</span><span class="n">is_valid_number</span><span class="p">(</span><span class="s2">&quot;123.45&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">True</span>
+    <span class="k">assert</span> <span class="n">llm_analyse</span><span class="o">.</span><span class="n">is_valid_number</span><span class="p">(</span><span class="s2">&quot;abc&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">False</span>
+    <span class="k">assert</span> <span class="n">llm_analyse</span><span class="o">.</span><span class="n">is_valid_number</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">False</span>
+    <span class="k">assert</span> <span class="n">llm_analyse</span><span class="o">.</span><span class="n">is_valid_number</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">False</span></div>
+
+
+
+<div class="viewcode-block" id="test_update_result_executes_commit">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_analyse.test_update_result_executes_commit">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_update_result_executes_commit</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test that the update_result function executes an UPDATE query and commits.</span>
+<span class="sd">    </span>
+<span class="sd">    This test verifies that the update_result function correctly executes</span>
+<span class="sd">    an UPDATE statement and commits the changes to the database.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        monkeypatch (pytest.MonkeyPatch): The monkeypatch object for mocking.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dummy_conn</span> <span class="o">=</span> <span class="n">DummyConnection</span><span class="p">()</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_analyse</span><span class="p">,</span> <span class="s2">&quot;client&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="n">llm_analyse</span><span class="o">.</span><span class="n">update_result</span><span class="p">(</span><span class="n">dummy_conn</span><span class="p">,</span> <span class="n">data_id</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">value_raw</span><span class="o">=</span><span class="s2">&quot;val&quot;</span><span class="p">,</span> <span class="n">unit_raw</span><span class="o">=</span><span class="s2">&quot;unit&quot;</span><span class="p">,</span>
+                              <span class="n">llm_response_raw</span><span class="o">=</span><span class="s2">&quot;raw response&quot;</span><span class="p">,</span> <span class="n">pdf_page</span><span class="o">=</span><span class="s2">&quot;1,2&quot;</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">dummy_conn</span><span class="o">.</span><span class="n">cursor_obj</span><span class="o">.</span><span class="n">executed</span> <span class="ow">is</span> <span class="kc">True</span>
+    <span class="k">assert</span> <span class="s2">&quot;UPDATE csr_reporting.CSR_Data&quot;</span> <span class="ow">in</span> <span class="n">dummy_conn</span><span class="o">.</span><span class="n">cursor_obj</span><span class="o">.</span><span class="n">last_query</span>
+    <span class="k">assert</span> <span class="n">dummy_conn</span><span class="o">.</span><span class="n">committed</span> <span class="ow">is</span> <span class="kc">True</span></div>
+
+
+
+<div class="viewcode-block" id="test_process_row_target_json_and_nonjson">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_analyse.test_process_row_target_json_and_nonjson">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_process_row_target_json_and_nonjson</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test process_row function with target set to True for both valid and invalid JSON outputs.</span>
+<span class="sd">    </span>
+<span class="sd">    This test checks if the function handles cases where the LLM returns valid JSON</span>
+<span class="sd">    or invalid JSON, and ensures that the appropriate values are passed for updating</span>
+<span class="sd">    the database.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        monkeypatch (pytest.MonkeyPatch): The monkeypatch object for mocking.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dummy_conn</span> <span class="o">=</span> <span class="n">DummyConnection</span><span class="p">()</span>
+    <span class="n">outputs</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s1">&#39;{&quot;value&quot;: &quot;Goal achieved&quot;}&#39;</span><span class="p">,</span>  
+        <span class="s1">&#39;Not a JSON text&#39;</span>             
+    <span class="p">]</span>
+    <span class="n">call_count</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;count&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">}</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">fake_call_llm</span><span class="p">(</span><span class="n">prompt</span><span class="p">):</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">outputs</span><span class="p">[</span><span class="n">call_count</span><span class="p">[</span><span class="s2">&quot;count&quot;</span><span class="p">]]</span>
+        <span class="n">call_count</span><span class="p">[</span><span class="s2">&quot;count&quot;</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="n">result</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_analyse</span><span class="p">,</span> <span class="s2">&quot;call_llm&quot;</span><span class="p">,</span> <span class="n">fake_call_llm</span><span class="p">)</span>
+    <span class="n">updated</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">fake_update</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">data_id</span><span class="p">,</span> <span class="n">value_raw</span><span class="p">,</span> <span class="n">unit_raw</span><span class="p">,</span> <span class="n">llm_resp</span><span class="p">,</span> <span class="n">pages</span><span class="p">):</span>
+        <span class="n">updated</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">data_id</span><span class="p">,</span> <span class="n">value_raw</span><span class="p">,</span> <span class="n">unit_raw</span><span class="p">))</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_analyse</span><span class="p">,</span> <span class="s2">&quot;update_result&quot;</span><span class="p">,</span> <span class="n">fake_update</span><span class="p">)</span>
+    <span class="n">row</span> <span class="o">=</span> <span class="p">(</span><span class="mi">42</span><span class="p">,</span> <span class="s2">&quot;Target Indicator&quot;</span><span class="p">,</span> <span class="p">[{</span><span class="s2">&quot;page&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="s2">&quot;para&quot;</span><span class="p">}],</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2025</span><span class="p">,</span> <span class="s2">&quot;desc&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
+    <span class="n">data_id_ret1</span> <span class="o">=</span> <span class="n">llm_analyse</span><span class="o">.</span><span class="n">process_row</span><span class="p">(</span><span class="n">dummy_conn</span><span class="p">,</span> <span class="n">row</span><span class="p">)</span>
+    <span class="n">data_id_ret2</span> <span class="o">=</span> <span class="n">llm_analyse</span><span class="o">.</span><span class="n">process_row</span><span class="p">(</span><span class="n">dummy_conn</span><span class="p">,</span> <span class="n">row</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">data_id_ret1</span> <span class="o">==</span> <span class="mi">42</span>
+    <span class="k">assert</span> <span class="n">updated</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">42</span> <span class="ow">and</span> <span class="n">updated</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;Goal achieved&quot;</span> <span class="ow">and</span> <span class="n">updated</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">2</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span>
+    <span class="k">assert</span> <span class="n">data_id_ret2</span> <span class="o">==</span> <span class="mi">42</span>
+    <span class="k">assert</span> <span class="n">updated</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">42</span> <span class="ow">and</span> <span class="n">updated</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;Not a JSON text&quot;</span> <span class="ow">and</span> <span class="n">updated</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">2</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span>
+    <span class="k">assert</span> <span class="n">dummy_conn</span><span class="o">.</span><span class="n">rolled_back</span> <span class="ow">is</span> <span class="kc">False</span></div>
+
+
+
+<div class="viewcode-block" id="test_process_row_target_non_str_output">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_analyse.test_process_row_target_non_str_output">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_process_row_target_non_str_output</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test process_row function with target set to True when LLM outputs a non-string type.</span>
+<span class="sd">    </span>
+<span class="sd">    This test ensures that the function correctly handles non-string types like bytes</span>
+<span class="sd">    and processes them appropriately without errors.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        monkeypatch (pytest.MonkeyPatch): The monkeypatch object for mocking.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dummy_conn</span> <span class="o">=</span> <span class="n">DummyConnection</span><span class="p">()</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_analyse</span><span class="p">,</span> <span class="s2">&quot;call_llm&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">prompt</span><span class="p">:</span> <span class="sa">b</span><span class="s2">&quot; Byte response &quot;</span><span class="p">)</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_analyse</span><span class="p">,</span> <span class="s2">&quot;update_result&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="n">row</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;Some Target&quot;</span><span class="p">,</span> <span class="p">[{</span><span class="s2">&quot;page&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="s2">&quot;x&quot;</span><span class="p">}],</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2022</span><span class="p">,</span> <span class="s2">&quot;desc&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">llm_analyse</span><span class="o">.</span><span class="n">process_row</span><span class="p">(</span><span class="n">dummy_conn</span><span class="p">,</span> <span class="n">row</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">result</span> <span class="o">==</span> <span class="mi">1</span>
+    <span class="k">assert</span> <span class="n">dummy_conn</span><span class="o">.</span><span class="n">rolled_back</span> <span class="ow">is</span> <span class="kc">False</span></div>
+
+
+
+<div class="viewcode-block" id="test_process_row_nontarget_invalid_number">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_analyse.test_process_row_nontarget_invalid_number">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_process_row_nontarget_invalid_number</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test process_row function with target set to False and invalid number in the LLM output.</span>
+<span class="sd">    </span>
+<span class="sd">    This test verifies that the function raises a ValueError and performs a rollback when</span>
+<span class="sd">    the output is a non-numeric value for a non-target row.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        monkeypatch (pytest.MonkeyPatch): The monkeypatch object for mocking.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dummy_conn</span> <span class="o">=</span> <span class="n">DummyConnection</span><span class="p">()</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_analyse</span><span class="p">,</span> <span class="s2">&quot;call_llm&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">prompt</span><span class="p">:</span> <span class="s1">&#39;{&quot;value&quot;: &quot;N/A&quot;, &quot;unit&quot;: &quot;kg&quot;}&#39;</span><span class="p">)</span>
+    <span class="n">row</span> <span class="o">=</span> <span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="s2">&quot;Indicator&quot;</span><span class="p">,</span> <span class="p">[{</span><span class="s2">&quot;page&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="s2">&quot;y&quot;</span><span class="p">}],</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2021</span><span class="p">,</span> <span class="s2">&quot;desc&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">pytest</span><span class="o">.</span><span class="n">raises</span><span class="p">(</span><span class="ne">ValueError</span><span class="p">):</span>
+        <span class="n">llm_analyse</span><span class="o">.</span><span class="n">process_row</span><span class="p">(</span><span class="n">dummy_conn</span><span class="p">,</span> <span class="n">row</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">dummy_conn</span><span class="o">.</span><span class="n">rolled_back</span> <span class="ow">is</span> <span class="kc">True</span></div>
+
+
+
+<div class="viewcode-block" id="test_process_row_nontarget_json_error">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_analyse.test_process_row_nontarget_json_error">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_process_row_nontarget_json_error</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test process_row function with target set to False and invalid JSON format.</span>
+<span class="sd">    </span>
+<span class="sd">    This test checks if the function raises a JSONDecodeError when the LLM output is </span>
+<span class="sd">    an invalid JSON string and performs a rollback.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        monkeypatch (pytest.MonkeyPatch): The monkeypatch object for mocking.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dummy_conn</span> <span class="o">=</span> <span class="n">DummyConnection</span><span class="p">()</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_analyse</span><span class="p">,</span> <span class="s2">&quot;call_llm&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">prompt</span><span class="p">:</span> <span class="s2">&quot;invalid json&quot;</span><span class="p">)</span>
+    <span class="n">row</span> <span class="o">=</span> <span class="p">(</span><span class="mi">101</span><span class="p">,</span> <span class="s2">&quot;Indicator2&quot;</span><span class="p">,</span> <span class="p">[{</span><span class="s2">&quot;page&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="s2">&quot;z&quot;</span><span class="p">}],</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2020</span><span class="p">,</span> <span class="s2">&quot;desc&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">pytest</span><span class="o">.</span><span class="n">raises</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span><span class="p">):</span>
+        <span class="n">llm_analyse</span><span class="o">.</span><span class="n">process_row</span><span class="p">(</span><span class="n">dummy_conn</span><span class="p">,</span> <span class="n">row</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">dummy_conn</span><span class="o">.</span><span class="n">rolled_back</span> <span class="ow">is</span> <span class="kc">True</span></div>
+
+
+
+<div class="viewcode-block" id="test_main_concurrent_processing">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_analyse.test_main_concurrent_processing">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_main_concurrent_processing</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">,</span> <span class="n">capsys</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test the main function with concurrent processing logic, including both successful </span>
+<span class="sd">    and failed tasks.</span>
+<span class="sd">    </span>
+<span class="sd">    This test simulates a multi-threaded environment where multiple rows are processed concurrently,</span>
+<span class="sd">    some successfully and some failing, and verifies the expected output messages.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        monkeypatch (pytest.MonkeyPatch): The monkeypatch object for mocking.</span>
+<span class="sd">        capsys (pytest.CaptureFixture): The capture fixture to capture the standard output.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dummy_conn</span> <span class="o">=</span> <span class="n">DummyConnection</span><span class="p">()</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_analyse</span><span class="p">,</span> <span class="s2">&quot;get_connection&quot;</span><span class="p">,</span> <span class="k">lambda</span><span class="p">:</span> <span class="n">dummy_conn</span><span class="p">)</span>
+    <span class="n">rows</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;Ind1&quot;</span><span class="p">,</span> <span class="p">[],</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2020</span><span class="p">,</span> <span class="s2">&quot;desc1&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">),</span>
+        <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="s2">&quot;Ind2&quot;</span><span class="p">,</span> <span class="p">[],</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2021</span><span class="p">,</span> <span class="s2">&quot;desc2&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+    <span class="p">]</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_analyse</span><span class="p">,</span> <span class="s2">&quot;fetch_pending_rows&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">conn</span><span class="p">:</span> <span class="n">rows</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">fake_process_row</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">row</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">row</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">row</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s2">&quot;processing failed&quot;</span><span class="p">)</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_analyse</span><span class="p">,</span> <span class="s2">&quot;process_row&quot;</span><span class="p">,</span> <span class="n">fake_process_row</span><span class="p">)</span>
+    <span class="k">class</span><span class="w"> </span><span class="nc">DummyFuture</span><span class="p">:</span>
+        <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">result</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">exception</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_result</span> <span class="o">=</span> <span class="n">result</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_exc</span> <span class="o">=</span> <span class="n">exception</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">result</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_exc</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="bp">self</span><span class="o">.</span><span class="n">_exc</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_result</span>
+    <span class="k">class</span><span class="w"> </span><span class="nc">DummyExecutor</span><span class="p">:</span>
+        <span class="k">def</span><span class="w"> </span><span class="fm">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span> <span class="k">return</span> <span class="bp">self</span>
+        <span class="k">def</span><span class="w"> </span><span class="fm">__exit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exc_type</span><span class="p">,</span> <span class="n">exc</span><span class="p">,</span> <span class="n">tb</span><span class="p">):</span> <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">submit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">func</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">res</span> <span class="o">=</span> <span class="n">func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">DummyFuture</span><span class="p">(</span><span class="n">result</span><span class="o">=</span><span class="n">res</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">DummyFuture</span><span class="p">(</span><span class="n">exception</span><span class="o">=</span><span class="n">e</span><span class="p">)</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_analyse</span><span class="p">,</span> <span class="s2">&quot;ThreadPoolExecutor&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">max_workers</span><span class="o">=</span><span class="kc">None</span><span class="p">:</span> <span class="n">DummyExecutor</span><span class="p">())</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_analyse</span><span class="p">,</span> <span class="s2">&quot;as_completed&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">futures</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">futures</span><span class="p">)</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_analyse</span><span class="p">,</span> <span class="s2">&quot;tqdm&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">iterable</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">iterable</span><span class="p">)</span>
+    <span class="n">llm_analyse</span><span class="o">.</span><span class="n">main</span><span class="p">()</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">capsys</span><span class="o">.</span><span class="n">readouterr</span><span class="p">()</span><span class="o">.</span><span class="n">out</span>
+    <span class="k">assert</span> <span class="s2">&quot;Successfully processed&quot;</span> <span class="ow">in</span> <span class="n">out</span>
+    <span class="k">assert</span> <span class="s2">&quot;Processing failed&quot;</span> <span class="ow">in</span> <span class="n">out</span>
+    <span class="k">assert</span> <span class="n">dummy_conn</span><span class="o">.</span><span class="n">closed</span> <span class="ow">is</span> <span class="kc">True</span></div>
+
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../../index.html">Bigdata_cw2_Jacaranda</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../modules.html">modules package</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../my_fastapi.html">my_fastapi package</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../test.html">test package</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../../index.html">Documentation overview</a><ul>
+  <li><a href="../../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, Roger.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

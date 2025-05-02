@@ -1,77 +1,115 @@
-### 🔄 第一步：**删除现有的配置**
+---
 
-进入你的项目目录 `coursework_two/`，删除以下文件/文件夹：
+## ✅ 步骤：在 `coursework_two/` 目录下生成完整的 Sphinx 文档
+
+---
+
+### 🔄 第一步：清理旧的 Sphinx 文件（可选）
+
+如果之前已经初始化过 Sphinx，先清除旧文件：
 
 ```bash
-rm -r source/
-rm -r build/
-rm Makefile
-rm make.bat
+cd coursework_two
+rm -rf docs/
 ```
 
-### 🏗 第二步：指定目录为 `docs/`
+---
 
-如果你希望文档集中在 `docs/` 文件夹下（便于组织或部署到 GitHub Pages），你可以这样运行：
+### 🏗️ 第二步：生成新的 Sphinx 配置（不分 source/build）
 
-    ```bash
-    poetry run sphinx-quickstart docs
-    ```
+```bash
+cd coursework_two
+poetry run sphinx-quickstart docs
+```
 
-然后在提示中选择：
+在交互式提示中选择：
 
-- **不分开 source 和 build**
-- 输入你的项目名称、作者等
-
-Sphinx 会把所有内容生成在 `docs/` 文件夹内。
+- Separate source and build directories: ❌ 否
+- Project name、author：✅ 按你需要填写
+- Build .gitignore: ✅ 建议选 Yes
+- 所有扩展选项可以先跳过，后面手动加
 
 ---
 
-### ✅ 第三步：配置 + 生成文档
+### 🛠️ 第三步：编辑 `docs/conf.py`
 
-进入 `docs/`，然后：
+打开 `docs/conf.py`，找到扩展和路径配置部分，修改如下：
 
-1. **添加 autodoc 插件**到 `docs/conf.py`：
-   ```python
-   extensions = [
-       'sphinx.ext.autodoc',
-       'sphinx.ext.napoleon',
-       'sphinx.ext.viewcode',
-   ]
+```python
+# -- Path setup ----------------------------------------------------
 
-   import os
-   import sys
+import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-   sys.path.insert(0, os.path.abspath('..'))
-   ```
+# -- General configuration -----------------------------------------
 
-2. **自动生成 `.rst` 文件**（假设你要文档化 `modules/` 和 `FastAPI/`和`test/`）：
+extensions = [
+    'sphinx.ext.autodoc',
+    'sphinx.ext.napoleon',
+    'sphinx.ext.viewcode',
+]
 
-   ```bash
-   poetry run sphinx-apidoc -o docs/ modules/ FastAPI/ test/
-   ```
+# -- HTML output ---------------------------------------------------
 
-3. **在docs文件夹下看到modules.rst文件等，因此要在index.rst里引入它们**：
-    .. toctree::
-        :maxdepth: 2
-        :caption: Contents:
-
-        modules
-        FastAPI
-        test
-
-4. **构建 HTML 文档**：
-
-   ```bash
-   poetry run sphinx-build -b html docs/ docs/_build/
-   ```
-
-然后你就可以在 `docs/_build/index.html` 中查看最终生成的文档啦 🎉
-
-5. **创建代码文档**：
-    ```bash
-   poetry run sphinx-apidoc -o docs/ modules/ FastAPI/ test/
-   ```
+html_theme = 'alabaster'  # 或 'sphinx_rtd_theme'，看你喜好
+```
 
 ---
 
-需要我帮你写一条完整命令串，自动创建并配置 `docs/` 文件夹吗？
+### 📦 第四步：生成 `.rst` 文件（递归）
+
+```bash
+poetry run sphinx-apidoc -o docs/ modules/
+poetry run sphinx-apidoc -o docs/ my_fastapi/
+poetry run sphinx-apidoc -o docs/ test/
+```
+
+这一步会在 `docs/` 下生成多个 `.rst` 文件，每个模块一个。**这是你想要的结构。**
+
+---
+
+### 🧱 第五步：编辑 `docs/index.rst`
+
+你只需要保留最基础结构并引入顶层模块（其他模块会自动跟随引用）：
+
+```rst
+Welcome to 项目的文档!
+====================================
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Contents:
+
+   modules
+   my_fastapi
+   test
+```
+
+---
+
+### 🌍 第六步：生成 HTML 文档
+
+```bash
+poetry run sphinx-build -b html docs/ docs/_build/
+```
+
+打开：
+
+```
+docs/_build/index.html
+```
+
+即可浏览完整文档（包括所有模块、函数、类等的说明）。
+
+---
+
+## ✅ 生成文档后怎么用？
+
+你可以：
+
+- 本地用浏览器打开 `docs/_build/index.html` 查看文档
+- 把 `docs/` 上传到 GitHub 并用 [GitHub Pages](https://pages.github.com/) 部署文档（设置 Pages 源目录为 `docs/_build/`）
+- 生成 PDF 或其他格式文档（可通过 `sphinx-build -b latexpdf` 等实现）
+
+---

@@ -25,7 +25,7 @@ def test_custom_checkbox_class_exists():
     - `.loading-spinner`: A class to define the loading spinner styles.
     - `.error-message`: A class to define the error message styles.
     - Tailwind CSS directives: Verifies that the `@tailwind` directives for `base`, `components`, 
-      and `utilities` are present to ensure Tailwind CSS is integrated into the project.
+    and `utilities` are present to ensure Tailwind CSS is integrated into the project.
 
     :raises AssertionError: If any of the CSS classes or Tailwind CSS directives are missing.
     """

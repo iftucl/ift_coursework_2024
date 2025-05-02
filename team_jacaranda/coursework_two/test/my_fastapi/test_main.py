@@ -20,13 +20,13 @@ The tests verify the status codes, response structures, and expected behaviors o
 """
 
 from fastapi.testclient import TestClient
-from FastAPI.main import app
+from my_fastapi.main import app
 from unittest.mock import patch
 import os
 
 client = TestClient(app)
 
-@patch("FastAPI.main.query_db", return_value=[{"indicator_id": 1, "indicator_name": "Energy"}])
+@patch("my_fastapi.main.query_db", return_value=[{"indicator_id": 1, "indicator_name": "Energy"}])
 def test_get_indicators(mock_query):
     """
     Test the GET /indicators endpoint.
@@ -41,7 +41,7 @@ def test_get_indicators(mock_query):
     assert isinstance(response.json(), list)
     assert response.json()[0]["indicator_name"] == "Energy"
 
-@patch("FastAPI.main.query_db", return_value=[])
+@patch("my_fastapi.main.query_db", return_value=[])
 def test_search_indicators_no_match(mock_query):
     """
     Test the GET /indicators/search endpoint with no matching indicators.
@@ -55,7 +55,7 @@ def test_search_indicators_no_match(mock_query):
     assert response.status_code == 200
     assert response.json() == []
 
-@patch("FastAPI.main.query_db", return_value=[{"indicator_id": 1, "indicator_name": "Waste", "theme": "Climate"}])
+@patch("my_fastapi.main.query_db", return_value=[{"indicator_id": 1, "indicator_name": "Waste", "theme": "Climate"}])
 def test_search_indicators_with_name_and_theme(mock_query):
     """
     Test the GET /indicators/search endpoint with matching indicators.
@@ -69,7 +69,7 @@ def test_search_indicators_with_name_and_theme(mock_query):
     assert response.status_code == 200
     assert isinstance(response.json(), list)
 
-@patch("FastAPI.main.query_db", return_value=[{"indicator_id": 2, "indicator_name": "Water"}])
+@patch("my_fastapi.main.query_db", return_value=[{"indicator_id": 2, "indicator_name": "Water"}])
 def test_get_indicator_by_id(mock_query):
     """
     Test the GET /indicators/{id} endpoint by ID.
@@ -83,7 +83,7 @@ def test_get_indicator_by_id(mock_query):
     assert response.status_code == 200
     assert response.json()["indicator_name"] == "Water"
 
-@patch("FastAPI.main.query_db", return_value=[])
+@patch("my_fastapi.main.query_db", return_value=[])
 def test_get_indicator_not_found(mock_query):
     """
     Test the GET /indicators/{id} endpoint when the indicator is not found.
@@ -95,7 +95,7 @@ def test_get_indicator_not_found(mock_query):
     response = client.get("/indicators/999999")
     assert response.status_code == 404
 
-@patch("FastAPI.main.query_db", return_value=[{"data_id": 1, "security": "ABC Corp"}])
+@patch("my_fastapi.main.query_db", return_value=[{"data_id": 1, "security": "ABC Corp"}])
 def test_get_all_data(mock_query):
     """
     Test the GET /data endpoint.
@@ -109,7 +109,7 @@ def test_get_all_data(mock_query):
     assert response.status_code == 200
     assert isinstance(response.json(), list)
 
-@patch("FastAPI.main.query_db", return_value=[])
+@patch("my_fastapi.main.query_db", return_value=[])
 def test_search_data_all_params(mock_query):
     """
     Test the GET /data/search endpoint with all search parameters.
@@ -123,7 +123,7 @@ def test_search_data_all_params(mock_query):
     assert response.status_code == 200
     assert response.json() == []
 
-@patch("FastAPI.main.query_db", return_value=[])
+@patch("my_fastapi.main.query_db", return_value=[])
 def test_search_data_no_param(mock_query):
     """
     Test the GET /data/search endpoint with no search parameters.
@@ -137,7 +137,7 @@ def test_search_data_no_param(mock_query):
     assert response.status_code == 200
     assert response.json() == []
 
-@patch("FastAPI.main.query_db", return_value=[{"data_id": 100, "indicator_name": "CO2"}])
+@patch("my_fastapi.main.query_db", return_value=[{"data_id": 100, "indicator_name": "CO2"}])
 def test_get_data_by_id(mock_query):
     """
     Test the GET /data/{id} endpoint by ID.
@@ -151,7 +151,7 @@ def test_get_data_by_id(mock_query):
     assert response.status_code == 200
     assert response.json()["data_id"] == 100
 
-@patch("FastAPI.main.query_db", return_value=[])
+@patch("my_fastapi.main.query_db", return_value=[])
 def test_get_data_by_id_not_found(mock_query):
     """
     Test the GET /data/{id} endpoint when the data is not found.
@@ -163,7 +163,7 @@ def test_get_data_by_id_not_found(mock_query):
     response = client.get("/data/999999")
     assert response.status_code == 404
 
-@patch("FastAPI.main.query_db", return_value=[{"id": 1, "symbol": "XYZ"}])
+@patch("my_fastapi.main.query_db", return_value=[{"id": 1, "symbol": "XYZ"}])
 def test_get_reports(mock_query):
     """
     Test the GET /reports endpoint.
@@ -177,7 +177,7 @@ def test_get_reports(mock_query):
     assert response.status_code == 200
     assert isinstance(response.json(), list)
 
-@patch("FastAPI.main.query_db", return_value=[{"id": 3, "symbol": "ZZZ", "security": "Example", "report_year": 2022}])
+@patch("my_fastapi.main.query_db", return_value=[{"id": 3, "symbol": "ZZZ", "security": "Example", "report_year": 2022}])
 def test_search_reports_all_params(mock_query):
     """
     Test the GET /reports/search endpoint with all search parameters.
@@ -191,7 +191,7 @@ def test_search_reports_all_params(mock_query):
     assert response.status_code == 200
     assert isinstance(response.json(), list)
 
-@patch("FastAPI.main.query_db", return_value=[])
+@patch("my_fastapi.main.query_db", return_value=[])
 def test_search_reports(mock_query):
     """
     Test the GET /reports/search endpoint with a partial search parameter.
@@ -205,7 +205,7 @@ def test_search_reports(mock_query):
     assert response.status_code == 200
     assert isinstance(response.json(), list)
 
-@patch("FastAPI.main.query_db", return_value=[{"id": 1, "symbol": "XYZ"}])
+@patch("my_fastapi.main.query_db", return_value=[{"id": 1, "symbol": "XYZ"}])
 def test_get_company_report_by_id(mock_query):
     """
     Test the GET /reports/{id} endpoint by report ID.
@@ -219,7 +219,7 @@ def test_get_company_report_by_id(mock_query):
     assert response.status_code == 200
     assert "symbol" in response.json()
 
-@patch("FastAPI.main.query_db", return_value=[])
+@patch("my_fastapi.main.query_db", return_value=[])
 def test_get_report_not_found(mock_query):
     """
     Test the GET /reports/{id} endpoint when the report is not found.
@@ -241,7 +241,7 @@ def test_root_frontend_redirect(monkeypatch):
     :param monkeypatch: A pytest fixture that allows patching functions for testing purposes.
     """
     monkeypatch.setattr("os.path.exists", lambda x: True)
-    monkeypatch.setattr("FastAPI.main.frontend_build_dir", "fakepath")
+    monkeypatch.setattr("my_fastapi.main.frontend_build_dir", "fakepath")
     response = client.get("/")
     assert response.status_code in [200, 404]  # Path may not exist
 

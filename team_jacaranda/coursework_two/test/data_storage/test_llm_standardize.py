@@ -1,5 +1,5 @@
 """
-This module contains tests for the `llm_standardize` functionality, which includes the processing and standardization
+This module contains tests for the llm_standardize functionality, which includes the processing and standardization
 of measurement units using LLM (Large Language Models). It includes dummy database connection and cursor classes to
 simulate interactions with a database and test various edge cases, such as invalid or non-convertible data, successful
 standardizations, and handling of JSON errors.
@@ -20,19 +20,11 @@ import json
 class DummyCursor:
     """
     A dummy implementation of a database cursor for simulating database interactions.
-
-    Methods
-    -------
-    execute(query: str, params: Optional[dict] = None) -> None
-        Simulates the execution of a database query.
-    
-    close() -> None
-        Simulates closing the cursor.
     """
-    
+
     def __init__(self):
         """
-        Initializes a new instance of the DummyCursor class, setting the executed flag and query details to None.
+        Initializes a new instance of the DummyCursor class.
         """
         self.executed = False
         self.last_query = None
@@ -62,25 +54,11 @@ class DummyCursor:
 class DummyConnection:
     """
     A dummy implementation of a database connection, simulating commit, rollback, and cursor functionalities.
-
-    Methods
-    -------
-    cursor() -> DummyCursor
-        Returns a simulated cursor object.
-    
-    commit() -> None
-        Simulates committing the current transaction.
-    
-    rollback() -> None
-        Simulates rolling back the current transaction.
-    
-    close() -> None
-        Simulates closing the database connection.
     """
-    
+
     def __init__(self):
         """
-        Initializes a new instance of the DummyConnection class, creating a DummyCursor and setting flags for commit, rollback, and close.
+        Initializes a new instance of the DummyConnection class.
         """
         self.cursor_obj = DummyCursor()
         self.committed = False
@@ -119,24 +97,20 @@ class DummyConnection:
 def test_safe_json_parse_cleanup_and_errors():
     """
     Test case for the `safe_json_parse` function to ensure proper handling of valid and invalid JSON strings.
-
-    Validates correct parsing of JSON wrapped in markdown and raises the appropriate exceptions for invalid JSON inputs.
     """
     raw = "```json\n{\"convertibility\": true, \"value_standardized\": \"100\"}\n```"
     parsed = llm_standardize.safe_json_parse(raw)
     assert parsed == {"convertibility": True, "value_standardized": "100"}
-    
+
     with pytest.raises(ValueError):
         llm_standardize.safe_json_parse("```\n```")
-    
+
     with pytest.raises(json.JSONDecodeError):
         llm_standardize.safe_json_parse("not a json")
 
 def test_build_conversion_prompt_content():
     """
-    Test case for the `build_conversion_prompt` function to ensure the correct construction of conversion prompts.
-
-    Validates that the prompt contains expected indicators, values, units, and conversion details.
+    Test case for the build_conversion_prompt function to ensure the correct construction of conversion prompts.
     """
     prompt = llm_standardize.build_conversion_prompt(
         "Energy Intensity", "Measures energy usage", "50", "kWh", "kWh"
@@ -148,9 +122,7 @@ def test_build_conversion_prompt_content():
 
 def test_update_standardized_execution(monkeypatch):
     """
-    Test case for the `update_standardized` function to verify SQL execution and commit behavior.
-    
-    Validates that the function executes the correct SQL update statement and commits the transaction.
+    Test case for the update_standardized function to verify SQL execution and commit behavior.
     """
     dummy_conn = DummyConnection()
     llm_standardize.update_standardized(dummy_conn, data_id=5, value_standardized="123", unit_standardized="kg", unit_conversion_note="note")
@@ -161,9 +133,7 @@ def test_update_standardized_execution(monkeypatch):
 
 def test_process_row_unit_match(monkeypatch):
     """
-    Test case for the `process_row` function where the unit matches and no conversion is needed.
-
-    Validates that the row is processed correctly and no LLM call is made when units are the same.
+    Test case for the process_row function where the unit matches and no conversion is needed.
     """
     dummy_conn = DummyConnection()
     updated = []
@@ -177,9 +147,7 @@ def test_process_row_unit_match(monkeypatch):
 
 def test_process_row_convertible_false(monkeypatch):
     """
-    Test case for the `process_row` function when LLM returns a response indicating that conversion is not possible.
-
-    Verifies that the function handles non-convertible responses appropriately and logs the reason.
+    Test case for the process_row function when LLM returns a response indicating that conversion is not possible.
     """
     dummy_conn = DummyConnection()
     monkeypatch.setattr(llm_standardize, "call_llm", lambda prompt: '{"convertibility": false, "note": "unsupported"}')
@@ -194,9 +162,7 @@ def test_process_row_convertible_false(monkeypatch):
 
 def test_process_row_invalid_result_value(monkeypatch, capsys):
     """
-    Test case for the `process_row` function when the LLM returns a non-numeric value after conversion.
-
-    Verifies that the function rolls back the transaction and handles the invalid result correctly.
+    Test case for the process_row function when the LLM returns a non-numeric value after conversion.
     """
     dummy_conn = DummyConnection()
     monkeypatch.setattr(llm_standardize, "call_llm", lambda prompt: '{"convertibility": true, "value_standardized": "N/A", "note": "not numeric"}')
@@ -210,9 +176,7 @@ def test_process_row_invalid_result_value(monkeypatch, capsys):
 
 def test_process_row_success(monkeypatch):
     """
-    Test case for the `process_row` function when LLM returns a valid numeric conversion result.
-
-    Validates that the function processes the row correctly and updates the database with the converted value.
+    Test case for the process_row function when LLM returns a valid numeric conversion result.
     """
     dummy_conn = DummyConnection()
     monkeypatch.setattr(llm_standardize, "call_llm", lambda prompt: '{"convertibility": true, "value_standardized": "42.0", "note": "OK"}')
@@ -227,9 +191,7 @@ def test_process_row_success(monkeypatch):
 
 def test_main_standardization_pipeline(monkeypatch, capsys):
     """
-    Test case for the `main` function in the standardization pipeline, including bulk processing and file output.
-
-    Ensures that the correct number of records are processed and that the connection is closed.
+    Test case for the main function in the standardization pipeline, including bulk processing and file output.
     """
     dummy_conn = DummyConnection()
     monkeypatch.setattr(llm_standardize, "get_connection", lambda: dummy_conn)

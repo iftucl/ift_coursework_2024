@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>modules.data_storage.llm_analyse &#8212; Bigdata_cw2_Jacaranda 1.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/alabaster.css?v=27fed22d" />
+    <script src="../../../_static/documentation_options.js?v=f2a433a1"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+   
+  <link rel="stylesheet" href="../../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for modules.data_storage.llm_analyse</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">This module processes CSR (Corporate Social Responsibility) data by interacting with a PostgreSQL database </span>
+<span class="sd">and an OpenAI API. It performs tasks such as fetching pending CSR data from the database, building prompts </span>
+<span class="sd">for an LLM (Large Language Model), processing the data, and updating the results in the database.</span>
+
+<span class="sd">The workflow involves the following key steps:</span>
+<span class="sd">1. Establishing a connection to the PostgreSQL database.</span>
+<span class="sd">2. Fetching pending rows that need processing.</span>
+<span class="sd">3. Creating prompts for the LLM based on CSR report data and indicators.</span>
+<span class="sd">4. Sending these prompts to an OpenAI-powered LLM for processing.</span>
+<span class="sd">5. Extracting and updating relevant values (numeric or goal-related data) in the database.</span>
+
+<span class="sd">Configuration:</span>
+<span class="sd">- PostgreSQL: Used for storing and retrieving CSR data.</span>
+<span class="sd">- OpenAI API: Used for processing CSR report content.</span>
+
+<span class="sd">Dependencies:</span>
+<span class="sd">- psycopg2: PostgreSQL database adapter.</span>
+<span class="sd">- dotenv: Used to load environment variables.</span>
+<span class="sd">- openai: Python client for interacting with the OpenAI API.</span>
+<span class="sd">- tqdm: For progress bars.</span>
+<span class="sd">- concurrent.futures: For concurrent processing using threads.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">psycopg2</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">dotenv</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_dotenv</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">datetime</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openai</span><span class="w"> </span><span class="kn">import</span> <span class="n">OpenAI</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">concurrent.futures</span><span class="w"> </span><span class="kn">import</span> <span class="n">ThreadPoolExecutor</span><span class="p">,</span> <span class="n">as_completed</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
+
+<span class="c1"># === Load Environment Variables ===</span>
+<span class="n">env_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="vm">__file__</span><span class="p">),</span> <span class="s1">&#39;../../.env&#39;</span><span class="p">))</span>
+<span class="n">load_dotenv</span><span class="p">(</span><span class="n">dotenv_path</span><span class="o">=</span><span class="n">env_path</span><span class="p">)</span>
+<span class="n">api_key</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;DEEPSEEK_API_KEY&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;API Key Loaded:&quot;</span><span class="p">,</span> <span class="n">api_key</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">)</span>
+
+<span class="c1"># === Initialize LLM Client ===</span>
+<span class="n">client</span> <span class="o">=</span> <span class="n">OpenAI</span><span class="p">(</span><span class="n">api_key</span><span class="o">=</span><span class="n">api_key</span><span class="p">,</span> <span class="n">base_url</span><span class="o">=</span><span class="s2">&quot;https://api.deepseek.com&quot;</span><span class="p">)</span>
+
+<span class="c1"># === PostgreSQL Configuration ===</span>
+<span class="n">db_config</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;dbname&quot;</span><span class="p">:</span> <span class="s2">&quot;fift&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="s2">&quot;postgres&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;password&quot;</span><span class="p">:</span> <span class="s2">&quot;postgres&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;host&quot;</span><span class="p">:</span> <span class="s2">&quot;host.docker.internal&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;port&quot;</span><span class="p">:</span> <span class="mi">5439</span>
+<span class="p">}</span>
+
+<div class="viewcode-block" id="get_connection">
+<a class="viewcode-back" href="../../../modules.data_storage.html#modules.data_storage.llm_analyse.get_connection">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_connection</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Establishes a connection to the PostgreSQL database using the provided configuration.</span>
+
+<span class="sd">    :return: psycopg2 connection object.</span>
+<span class="sd">    :rtype: psycopg2.extensions.connection</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">psycopg2</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="o">**</span><span class="n">db_config</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="fetch_pending_rows">
+<a class="viewcode-back" href="../../../modules.data_storage.html#modules.data_storage.llm_analyse.fetch_pending_rows">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">fetch_pending_rows</span><span class="p">(</span><span class="n">conn</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Fetches rows from the database that have a NULL value for &#39;value_raw&#39; and are pending processing.</span>
+
+<span class="sd">    :param conn: A psycopg2 connection object.</span>
+<span class="sd">    :type conn: psycopg2.extensions.connection</span>
+<span class="sd">    :return: List of tuples representing the pending rows.</span>
+<span class="sd">    :rtype: list of tuples</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">conn</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cur</span><span class="p">:</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">            SELECT d.data_id, d.indicator_name, d.source_excerpt, d.indicator_id, d.report_year, </span>
+<span class="s2">                   i.description, i.is_target</span>
+<span class="s2">            FROM csr_reporting.CSR_Data d</span>
+<span class="s2">            JOIN csr_reporting.CSR_indicators i ON d.indicator_id = i.indicator_id</span>
+<span class="s2">            WHERE d.value_raw IS NULL</span>
+<span class="s2">        &quot;&quot;&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="build_prompt">
+<a class="viewcode-back" href="../../../modules.data_storage.html#modules.data_storage.llm_analyse.build_prompt">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">build_prompt</span><span class="p">(</span><span class="n">indicator_name</span><span class="p">,</span> <span class="n">description</span><span class="p">,</span> <span class="n">is_target</span><span class="p">,</span> <span class="n">source_excerpt</span><span class="p">,</span> <span class="n">report_year</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Builds a prompt for the LLM based on the CSR report and indicator details.</span>
+
+<span class="sd">    :param indicator_name: The name of the CSR indicator.</span>
+<span class="sd">    :type indicator_name: str</span>
+<span class="sd">    :param description: The description of the CSR indicator.</span>
+<span class="sd">    :type description: str</span>
+<span class="sd">    :param is_target: Flag indicating whether the indicator is a target indicator.</span>
+<span class="sd">    :type is_target: bool</span>
+<span class="sd">    :param source_excerpt: List of matched paragraphs from the CSR report.</span>
+<span class="sd">    :type source_excerpt: list of dict</span>
+<span class="sd">    :param report_year: The year of the CSR report.</span>
+<span class="sd">    :type report_year: int</span>
+<span class="sd">    :return: The formatted prompt for the LLM.</span>
+<span class="sd">    :rtype: str</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">formatted_paragraphs</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;(Page </span><span class="si">{</span><span class="n">item</span><span class="p">[</span><span class="s1">&#39;page&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">): </span><span class="si">{</span><span class="n">item</span><span class="p">[</span><span class="s1">&#39;text&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">source_excerpt</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">is_target</span><span class="p">:</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;&quot;&quot;You are an intelligent assistant specialized in extracting indicator data from company CSR reports. Please help identify information related to corporate sustainability *goals*.</span>
+
+<span class="s2">From the following paragraphs, extract all goal-oriented statements related to the indicator “</span><span class="si">{</span><span class="n">indicator_name</span><span class="si">}</span><span class="s2">”. These statements typically include plans, commitments, strategic objectives, long-term visions, etc. Extract the original sentences as the raw value for the indicator.</span>
+
+<span class="s2">Indicator description: </span><span class="si">{</span><span class="n">description</span><span class="si">}</span>
+
+<span class="s2">The following are the matched paragraphs in the report (report year: </span><span class="si">{</span><span class="n">report_year</span><span class="si">}</span><span class="s2">):</span>
+<span class="si">{</span><span class="n">formatted_paragraphs</span><span class="si">}</span>
+
+<span class="s2">Please return only the original goal-related sentences (multiple sentences allowed), along with the relevant page numbers. Output in English only. Return in the following format (do not include anything else such as ```json or other prefixes/suffixes, here&#39;s an example output):</span>
+<span class="se">{{</span><span class="s2"> &quot;value&quot;: &quot;...&quot;, &quot;pages&quot;: [&quot;page1&quot;, &quot;page2&quot;] </span><span class="se">}}</span>
+<span class="s2">Where &quot;value&quot; contains the original goal-related text, and &quot;pages&quot; is a list of pages where the goal appears.</span>
+<span class="s2">&quot;&quot;&quot;</span>
+
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;&quot;&quot;You are an intelligent assistant specialized in extracting indicator data from company CSR reports.</span>
+
+<span class="s2">From the following paragraphs, extract the numeric value (such as percentage, quantity, amount, etc.) and its unit related to “</span><span class="si">{</span><span class="n">indicator_name</span><span class="si">}</span><span class="s2">”. The indicator description is: </span><span class="si">{</span><span class="n">description</span><span class="si">}</span>
+
+<span class="s2">Pay special attention to the following:</span>
+<span class="s2">- Output in English only;</span>
+<span class="s2">- Only extract data related to the year </span><span class="si">{</span><span class="n">report_year</span><span class="si">}</span><span class="s2">;</span>
+<span class="s2">- Ensure consistency between value and unit;</span>
+<span class="s2">- Return plain numeric values, without comma separators;</span>
+<span class="s2">- If the unit is not explicitly stated but can be inferred from context (e.g., &quot;%&quot;, &quot;tons&quot;), include it as well (when unit is %, it should be in the &quot;unit&quot; field, not attached to the number).</span>
+
+<span class="s2">The following are the matched paragraphs in the report (report year: </span><span class="si">{</span><span class="n">report_year</span><span class="si">}</span><span class="s2">):</span>
+<span class="si">{</span><span class="n">formatted_paragraphs</span><span class="si">}</span>
+
+<span class="s2">Return the structured result in the format below (do not include anything else such as ```json or other wrappers, here&#39;s an example output):</span>
+<span class="se">{{</span>
+<span class="s2">  &quot;value&quot;: &quot;55.3&quot;,</span>
+<span class="s2">  &quot;unit&quot;: &quot;%&quot;,</span>
+<span class="s2">  &quot;note&quot;: &quot;This value represents the actual renewable energy usage rate in </span><span class="si">{</span><span class="n">report_year</span><span class="si">}</span><span class="s2">.&quot;,</span>
+<span class="s2">  &quot;pages&quot;: [&quot;page1&quot;, &quot;page2&quot;]</span>
+<span class="se">}}</span>
+<span class="s2">&quot;&quot;&quot;</span></div>
+
+
+<div class="viewcode-block" id="call_llm">
+<a class="viewcode-back" href="../../../modules.data_storage.html#modules.data_storage.llm_analyse.call_llm">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">call_llm</span><span class="p">(</span><span class="n">prompt</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calls the LLM API with the provided prompt and returns the response.</span>
+
+<span class="sd">    :param prompt: The prompt to be sent to the LLM.</span>
+<span class="sd">    :type prompt: str</span>
+<span class="sd">    :return: The response content from the LLM.</span>
+<span class="sd">    :rtype: str</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">response</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">chat</span><span class="o">.</span><span class="n">completions</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+        <span class="n">model</span><span class="o">=</span><span class="s2">&quot;deepseek-chat&quot;</span><span class="p">,</span>
+        <span class="n">messages</span><span class="o">=</span><span class="p">[</span> 
+            <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;system&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;You are an intelligent assistant specialized in extracting indicator data from company CSR reports.&quot;</span><span class="p">},</span>
+            <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="n">prompt</span><span class="p">},</span>
+        <span class="p">],</span>
+        <span class="n">stream</span><span class="o">=</span><span class="kc">False</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">response</span><span class="o">.</span><span class="n">choices</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">message</span><span class="o">.</span><span class="n">content</span></div>
+
+
+<div class="viewcode-block" id="update_result">
+<a class="viewcode-back" href="../../../modules.data_storage.html#modules.data_storage.llm_analyse.update_result">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">update_result</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">data_id</span><span class="p">,</span> <span class="n">value_raw</span><span class="p">,</span> <span class="n">unit_raw</span><span class="p">,</span> <span class="n">llm_response_raw</span><span class="p">,</span> <span class="n">pdf_page</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Updates the processed result in the database for the given data ID.</span>
+
+<span class="sd">    :param conn: A psycopg2 connection object.</span>
+<span class="sd">    :type conn: psycopg2.extensions.connection</span>
+<span class="sd">    :param data_id: The ID of the data to be updated.</span>
+<span class="sd">    :type data_id: int</span>
+<span class="sd">    :param value_raw: The raw value extracted from the CSR report.</span>
+<span class="sd">    :type value_raw: str</span>
+<span class="sd">    :param unit_raw: The unit of the extracted value.</span>
+<span class="sd">    :type unit_raw: str</span>
+<span class="sd">    :param llm_response_raw: The raw response from the LLM.</span>
+<span class="sd">    :type llm_response_raw: str</span>
+<span class="sd">    :param pdf_page: The page number(s) from the CSR report where the data was found.</span>
+<span class="sd">    :type pdf_page: str</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">conn</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cur</span><span class="p">:</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">            UPDATE csr_reporting.CSR_Data</span>
+<span class="s2">            SET value_raw = </span><span class="si">%s</span><span class="s2">,</span>
+<span class="s2">                unit_raw = </span><span class="si">%s</span><span class="s2">,</span>
+<span class="s2">                llm_response_raw = </span><span class="si">%s</span><span class="s2">,</span>
+<span class="s2">                pdf_page = </span><span class="si">%s</span>
+<span class="s2">            WHERE data_id = </span><span class="si">%s</span>
+<span class="s2">        &quot;&quot;&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">value_raw</span><span class="p">,</span> <span class="n">unit_raw</span><span class="p">,</span> <span class="n">llm_response_raw</span><span class="p">,</span> <span class="n">pdf_page</span><span class="p">,</span> <span class="n">data_id</span><span class="p">))</span>
+    <span class="n">conn</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="is_valid_number">
+<a class="viewcode-back" href="../../../modules.data_storage.html#modules.data_storage.llm_analyse.is_valid_number">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_valid_number</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Checks if the given value is a valid number (either integer or float).</span>
+
+<span class="sd">    :param value: The value to check.</span>
+<span class="sd">    :type value: str</span>
+<span class="sd">    :return: True if the value is a valid number, otherwise False.</span>
+<span class="sd">    :rtype: bool</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="nb">float</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+
+
+<div class="viewcode-block" id="process_row">
+<a class="viewcode-back" href="../../../modules.data_storage.html#modules.data_storage.llm_analyse.process_row">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">process_row</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">row</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Processes a single row from the database, including calling the LLM API and updating the result in the database.</span>
+
+<span class="sd">    :param conn: A psycopg2 connection object.</span>
+<span class="sd">    :type conn: psycopg2.extensions.connection</span>
+<span class="sd">    :param row: A tuple representing a single row of CSR data to be processed.</span>
+<span class="sd">    :type row: tuple</span>
+<span class="sd">    :return: The ID of the processed data row.</span>
+<span class="sd">    :rtype: int</span>
+<span class="sd">    :raises Exception: If an error occurs during processing.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">data_id</span><span class="p">,</span> <span class="n">indicator_name</span><span class="p">,</span> <span class="n">source_excerpt</span><span class="p">,</span> <span class="n">indicator_id</span><span class="p">,</span> <span class="n">report_year</span><span class="p">,</span> <span class="n">description</span><span class="p">,</span> <span class="n">is_target</span> <span class="o">=</span> <span class="n">row</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">pdf_pages</span> <span class="o">=</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">item</span><span class="p">[</span><span class="s1">&#39;page&#39;</span><span class="p">])</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">source_excerpt</span><span class="p">]</span>
+        <span class="n">prompt</span> <span class="o">=</span> <span class="n">build_prompt</span><span class="p">(</span><span class="n">indicator_name</span><span class="p">,</span> <span class="n">description</span><span class="p">,</span> <span class="n">is_target</span><span class="p">,</span> <span class="n">source_excerpt</span><span class="p">,</span> <span class="n">report_year</span><span class="p">)</span>
+        <span class="n">llm_output</span> <span class="o">=</span> <span class="n">call_llm</span><span class="p">(</span><span class="n">prompt</span><span class="p">)</span>
+        <span class="n">llm_response_raw</span> <span class="o">=</span> <span class="n">llm_output</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">is_target</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">llm_output</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+                    <span class="n">parsed</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">llm_output</span><span class="p">)</span>
+                    <span class="n">value_raw</span> <span class="o">=</span> <span class="n">parsed</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;value&quot;</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">value_raw</span> <span class="o">=</span> <span class="n">llm_output</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+            <span class="k">except</span> <span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span><span class="p">:</span>
+                <span class="n">value_raw</span> <span class="o">=</span> <span class="n">llm_output</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+            <span class="n">unit_raw</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">parsed</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">llm_output</span><span class="p">)</span>
+            <span class="n">value_raw</span> <span class="o">=</span> <span class="n">parsed</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;value&quot;</span><span class="p">)</span>
+            <span class="n">unit_raw</span> <span class="o">=</span> <span class="n">parsed</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;unit&quot;</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">value_raw</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">is_valid_number</span><span class="p">(</span><span class="n">value_raw</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Invalid numeric value: </span><span class="si">{</span><span class="n">value_raw</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="n">update_result</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">data_id</span><span class="p">,</span> <span class="n">value_raw</span><span class="p">,</span> <span class="n">unit_raw</span><span class="p">,</span> <span class="n">llm_response_raw</span><span class="p">,</span> <span class="s2">&quot;,&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">pdf_pages</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">data_id</span>
+
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">conn</span><span class="o">.</span><span class="n">rollback</span><span class="p">()</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;❌ Failed to process data ID </span><span class="si">{</span><span class="n">data_id</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">raise</span></div>
+
+
+<div class="viewcode-block" id="main">
+<a class="viewcode-back" href="../../../modules.data_storage.html#modules.data_storage.llm_analyse.main">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Main function to process all pending rows in the database by calling the process_row function concurrently.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">conn</span> <span class="o">=</span> <span class="n">get_connection</span><span class="p">()</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">rows</span> <span class="o">=</span> <span class="n">fetch_pending_rows</span><span class="p">(</span><span class="n">conn</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Total records to process: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        
+        <span class="k">with</span> <span class="n">ThreadPoolExecutor</span><span class="p">(</span><span class="n">max_workers</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span> <span class="k">as</span> <span class="n">executor</span><span class="p">:</span>
+            <span class="n">futures</span> <span class="o">=</span> <span class="p">[</span><span class="n">executor</span><span class="o">.</span><span class="n">submit</span><span class="p">(</span><span class="n">process_row</span><span class="p">,</span> <span class="n">conn</span><span class="p">,</span> <span class="n">row</span><span class="p">)</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">future</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">as_completed</span><span class="p">(</span><span class="n">futures</span><span class="p">),</span> <span class="n">total</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">futures</span><span class="p">),</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;Processing Progress&quot;</span><span class="p">):</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">future</span><span class="o">.</span><span class="n">result</span><span class="p">()</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;✅ Successfully processed&quot;</span><span class="p">)</span>
+                <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;❌ Processing failed: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">conn</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></div>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../../index.html">Bigdata_cw2_Jacaranda</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../modules.html">modules package</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../my_fastapi.html">my_fastapi package</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../test.html">test package</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../../index.html">Documentation overview</a><ul>
+  <li><a href="../../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, Roger.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>
