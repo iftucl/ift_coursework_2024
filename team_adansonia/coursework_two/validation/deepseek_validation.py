@@ -7,7 +7,7 @@ import fitz  # PyMuPDF
 from dotenv import load_dotenv
 
 # Load API key from .env
-load_dotenv()
+load_dotenv(override=True)
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 
 url = "https://api.deepseek.com/v1/chat/completions"

@@ -10,7 +10,7 @@ from team_adansonia.coursework_two.validation.deepseek_validation import validat
 #TODO: LLM for validation? Append validation status for each data point
 
 
-load_dotenv()
+load_dotenv(override=True)
 LLAMA_API_KEY = os.getenv("LLAMA_API_KEY")
 
 unit_config = {

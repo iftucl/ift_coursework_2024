@@ -17,7 +17,7 @@ from loguru import logger
 from pydantic import BaseModel
 
 # Load environment variables
-load_dotenv()
+load_dotenv(override=True)
 LLAMA_API_KEY = os.getenv("LLAMA_API_KEY")
 
 

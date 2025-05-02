@@ -38,7 +38,7 @@ KEYWORDS = ["gallons", "MWh", "pounds", "m3", "water usage", "electricity", "ene
 YEAR_PATTERN = re.compile(r"\b(?:FY\s?\d{2,4}|\b20[1-3][0-9]\b)", re.IGNORECASE)
 
 # Load environment variables
-load_dotenv()
+load_dotenv(override=True)
 LLAMA_API_KEY = os.getenv("LLAMA_API_KEY")
 
 
@@ -191,6 +191,11 @@ async def run_main_for_symbols(symbols_with_years: list[tuple[str, str | None]])
                 field_name_data = f"esg_data_{year}" if year else f"esg_data_{latest_year}"
                 field_name_goals = f"esg_goals_{year}" if year else f"esg_goals_{latest_year}"
 
+                existing_doc = companies_collection.find_one({"symbol": symbol}, {field_name_data: 1})
+                if existing_doc and field_name_data in existing_doc:
+                    logger.info(f"ESG data for {symbol} ({year or latest_year}) already exists. Skipping.")
+                    continue
+
                 # Set the status to processing
                 companies_collection.update_one(
                     {"symbol": symbol},
@@ -202,12 +207,6 @@ async def run_main_for_symbols(symbols_with_years: list[tuple[str, str | None]])
                 )
 
                 logger.info(f"🚀 Running ESG workflow for: {symbol}, year: {year or latest_year}")
-
-
-                existing_doc = companies_collection.find_one({"symbol": symbol}, {field_name_data: 1})
-                if existing_doc and field_name_data in existing_doc:
-                    logger.info(f"ESG data for {symbol} ({year or latest_year}) already exists. Skipping.")
-                    continue
 
                 cleaned_data, cleaned_goals = await run_end_to_end_workflow(symbol, security, db, year)
                 if cleaned_data:
@@ -312,5 +311,5 @@ def main():
 
 # Entry point
 if __name__ == "__main__":
-    symbols_with_years = [("NVDA", "2022")]
+    symbols_with_years = [("BLL", "2022")]
     asyncio.run(run_main_for_symbols(symbols_with_years))

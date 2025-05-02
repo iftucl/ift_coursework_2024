@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 """
 This module provides tools to extract emissions and sustainability goal information
@@ -140,7 +140,7 @@ def call_deepseek_find_goals(company_name, pdf_text):
     Returns:
         str: Summary of emissions goals.
     """
-    load_dotenv()
+    load_dotenv(override=True)
     client = OpenAI(
         api_key= DEEPSEEK_API_KEY,
         base_url="https://api.deepseek.com"

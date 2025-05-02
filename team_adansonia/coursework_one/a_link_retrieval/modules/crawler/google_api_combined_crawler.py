@@ -10,7 +10,7 @@ from loguru import logger
 from typing import List
 import modules.validation.validation as validation
 # Load environment variables
-load_dotenv()
+load_dotenv(override=True)
 
 SEARCH_ENGINE_ID = os.getenv("SEARCH_ENGINE_ID")
 API_KEYS = [
