@@ -34,17 +34,7 @@ This project delivers an **end-to-end data product** for CSR indicators, coverin
 All components are fully containerized, with backend dependencies managed by **Poetry**.
 
 ## 📌 Project Abstract:
-This project aims to build a platform for Corporate Social Responsibility (CSR) data management and visualization. The system allows users to efficiently query, filter, and analyze CSR indicators and reports disclosed by companies. The architecture adopts a modern front-end/back-end separation. The back end is developed using the high-performance, easy-to-expand FastAPI in the Python ecosystem, while the front end is built with React - responsible for rendering data and managing user interactions. FastAPI handles data APIs and communication with the PostgreSQL database. It was chosen due to its simplicity, and highly optimized framework for high performance. React is a tool that allows a collaborative nature on project through enabling a modular design. This is as it allows the use of compartmentalizing different sections of the frontend, hence allowing for a more organized development, thus translating into an easy user interface. The front-end also utilizes the Axios tool that synergies well with API requests and uses visualization components such as Recharts to draw data charts. 
-
-In addition, the projects introduce TailwindCSS class name styles to improve the responsive layout and interactive experience of the page, this is thanks to its utility-first approach and the highly customizable natures of the tool. 
-
-The main technologies used include:
-- FastAPI (Python) for high performance and scalability on the backend.
-- PostgreSQL for structured storage of CSR indicators, reports, and company data.
-- React with Axios for dynamic UI and API communication.
-- Recharts for data visualization and TailwindCSS for styling and responsive layout.
-
-Communication between front and back ends is managed via RESTful APIs. In production, FastAPI serves the static files generated from the React build, ensuring the app runs smoothly across environments.
+This project delivers a robust and modular platform for extracting, standardizing, and visualizing Corporate Social Responsibility (CSR) data from PDF reports. The system combines a high-performance FastAPI backend with a responsive React frontend, underpinned by a structured PostgreSQL database and supported by cloud-based object storage (MinIO). Sustainability indicators are automatically identified through keyword-based paragraph extraction and refined using large language models (LLMs) for accurate value recognition and unit standardization. The pipeline is orchestrated end-to-end and thoroughly tested using pytest, with test coverage exceeding 80% for backend modules. Due to the frontend being developed in JavaScript, structural validation is performed via Python-based static tests to comply with testing requirements. Security analysis with Bandit and Safety confirms strong hygiene across all components, with actionable findings mainly localized to data ingestion scripts. The final system enables efficient ESG data querying, reporting, and comparison at scale, making it a valuable foundation for sustainability analytics.
 
 ---
 
