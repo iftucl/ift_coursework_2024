@@ -6,10 +6,10 @@ such as Scope emissions, energy consumption, and water usage from PDF reports.
 
 Requires: llama-parse, loguru, pydantic, dotenv
 """
-
-import json
 import os
 import re
+import json
+import asyncio
 from datetime import datetime
 from dotenv import load_dotenv
 from llama_parse import LlamaParse
@@ -20,31 +20,16 @@ from pydantic import BaseModel
 load_dotenv(override=True)
 LLAMA_API_KEY = os.getenv("LLAMA_API_KEY")
 
-
 class LlamaExtractor(BaseModel):
     """
-    Asynchronous extractor for sustainability metrics using LlamaParse.
-
-    Attributes:
-        api_key (str): LlamaParse API key.
-        company_name (str): Name of the company being analyzed.
-        filtered_pdf_path (str): Path to the filtered PDF file.
+    Asynchronous extractor for sustainability metrics (Scope emissions, energy, water)
+    from a filtered PDF using the LlamaParse API.
     """
-
     api_key: str = LLAMA_API_KEY
     company_name: str
     filtered_pdf_path: str
 
     async def process(self) -> dict:
-        """
-        Asynchronously processes the PDF and extracts sustainability metrics.
-
-        Returns:
-            dict: A dictionary containing the following keys:
-                - "Scope Data"
-                - "Energy Data"
-                - "Water Data"
-        """
         logger.info(f"🔍 Processing {self.company_name}")
 
         scope_data = await self.extract_scope_emissions(self.filtered_pdf_path, self.company_name)
@@ -63,88 +48,38 @@ class LlamaExtractor(BaseModel):
         }
 
     async def extract_scope_emissions(self, pdf_file: str, company_name: str) -> dict:
-        """
-        Extracts Scope 1 and Scope 2 emissions data from a PDF.
-
-        Args:
-            pdf_file (str): Path to the PDF file.
-            company_name (str): Company name for logging and context.
-
-        Returns:
-            dict: Extracted emissions data, or an empty dictionary on failure.
-        """
-        try:
-            parser = LlamaParse(
-                api_key=self.api_key,
-                result_type="markdown",
-                verbose=False,
-                language="en",
-                num_workers=4,
-                table_extraction_mode="full",
-                parsing_instruction="""...""",  # abbreviated for clarity
-                is_formatting_instruction=True,
-            )
-
-            documents = await parser.aload_data(
-                pdf_file,
-                extra_info={
-                    "file_name": f"{company_name}.pdf",
-                    "processed_date": datetime.now().isoformat(),
-                },
-            )
-            return self._extract_best_json_block(documents)
-
-        except Exception as e:
-            logger.error(f"Error extracting Scope emissions for {company_name}: {e}")
-            return {}
+        return await self._extract_with_instruction(
+            pdf_file,
+            company_name,
+            "Extract the following emissions metrics for all financial years available:\n"
+            "- Scope 1 emissions (total)\n"
+            "- Scope 2 emissions (market-based)\n"
+            "- Scope 2 emissions (location-based)\n"
+            "\nProvide a JSON structure like:\n"
+            "{\n  \"Scope 1\": {\"2020\": [value, unit], \"2021\": [value, unit]}, ...\n}",
+        )
 
     async def extract_energy_metrics(self, pdf_file: str, company_name: str) -> dict:
-        """
-        Extracts energy consumption metrics from a PDF.
-
-        Args:
-            pdf_file (str): Path to the PDF file.
-            company_name (str): Company name for logging and context.
-
-        Returns:
-            dict: Extracted energy data, or an empty dictionary on failure.
-        """
-        try:
-            parser = LlamaParse(
-                api_key=self.api_key,
-                result_type="markdown",
-                verbose=False,
-                language="en",
-                num_workers=4,
-                table_extraction_mode="full",
-                parsing_instruction="""...""",  # abbreviated for clarity
-                is_formatting_instruction=True,
-            )
-
-            documents = await parser.aload_data(
-                pdf_file,
-                extra_info={
-                    "file_name": f"{company_name}.pdf",
-                    "processed_date": datetime.now().isoformat(),
-                },
-            )
-            return self._extract_best_json_block(documents)
-
-        except Exception as e:
-            logger.error(f"Error extracting Energy data for {company_name}: {e}")
-            return {}
+        return await self._extract_with_instruction(
+            pdf_file,
+            company_name,
+            "Extract the following energy metrics for all financial years available:\n"
+            "- Energy consumption (total, renewable, non-renewable)\n"
+            "\nProvide a JSON structure like:\n"
+            "{\n  \"Total Energy\": {\"2020\": [value, unit], \"2021\": [value, unit]}, ...\n}",
+        )
 
     async def extract_water_metrics(self, pdf_file: str, company_name: str) -> dict:
-        """
-        Extracts water usage metrics from a PDF.
+        return await self._extract_with_instruction(
+            pdf_file,
+            company_name,
+            "Extract the following water-related metrics for all financial years available:\n"
+            "- Water usage or intensity (withdrawal, consumption, or any other relevant metrics)\n"
+            "\nProvide a JSON structure like:\n"
+            "{\n  \"Water Usage\": {\"2020\": [value, unit], \"2021\": [value, unit]}, ...\n}",
+        )
 
-        Args:
-            pdf_file (str): Path to the PDF file.
-            company_name (str): Company name for logging and context.
-
-        Returns:
-            dict: Extracted water usage data, or an empty dictionary on failure.
-        """
+    async def _extract_with_instruction(self, pdf_file: str, company_name: str, instruction: str) -> dict:
         try:
             parser = LlamaParse(
                 api_key=self.api_key,
@@ -153,7 +88,7 @@ class LlamaExtractor(BaseModel):
                 language="en",
                 num_workers=4,
                 table_extraction_mode="full",
-                parsing_instruction="""...""",  # abbreviated for clarity
+                parsing_instruction=f"This is a corporate sustainability report.\n\n{instruction}",
                 is_formatting_instruction=True,
             )
 
@@ -167,20 +102,11 @@ class LlamaExtractor(BaseModel):
             return self._extract_best_json_block(documents)
 
         except Exception as e:
-            logger.error(f"Error extracting Water data for {company_name}: {e}")
+            logger.error(f"Error during extraction for {company_name}: {e}")
             return {}
 
     def _extract_best_json_block(self, documents: list) -> dict:
-        """
-        Extracts the most complete JSON block from a list of documents.
-
-        Args:
-            documents (list): LlamaParse output containing document content.
-
-        Returns:
-            dict: Most complete structured data block found in the documents.
-        """
-        code_fence_pattern = re.compile(r"```json\s*(.*?)```", re.DOTALL | re.IGNORECASE)
+        code_fence_pattern = re.compile(r"⁠  json\s*(.*?)  ⁠", re.DOTALL | re.IGNORECASE)
         best_data = {}
         max_score = 0
 
@@ -197,13 +123,12 @@ class LlamaExtractor(BaseModel):
                     logger.warning(f"Failed to parse JSON block: {exc}")
                     continue
 
-                # Score completeness of data
-                score = 0
-                for metric, values in data.items():
-                    if isinstance(values, dict):
-                        for year_val in values.values():
-                            if isinstance(year_val, list) and len(year_val) == 2 and all(year_val):
-                                score += 1
+                score = sum(
+                    1 for values in data.values()
+                    if isinstance(values, dict)
+                    for year_val in values.values()
+                    if isinstance(year_val, list) and len(year_val) == 2 and all(year_val)
+                )
 
                 if score > max_score:
                     best_data = data
@@ -212,16 +137,18 @@ class LlamaExtractor(BaseModel):
 
         return best_data
 
-
-# Example usage (non-async fallback for testing)
+# Example usage
 if __name__ == "__main__":
-    company = "NVIDIA"
-    pdf_path = "filtered_report.pdf"
+    async def main():
+        company = "NVIDIA"
+        pdf_path = "filtered_report.pdf"
 
-    extractor = LlamaExtractor(
-        api_key=LLAMA_API_KEY,
-        company_name=company,
-        filtered_pdf_path=pdf_path,
-    )
-    result = extractor.process()  # This will return a coroutine
-    print("NOTE: Use asyncio.run(...) to run 'process' asynchronously.")
+        extractor = LlamaExtractor(
+            api_key=LLAMA_API_KEY,
+            company_name=company,
+            filtered_pdf_path=pdf_path,
+        )
+        result = await extractor.process()
+        print(json.dumps(result, indent=2))
+
+    asyncio.run(main())
