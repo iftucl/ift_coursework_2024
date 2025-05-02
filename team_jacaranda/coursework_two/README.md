@@ -20,8 +20,7 @@ docker compose up --build
 
 > Then, access the frontend at: [https://csr.jacaranda.ngrok.app/](https://csr.jacaranda.ngrok.app/)
 
-![Frontend Page](https://raw.githubusercontent.com/Etainos/ift_coursework_2024/team_jacaranda/team_jacaranda/coursework_two/static/Frontend_Page_1.jpg)
-![Frontend Page](https://raw.githubusercontent.com/Etainos/ift_coursework_2024/team_jacaranda/team_jacaranda/coursework_two/static/Frontend_Page_2.jpg)
+![Frontend Page](https://raw.githubusercontent.com/Etainos/ift_coursework_2024/team_jacaranda/team_jacaranda/coursework_two/static/Frontend_Page.jpg)
 
 ---
 
