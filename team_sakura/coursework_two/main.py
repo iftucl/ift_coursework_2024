@@ -215,7 +215,7 @@ def main():
     reset_db = os.getenv("RESET_DB", "false").lower() == "true"
 
     if reset_db:
-        print("⚡ RESET_DB is True → Resetting the indicators collection...")
+        print("RESET_DB is True → Resetting the indicators collection...")
         reset_indicators_collection()
 
     collection = get_mongo_collection()
