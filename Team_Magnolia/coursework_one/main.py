@@ -26,9 +26,7 @@ import os
 # ======================================
 # 1. Attempt imports from your modules
 # ======================================
-# Each import is wrapped in try/except to handle missing modules gracefully
-# Scraper will be imported lazily inside the scrape command so that any
-# environment variables (e.g. ALLOW_LOCAL_SELENIUM) are already set.
+
 run_scraper = None
 
 try:

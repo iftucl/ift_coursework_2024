@@ -1,6 +1,3 @@
-# Module is never imported or used anywhere in the codebase.
-# CRITICAL ISSUE: Tries to load config["minio"] which doesn't exist in conf.yaml.
-# Would cause KeyError if used.
 
 import os
 import yaml

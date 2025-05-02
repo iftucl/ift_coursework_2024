@@ -12,6 +12,7 @@ Features
 6. show-lineage     –  Show the latest 5 pipeline lineage records
 7. ingest           –  Ingest a final JSON into MongoDB
 8. show-report      –  Query an ingested report by company_id / year
+9. serve            –  Open the data visualization dashboard           
 """
 
 import sys

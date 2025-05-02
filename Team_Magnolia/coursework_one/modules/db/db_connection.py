@@ -1,5 +1,4 @@
-# Module is never imported or used anywhere in the codebase.
-# The main codebase uses hardcoded connection in individual modules instead.
+
 import psycopg2
 import yaml
 import os
