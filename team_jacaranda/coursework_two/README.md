@@ -20,6 +20,8 @@ docker compose up --build
 
 > Then, access the frontend at: [https://csr.jacaranda.ngrok.app/](https://csr.jacaranda.ngrok.app/)
 
+![Frontend Page](https://raw.githubusercontent.com/Etainos/ift_coursework_2024/team_jacaranda/team_jacaranda/coursework_two/static/Frontend_Page.jpg)
+
 ---
 
 ## 📌 Project Overview
@@ -47,6 +49,7 @@ All components are fully containerized, with backend dependencies managed by **P
 ```
 coursework_two/
  ├── config/                  # Configuration folder.
+ ├── docs/                    # Documentation folder, contains reStructuredText source files and Sphinx configuration for generating project documentation.
  ├── my_fastapi/              # Backend API (FastAPI service), responsible for handling frontend requests and providing data endpoints.
  ├── modules/
  │    ├── data_storage/       # Data extraction and processing module, responsible for extracting data from various sources and preprocessing it.
