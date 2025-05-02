@@ -1,0 +1,810 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.db.backends.oracle.base &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../../../db.html">django.db</a></li>
+      <li class="breadcrumb-item active">django.db.backends.oracle.base</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.db.backends.oracle.base</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Oracle database backend for Django.</span>
+
+<span class="sd">Requires cx_Oracle: https://oracle.github.io/python-cx_Oracle/</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">decimal</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">platform</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">contextmanager</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImproperlyConfigured</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">IntegrityError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.base.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseDatabaseWrapper</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">debug_transaction</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.asyncio</span><span class="w"> </span><span class="kn">import</span> <span class="n">async_unsafe</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.encoding</span><span class="w"> </span><span class="kn">import</span> <span class="n">force_bytes</span><span class="p">,</span> <span class="n">force_str</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">cached_property</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_setup_environment</span><span class="p">(</span><span class="n">environ</span><span class="p">):</span>
+    <span class="c1"># Cygwin requires some special voodoo to set the environment variables</span>
+    <span class="c1"># properly so that Oracle will see them.</span>
+    <span class="k">if</span> <span class="n">platform</span><span class="o">.</span><span class="n">system</span><span class="p">()</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;CYGWIN&quot;</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="kn">import</span><span class="w"> </span><span class="nn">ctypes</span>
+        <span class="k">except</span> <span class="ne">ImportError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+                <span class="s2">&quot;Error loading ctypes: </span><span class="si">%s</span><span class="s2">; &quot;</span>
+                <span class="s2">&quot;the Oracle backend requires ctypes to &quot;</span>
+                <span class="s2">&quot;operate correctly under Cygwin.&quot;</span> <span class="o">%</span> <span class="n">e</span>
+            <span class="p">)</span>
+        <span class="n">kernel32</span> <span class="o">=</span> <span class="n">ctypes</span><span class="o">.</span><span class="n">CDLL</span><span class="p">(</span><span class="s2">&quot;kernel32&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">environ</span><span class="p">:</span>
+            <span class="n">kernel32</span><span class="o">.</span><span class="n">SetEnvironmentVariableA</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">environ</span><span class="p">)</span>
+
+
+<span class="n">_setup_environment</span><span class="p">(</span>
+    <span class="p">[</span>
+        <span class="c1"># Oracle takes client-side character set encoding from the environment.</span>
+        <span class="p">(</span><span class="s2">&quot;NLS_LANG&quot;</span><span class="p">,</span> <span class="s2">&quot;.AL32UTF8&quot;</span><span class="p">),</span>
+        <span class="c1"># This prevents Unicode from getting mangled by getting encoded into the</span>
+        <span class="c1"># potentially non-Unicode database character set.</span>
+        <span class="p">(</span><span class="s2">&quot;ORA_NCHAR_LITERAL_REPLACE&quot;</span><span class="p">,</span> <span class="s2">&quot;TRUE&quot;</span><span class="p">),</span>
+    <span class="p">]</span>
+<span class="p">)</span>
+
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">cx_Oracle</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">Database</span>
+<span class="k">except</span> <span class="ne">ImportError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span><span class="s2">&quot;Error loading cx_Oracle module: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">e</span><span class="p">)</span>
+
+<span class="c1"># Some of these import cx_Oracle, so import them after checking if it&#39;s installed.</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.client</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseClient</span>  <span class="c1"># NOQA</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.creation</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseCreation</span>  <span class="c1"># NOQA</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.features</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseFeatures</span>  <span class="c1"># NOQA</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.introspection</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseIntrospection</span>  <span class="c1"># NOQA</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.operations</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseOperations</span>  <span class="c1"># NOQA</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.schema</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseSchemaEditor</span>  <span class="c1"># NOQA</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">Oracle_datetime</span><span class="p">,</span> <span class="n">dsn</span>  <span class="c1"># NOQA</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.validation</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseValidation</span>  <span class="c1"># NOQA</span>
+
+
+<span class="nd">@contextmanager</span>
+<div class="viewcode-block" id="wrap_oracle_errors">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.wrap_oracle_errors">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">wrap_oracle_errors</span><span class="p">():</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">yield</span>
+    <span class="k">except</span> <span class="n">Database</span><span class="o">.</span><span class="n">DatabaseError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="c1"># cx_Oracle raises a cx_Oracle.DatabaseError exception with the</span>
+        <span class="c1"># following attributes and values:</span>
+        <span class="c1">#  code = 2091</span>
+        <span class="c1">#  message = &#39;ORA-02091: transaction rolled back</span>
+        <span class="c1">#            &#39;ORA-02291: integrity constraint (TEST_DJANGOTEST.SYS</span>
+        <span class="c1">#               _C00102056) violated - parent key not found&#39;</span>
+        <span class="c1">#            or:</span>
+        <span class="c1">#            &#39;ORA-00001: unique constraint (DJANGOTEST.DEFERRABLE_</span>
+        <span class="c1">#               PINK_CONSTRAINT) violated</span>
+        <span class="c1"># Convert that case to Django&#39;s IntegrityError exception.</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">e</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="nb">hasattr</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="s2">&quot;code&quot;</span><span class="p">)</span>
+            <span class="ow">and</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="s2">&quot;message&quot;</span><span class="p">)</span>
+            <span class="ow">and</span> <span class="n">x</span><span class="o">.</span><span class="n">code</span> <span class="o">==</span> <span class="mi">2091</span>
+            <span class="ow">and</span> <span class="p">(</span><span class="s2">&quot;ORA-02291&quot;</span> <span class="ow">in</span> <span class="n">x</span><span class="o">.</span><span class="n">message</span> <span class="ow">or</span> <span class="s2">&quot;ORA-00001&quot;</span> <span class="ow">in</span> <span class="n">x</span><span class="o">.</span><span class="n">message</span><span class="p">)</span>
+        <span class="p">):</span>
+            <span class="k">raise</span> <span class="n">IntegrityError</span><span class="p">(</span><span class="o">*</span><span class="nb">tuple</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">args</span><span class="p">))</span>
+        <span class="k">raise</span></div>
+
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_UninitializedOperatorsDescriptor</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__get__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">instance</span><span class="p">,</span> <span class="bp">cls</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="c1"># If connection.operators is looked up before a connection has been</span>
+        <span class="c1"># created, transparently initialize connection.operators to avert an</span>
+        <span class="c1"># AttributeError.</span>
+        <span class="k">if</span> <span class="n">instance</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span><span class="s2">&quot;operators not available as class attribute&quot;</span><span class="p">)</span>
+        <span class="c1"># Creating a cursor will initialize the operators.</span>
+        <span class="n">instance</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">instance</span><span class="o">.</span><span class="vm">__dict__</span><span class="p">[</span><span class="s2">&quot;operators&quot;</span><span class="p">]</span>
+
+
+<div class="viewcode-block" id="DatabaseWrapper">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.DatabaseWrapper">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DatabaseWrapper</span><span class="p">(</span><span class="n">BaseDatabaseWrapper</span><span class="p">):</span>
+<div class="viewcode-block" id="DatabaseWrapper.vendor">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.DatabaseWrapper.vendor">[docs]</a>
+    <span class="n">vendor</span> <span class="o">=</span> <span class="s2">&quot;oracle&quot;</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.display_name">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.DatabaseWrapper.display_name">[docs]</a>
+    <span class="n">display_name</span> <span class="o">=</span> <span class="s2">&quot;Oracle&quot;</span></div>
+
+    <span class="c1"># This dictionary maps Field objects to their associated Oracle column</span>
+    <span class="c1"># types, as strings. Column-type strings can contain format strings; they&#39;ll</span>
+    <span class="c1"># be interpolated against the values of Field.__dict__ before being output.</span>
+    <span class="c1"># If a column type is set to None, it won&#39;t be included in the output.</span>
+    <span class="c1">#</span>
+    <span class="c1"># Any format strings starting with &quot;qn_&quot; are quoted before being used in the</span>
+    <span class="c1"># output (the &quot;qn_&quot; prefix is stripped before the lookup is performed.</span>
+<div class="viewcode-block" id="DatabaseWrapper.data_types">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.DatabaseWrapper.data_types">[docs]</a>
+    <span class="n">data_types</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;AutoField&quot;</span><span class="p">:</span> <span class="s2">&quot;NUMBER(11) GENERATED BY DEFAULT ON NULL AS IDENTITY&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;BigAutoField&quot;</span><span class="p">:</span> <span class="s2">&quot;NUMBER(19) GENERATED BY DEFAULT ON NULL AS IDENTITY&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;BinaryField&quot;</span><span class="p">:</span> <span class="s2">&quot;BLOB&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;BooleanField&quot;</span><span class="p">:</span> <span class="s2">&quot;NUMBER(1)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;CharField&quot;</span><span class="p">:</span> <span class="s2">&quot;NVARCHAR2(</span><span class="si">%(max_length)s</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;DateField&quot;</span><span class="p">:</span> <span class="s2">&quot;DATE&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;DateTimeField&quot;</span><span class="p">:</span> <span class="s2">&quot;TIMESTAMP&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;DecimalField&quot;</span><span class="p">:</span> <span class="s2">&quot;NUMBER(</span><span class="si">%(max_digits)s</span><span class="s2">, </span><span class="si">%(decimal_places)s</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;DurationField&quot;</span><span class="p">:</span> <span class="s2">&quot;INTERVAL DAY(9) TO SECOND(6)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;FileField&quot;</span><span class="p">:</span> <span class="s2">&quot;NVARCHAR2(</span><span class="si">%(max_length)s</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;FilePathField&quot;</span><span class="p">:</span> <span class="s2">&quot;NVARCHAR2(</span><span class="si">%(max_length)s</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;FloatField&quot;</span><span class="p">:</span> <span class="s2">&quot;DOUBLE PRECISION&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;IntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;NUMBER(11)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;JSONField&quot;</span><span class="p">:</span> <span class="s2">&quot;NCLOB&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;BigIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;NUMBER(19)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;IPAddressField&quot;</span><span class="p">:</span> <span class="s2">&quot;VARCHAR2(15)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;GenericIPAddressField&quot;</span><span class="p">:</span> <span class="s2">&quot;VARCHAR2(39)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;OneToOneField&quot;</span><span class="p">:</span> <span class="s2">&quot;NUMBER(11)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;PositiveBigIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;NUMBER(19)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;PositiveIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;NUMBER(11)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;PositiveSmallIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;NUMBER(11)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;SlugField&quot;</span><span class="p">:</span> <span class="s2">&quot;NVARCHAR2(</span><span class="si">%(max_length)s</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;SmallAutoField&quot;</span><span class="p">:</span> <span class="s2">&quot;NUMBER(5) GENERATED BY DEFAULT ON NULL AS IDENTITY&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;SmallIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;NUMBER(11)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;TextField&quot;</span><span class="p">:</span> <span class="s2">&quot;NCLOB&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;TimeField&quot;</span><span class="p">:</span> <span class="s2">&quot;TIMESTAMP&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;URLField&quot;</span><span class="p">:</span> <span class="s2">&quot;VARCHAR2(</span><span class="si">%(max_length)s</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;UUIDField&quot;</span><span class="p">:</span> <span class="s2">&quot;VARCHAR2(32)&quot;</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.data_type_check_constraints">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.DatabaseWrapper.data_type_check_constraints">[docs]</a>
+    <span class="n">data_type_check_constraints</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;BooleanField&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="si">%(qn_column)s</span><span class="s2"> IN (0,1)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;JSONField&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="si">%(qn_column)s</span><span class="s2"> IS JSON&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;PositiveBigIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="si">%(qn_column)s</span><span class="s2"> &gt;= 0&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;PositiveIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="si">%(qn_column)s</span><span class="s2"> &gt;= 0&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;PositiveSmallIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="si">%(qn_column)s</span><span class="s2"> &gt;= 0&quot;</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+
+    <span class="c1"># Oracle doesn&#39;t support a database index on these columns.</span>
+    <span class="n">_limited_data_types</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;clob&quot;</span><span class="p">,</span> <span class="s2">&quot;nclob&quot;</span><span class="p">,</span> <span class="s2">&quot;blob&quot;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="DatabaseWrapper.operators">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.DatabaseWrapper.operators">[docs]</a>
+    <span class="n">operators</span> <span class="o">=</span> <span class="n">_UninitializedOperatorsDescriptor</span><span class="p">()</span></div>
+
+
+    <span class="n">_standard_operators</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;exact&quot;</span><span class="p">:</span> <span class="s2">&quot;= </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;iexact&quot;</span><span class="p">:</span> <span class="s2">&quot;= UPPER(</span><span class="si">%s</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;contains&quot;</span><span class="p">:</span> <span class="p">(</span>
+            <span class="s2">&quot;LIKE TRANSLATE(</span><span class="si">%s</span><span class="s2"> USING NCHAR_CS) ESCAPE TRANSLATE(&#39;</span><span class="se">\\</span><span class="s2">&#39; USING NCHAR_CS)&quot;</span>
+        <span class="p">),</span>
+        <span class="s2">&quot;icontains&quot;</span><span class="p">:</span> <span class="p">(</span>
+            <span class="s2">&quot;LIKE UPPER(TRANSLATE(</span><span class="si">%s</span><span class="s2"> USING NCHAR_CS)) &quot;</span>
+            <span class="s2">&quot;ESCAPE TRANSLATE(&#39;</span><span class="se">\\</span><span class="s2">&#39; USING NCHAR_CS)&quot;</span>
+        <span class="p">),</span>
+        <span class="s2">&quot;gt&quot;</span><span class="p">:</span> <span class="s2">&quot;&gt; </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;gte&quot;</span><span class="p">:</span> <span class="s2">&quot;&gt;= </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;lt&quot;</span><span class="p">:</span> <span class="s2">&quot;&lt; </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;lte&quot;</span><span class="p">:</span> <span class="s2">&quot;&lt;= </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;startswith&quot;</span><span class="p">:</span> <span class="p">(</span>
+            <span class="s2">&quot;LIKE TRANSLATE(</span><span class="si">%s</span><span class="s2"> USING NCHAR_CS) ESCAPE TRANSLATE(&#39;</span><span class="se">\\</span><span class="s2">&#39; USING NCHAR_CS)&quot;</span>
+        <span class="p">),</span>
+        <span class="s2">&quot;endswith&quot;</span><span class="p">:</span> <span class="p">(</span>
+            <span class="s2">&quot;LIKE TRANSLATE(</span><span class="si">%s</span><span class="s2"> USING NCHAR_CS) ESCAPE TRANSLATE(&#39;</span><span class="se">\\</span><span class="s2">&#39; USING NCHAR_CS)&quot;</span>
+        <span class="p">),</span>
+        <span class="s2">&quot;istartswith&quot;</span><span class="p">:</span> <span class="p">(</span>
+            <span class="s2">&quot;LIKE UPPER(TRANSLATE(</span><span class="si">%s</span><span class="s2"> USING NCHAR_CS)) &quot;</span>
+            <span class="s2">&quot;ESCAPE TRANSLATE(&#39;</span><span class="se">\\</span><span class="s2">&#39; USING NCHAR_CS)&quot;</span>
+        <span class="p">),</span>
+        <span class="s2">&quot;iendswith&quot;</span><span class="p">:</span> <span class="p">(</span>
+            <span class="s2">&quot;LIKE UPPER(TRANSLATE(</span><span class="si">%s</span><span class="s2"> USING NCHAR_CS)) &quot;</span>
+            <span class="s2">&quot;ESCAPE TRANSLATE(&#39;</span><span class="se">\\</span><span class="s2">&#39; USING NCHAR_CS)&quot;</span>
+        <span class="p">),</span>
+    <span class="p">}</span>
+
+    <span class="n">_likec_operators</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="o">**</span><span class="n">_standard_operators</span><span class="p">,</span>
+        <span class="s2">&quot;contains&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKEC </span><span class="si">%s</span><span class="s2"> ESCAPE &#39;</span><span class="se">\\</span><span class="s2">&#39;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;icontains&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKEC UPPER(</span><span class="si">%s</span><span class="s2">) ESCAPE &#39;</span><span class="se">\\</span><span class="s2">&#39;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;startswith&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKEC </span><span class="si">%s</span><span class="s2"> ESCAPE &#39;</span><span class="se">\\</span><span class="s2">&#39;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;endswith&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKEC </span><span class="si">%s</span><span class="s2"> ESCAPE &#39;</span><span class="se">\\</span><span class="s2">&#39;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;istartswith&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKEC UPPER(</span><span class="si">%s</span><span class="s2">) ESCAPE &#39;</span><span class="se">\\</span><span class="s2">&#39;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;iendswith&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKEC UPPER(</span><span class="si">%s</span><span class="s2">) ESCAPE &#39;</span><span class="se">\\</span><span class="s2">&#39;&quot;</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="c1"># The patterns below are used to generate SQL pattern lookup clauses when</span>
+    <span class="c1"># the right-hand side of the lookup isn&#39;t a raw string (it might be an expression</span>
+    <span class="c1"># or the result of a bilateral transformation).</span>
+    <span class="c1"># In those cases, special characters for LIKE operators (e.g. \, %, _)</span>
+    <span class="c1"># should be escaped on the database side.</span>
+    <span class="c1">#</span>
+    <span class="c1"># Note: we use str.format() here for readability as &#39;%&#39; is used as a wildcard for</span>
+    <span class="c1"># the LIKE operator.</span>
+<div class="viewcode-block" id="DatabaseWrapper.pattern_esc">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.DatabaseWrapper.pattern_esc">[docs]</a>
+    <span class="n">pattern_esc</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;REPLACE(REPLACE(REPLACE(</span><span class="si">{}</span><span class="s2">, &#39;\&#39;, &#39;</span><span class="se">\\</span><span class="s2">&#39;), &#39;</span><span class="si">%%</span><span class="s2">&#39;, &#39;\</span><span class="si">%%</span><span class="s2">&#39;), &#39;_&#39;, &#39;\_&#39;)&quot;</span></div>
+
+    <span class="n">_pattern_ops</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;contains&quot;</span><span class="p">:</span> <span class="s2">&quot;&#39;</span><span class="si">%%</span><span class="s2">&#39; || </span><span class="si">{}</span><span class="s2"> || &#39;</span><span class="si">%%</span><span class="s2">&#39;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;icontains&quot;</span><span class="p">:</span> <span class="s2">&quot;&#39;</span><span class="si">%%</span><span class="s2">&#39; || UPPER(</span><span class="si">{}</span><span class="s2">) || &#39;</span><span class="si">%%</span><span class="s2">&#39;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;startswith&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="si">{}</span><span class="s2"> || &#39;</span><span class="si">%%</span><span class="s2">&#39;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;istartswith&quot;</span><span class="p">:</span> <span class="s2">&quot;UPPER(</span><span class="si">{}</span><span class="s2">) || &#39;</span><span class="si">%%</span><span class="s2">&#39;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;endswith&quot;</span><span class="p">:</span> <span class="s2">&quot;&#39;</span><span class="si">%%</span><span class="s2">&#39; || </span><span class="si">{}</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;iendswith&quot;</span><span class="p">:</span> <span class="s2">&quot;&#39;</span><span class="si">%%</span><span class="s2">&#39; || UPPER(</span><span class="si">{}</span><span class="s2">)&quot;</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="n">_standard_pattern_ops</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">k</span><span class="p">:</span> <span class="s2">&quot;LIKE TRANSLATE( &quot;</span> <span class="o">+</span> <span class="n">v</span> <span class="o">+</span> <span class="s2">&quot; USING NCHAR_CS)&quot;</span>
+        <span class="s2">&quot; ESCAPE TRANSLATE(&#39;</span><span class="se">\\</span><span class="s2">&#39; USING NCHAR_CS)&quot;</span>
+        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">_pattern_ops</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+    <span class="p">}</span>
+    <span class="n">_likec_pattern_ops</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">k</span><span class="p">:</span> <span class="s2">&quot;LIKEC &quot;</span> <span class="o">+</span> <span class="n">v</span> <span class="o">+</span> <span class="s2">&quot; ESCAPE &#39;</span><span class="se">\\</span><span class="s2">&#39;&quot;</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">_pattern_ops</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+    <span class="p">}</span>
+
+<div class="viewcode-block" id="DatabaseWrapper.Database">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.DatabaseWrapper.Database">[docs]</a>
+    <span class="n">Database</span> <span class="o">=</span> <span class="n">Database</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.SchemaEditorClass">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.DatabaseWrapper.SchemaEditorClass">[docs]</a>
+    <span class="n">SchemaEditorClass</span> <span class="o">=</span> <span class="n">DatabaseSchemaEditor</span></div>
+
+    <span class="c1"># Classes instantiated in __init__().</span>
+<div class="viewcode-block" id="DatabaseWrapper.client_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.DatabaseWrapper.client_class">[docs]</a>
+    <span class="n">client_class</span> <span class="o">=</span> <span class="n">DatabaseClient</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.creation_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.DatabaseWrapper.creation_class">[docs]</a>
+    <span class="n">creation_class</span> <span class="o">=</span> <span class="n">DatabaseCreation</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.features_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.DatabaseWrapper.features_class">[docs]</a>
+    <span class="n">features_class</span> <span class="o">=</span> <span class="n">DatabaseFeatures</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.introspection_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.DatabaseWrapper.introspection_class">[docs]</a>
+    <span class="n">introspection_class</span> <span class="o">=</span> <span class="n">DatabaseIntrospection</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.ops_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.DatabaseWrapper.ops_class">[docs]</a>
+    <span class="n">ops_class</span> <span class="o">=</span> <span class="n">DatabaseOperations</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.validation_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.DatabaseWrapper.validation_class">[docs]</a>
+    <span class="n">validation_class</span> <span class="o">=</span> <span class="n">DatabaseValidation</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="n">use_returning_into</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;OPTIONS&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+            <span class="s2">&quot;use_returning_into&quot;</span><span class="p">,</span> <span class="kc">True</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">can_return_columns_from_insert</span> <span class="o">=</span> <span class="n">use_returning_into</span>
+
+<div class="viewcode-block" id="DatabaseWrapper.get_database_version">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.DatabaseWrapper.get_database_version">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_database_version</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">oracle_version</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.get_connection_params">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.DatabaseWrapper.get_connection_params">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_connection_params</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">conn_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;OPTIONS&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="k">if</span> <span class="s2">&quot;use_returning_into&quot;</span> <span class="ow">in</span> <span class="n">conn_params</span><span class="p">:</span>
+            <span class="k">del</span> <span class="n">conn_params</span><span class="p">[</span><span class="s2">&quot;use_returning_into&quot;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">conn_params</span></div>
+
+
+    <span class="nd">@async_unsafe</span>
+<div class="viewcode-block" id="DatabaseWrapper.get_new_connection">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.DatabaseWrapper.get_new_connection">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_new_connection</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">conn_params</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">Database</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span>
+            <span class="n">user</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;USER&quot;</span><span class="p">],</span>
+            <span class="n">password</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;PASSWORD&quot;</span><span class="p">],</span>
+            <span class="n">dsn</span><span class="o">=</span><span class="n">dsn</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">),</span>
+            <span class="o">**</span><span class="n">conn_params</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.init_connection_state">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.DatabaseWrapper.init_connection_state">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">init_connection_state</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">init_connection_state</span><span class="p">()</span>
+        <span class="n">cursor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_cursor</span><span class="p">()</span>
+        <span class="c1"># Set the territory first. The territory overrides NLS_DATE_FORMAT</span>
+        <span class="c1"># and NLS_TIMESTAMP_FORMAT to the territory default. When all of</span>
+        <span class="c1"># these are set in single statement it isn&#39;t clear what is supposed</span>
+        <span class="c1"># to happen.</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;ALTER SESSION SET NLS_TERRITORY = &#39;AMERICA&#39;&quot;</span><span class="p">)</span>
+        <span class="c1"># Set Oracle date to ANSI date format.  This only needs to execute</span>
+        <span class="c1"># once when we create a new connection. We also set the Territory</span>
+        <span class="c1"># to &#39;AMERICA&#39; which forces Sunday to evaluate to a &#39;1&#39; in</span>
+        <span class="c1"># TO_CHAR().</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;ALTER SESSION SET NLS_DATE_FORMAT = &#39;YYYY-MM-DD HH24:MI:SS&#39;&quot;</span>
+            <span class="s2">&quot; NLS_TIMESTAMP_FORMAT = &#39;YYYY-MM-DD HH24:MI:SS.FF&#39;&quot;</span>
+            <span class="o">+</span> <span class="p">(</span><span class="s2">&quot; TIME_ZONE = &#39;UTC&#39;&quot;</span> <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">USE_TZ</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="k">if</span> <span class="s2">&quot;operators&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__dict__</span><span class="p">:</span>
+            <span class="c1"># Ticket #14149: Check whether our LIKE implementation will</span>
+            <span class="c1"># work for this connection or we need to fall back on LIKEC.</span>
+            <span class="c1"># This check is performed only once per DatabaseWrapper</span>
+            <span class="c1"># instance per thread, since subsequent connections will use</span>
+            <span class="c1"># the same settings.</span>
+            <span class="n">cursor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_cursor</span><span class="p">()</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+                    <span class="s2">&quot;SELECT 1 FROM DUAL WHERE DUMMY </span><span class="si">%s</span><span class="s2">&quot;</span>
+                    <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_standard_operators</span><span class="p">[</span><span class="s2">&quot;contains&quot;</span><span class="p">],</span>
+                    <span class="p">[</span><span class="s2">&quot;X&quot;</span><span class="p">],</span>
+                <span class="p">)</span>
+            <span class="k">except</span> <span class="n">Database</span><span class="o">.</span><span class="n">DatabaseError</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">operators</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_likec_operators</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">pattern_ops</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_likec_pattern_ops</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">operators</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_standard_operators</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">pattern_ops</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_standard_pattern_ops</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">stmtcachesize</span> <span class="o">=</span> <span class="mi">20</span>
+        <span class="c1"># Ensure all changes are preserved even when AUTOCOMMIT is False.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_autocommit</span><span class="p">():</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span></div>
+
+
+    <span class="nd">@async_unsafe</span>
+<div class="viewcode-block" id="DatabaseWrapper.create_cursor">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.DatabaseWrapper.create_cursor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_cursor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">FormatStylePlaceholderCursor</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_commit</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">debug_transaction</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;COMMIT&quot;</span><span class="p">),</span> <span class="n">wrap_oracle_errors</span><span class="p">():</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+
+    <span class="c1"># Oracle doesn&#39;t support releasing savepoints. But we fake them when query</span>
+    <span class="c1"># logging is enabled to keep query counts consistent with other backends.</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_savepoint_commit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sid</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">queries_logged</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">queries_log</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="p">{</span>
+                    <span class="s2">&quot;sql&quot;</span><span class="p">:</span> <span class="s2">&quot;-- RELEASE SAVEPOINT </span><span class="si">%s</span><span class="s2"> (faked)&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">sid</span><span class="p">),</span>
+                    <span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="s2">&quot;0.000&quot;</span><span class="p">,</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_set_autocommit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">autocommit</span><span class="p">):</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">wrap_database_errors</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">autocommit</span> <span class="o">=</span> <span class="n">autocommit</span>
+
+<div class="viewcode-block" id="DatabaseWrapper.check_constraints">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.DatabaseWrapper.check_constraints">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_constraints</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table_names</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Check constraints by setting them to immediate. Return them to deferred</span>
+<span class="sd">        afterward.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;SET CONSTRAINTS ALL IMMEDIATE&quot;</span><span class="p">)</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;SET CONSTRAINTS ALL DEFERRED&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.is_usable">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.DatabaseWrapper.is_usable">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_usable</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">ping</span><span class="p">()</span>
+        <span class="k">except</span> <span class="n">Database</span><span class="o">.</span><span class="n">Error</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="DatabaseWrapper.cx_oracle_version">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.DatabaseWrapper.cx_oracle_version">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">cx_oracle_version</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">Database</span><span class="o">.</span><span class="n">version</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">))</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="DatabaseWrapper.oracle_version">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.DatabaseWrapper.oracle_version">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">oracle_version</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">temporary_connection</span><span class="p">():</span>
+            <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">version</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">))</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="OracleParam">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.OracleParam">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">OracleParam</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Wrapper object for formatting parameters for Oracle. If the string</span>
+<span class="sd">    representation of the value is large enough (greater than 4000 characters)</span>
+<span class="sd">    the input size needs to be set as CLOB. Alternatively, if the parameter</span>
+<span class="sd">    has an `input_size` attribute, then the value of the `input_size` attribute</span>
+<span class="sd">    will be used instead. Otherwise, no input size will be set for the</span>
+<span class="sd">    parameter when executing the query.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">param</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">strings_only</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="c1"># With raw SQL queries, datetimes can reach this function</span>
+        <span class="c1"># without being converted by DateTimeField.get_db_prep_value.</span>
+        <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">USE_TZ</span> <span class="ow">and</span> <span class="p">(</span>
+            <span class="nb">isinstance</span><span class="p">(</span><span class="n">param</span><span class="p">,</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="p">)</span>
+            <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">param</span><span class="p">,</span> <span class="n">Oracle_datetime</span><span class="p">)</span>
+        <span class="p">):</span>
+            <span class="n">param</span> <span class="o">=</span> <span class="n">Oracle_datetime</span><span class="o">.</span><span class="n">from_datetime</span><span class="p">(</span><span class="n">param</span><span class="p">)</span>
+
+        <span class="n">string_size</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="c1"># Oracle doesn&#39;t recognize True and False correctly.</span>
+        <span class="k">if</span> <span class="n">param</span> <span class="ow">is</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="n">param</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">elif</span> <span class="n">param</span> <span class="ow">is</span> <span class="kc">False</span><span class="p">:</span>
+            <span class="n">param</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">param</span><span class="p">,</span> <span class="s2">&quot;bind_parameter&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">force_bytes</span> <span class="o">=</span> <span class="n">param</span><span class="o">.</span><span class="n">bind_parameter</span><span class="p">(</span><span class="n">cursor</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">param</span><span class="p">,</span> <span class="p">(</span><span class="n">Database</span><span class="o">.</span><span class="n">Binary</span><span class="p">,</span> <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span><span class="p">)):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">force_bytes</span> <span class="o">=</span> <span class="n">param</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># To transmit to the database, we need Unicode if supported</span>
+            <span class="c1"># To get size right, we must consider bytes.</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">force_bytes</span> <span class="o">=</span> <span class="n">force_str</span><span class="p">(</span><span class="n">param</span><span class="p">,</span> <span class="n">cursor</span><span class="o">.</span><span class="n">charset</span><span class="p">,</span> <span class="n">strings_only</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">force_bytes</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+                <span class="c1"># We could optimize by only converting up to 4000 bytes here</span>
+                <span class="n">string_size</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">force_bytes</span><span class="p">(</span><span class="n">param</span><span class="p">,</span> <span class="n">cursor</span><span class="o">.</span><span class="n">charset</span><span class="p">,</span> <span class="n">strings_only</span><span class="p">))</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">param</span><span class="p">,</span> <span class="s2">&quot;input_size&quot;</span><span class="p">):</span>
+            <span class="c1"># If parameter has `input_size` attribute, use that.</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">input_size</span> <span class="o">=</span> <span class="n">param</span><span class="o">.</span><span class="n">input_size</span>
+        <span class="k">elif</span> <span class="n">string_size</span> <span class="o">&gt;</span> <span class="mi">4000</span><span class="p">:</span>
+            <span class="c1"># Mark any string param greater than 4000 characters as a CLOB.</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">input_size</span> <span class="o">=</span> <span class="n">Database</span><span class="o">.</span><span class="n">CLOB</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">param</span><span class="p">,</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">input_size</span> <span class="o">=</span> <span class="n">Database</span><span class="o">.</span><span class="n">TIMESTAMP</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">input_size</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+
+<div class="viewcode-block" id="VariableWrapper">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.VariableWrapper">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">VariableWrapper</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    An adapter class for cursor variables that prevents the wrapped object</span>
+<span class="sd">    from being converted into a string when used to instantiate an OracleParam.</span>
+<span class="sd">    This can be used generally for any other object that should be passed into</span>
+<span class="sd">    Cursor.execute as-is.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">var</span><span class="p">):</span>
+<div class="viewcode-block" id="VariableWrapper.var">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.VariableWrapper.var">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">var</span> <span class="o">=</span> <span class="n">var</span></div>
+
+
+<div class="viewcode-block" id="VariableWrapper.bind_parameter">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.VariableWrapper.bind_parameter">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">bind_parameter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">var</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__getattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">var</span><span class="p">,</span> <span class="n">key</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s2">&quot;var&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="vm">__dict__</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">setattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">var</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="FormatStylePlaceholderCursor">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.FormatStylePlaceholderCursor">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">FormatStylePlaceholderCursor</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Django uses &quot;format&quot; (e.g. &#39;%s&#39;) style placeholders, but Oracle uses &quot;:var&quot;</span>
+<span class="sd">    style. This fixes it -- but note that if you want to use a literal &quot;%s&quot; in</span>
+<span class="sd">    a query, you&#39;ll need to use &quot;%%s&quot;.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="FormatStylePlaceholderCursor.charset">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.FormatStylePlaceholderCursor.charset">[docs]</a>
+    <span class="n">charset</span> <span class="o">=</span> <span class="s2">&quot;utf-8&quot;</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+<div class="viewcode-block" id="FormatStylePlaceholderCursor.cursor">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.FormatStylePlaceholderCursor.cursor">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span></div>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="o">.</span><span class="n">outputtypehandler</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_output_type_handler</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_output_number_converter</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">decimal</span><span class="o">.</span><span class="n">Decimal</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="k">if</span> <span class="s2">&quot;.&quot;</span> <span class="ow">in</span> <span class="n">value</span> <span class="k">else</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_decimal_converter</span><span class="p">(</span><span class="n">precision</span><span class="p">,</span> <span class="n">scale</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">scale</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">int</span>
+        <span class="n">context</span> <span class="o">=</span> <span class="n">decimal</span><span class="o">.</span><span class="n">Context</span><span class="p">(</span><span class="n">prec</span><span class="o">=</span><span class="n">precision</span><span class="p">)</span>
+        <span class="n">quantize_value</span> <span class="o">=</span> <span class="n">decimal</span><span class="o">.</span><span class="n">Decimal</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">scaleb</span><span class="p">(</span><span class="o">-</span><span class="n">scale</span><span class="p">)</span>
+        <span class="k">return</span> <span class="k">lambda</span> <span class="n">v</span><span class="p">:</span> <span class="n">decimal</span><span class="o">.</span><span class="n">Decimal</span><span class="p">(</span><span class="n">v</span><span class="p">)</span><span class="o">.</span><span class="n">quantize</span><span class="p">(</span><span class="n">quantize_value</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="n">context</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_output_type_handler</span><span class="p">(</span><span class="n">cursor</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">defaultType</span><span class="p">,</span> <span class="n">length</span><span class="p">,</span> <span class="n">precision</span><span class="p">,</span> <span class="n">scale</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Called for each db column fetched from cursors. Return numbers as the</span>
+<span class="sd">        appropriate Python type.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">defaultType</span> <span class="o">==</span> <span class="n">Database</span><span class="o">.</span><span class="n">NUMBER</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">scale</span> <span class="o">==</span> <span class="o">-</span><span class="mi">127</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">precision</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="c1"># NUMBER column: decimal-precision floating point.</span>
+                    <span class="c1"># This will normally be an integer from a sequence,</span>
+                    <span class="c1"># but it could be a decimal value.</span>
+                    <span class="n">outconverter</span> <span class="o">=</span> <span class="n">FormatStylePlaceholderCursor</span><span class="o">.</span><span class="n">_output_number_converter</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c1"># FLOAT column: binary-precision floating point.</span>
+                    <span class="c1"># This comes from FloatField columns.</span>
+                    <span class="n">outconverter</span> <span class="o">=</span> <span class="nb">float</span>
+            <span class="k">elif</span> <span class="n">precision</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="c1"># NUMBER(p,s) column: decimal-precision fixed point.</span>
+                <span class="c1"># This comes from IntegerField and DecimalField columns.</span>
+                <span class="n">outconverter</span> <span class="o">=</span> <span class="n">FormatStylePlaceholderCursor</span><span class="o">.</span><span class="n">_get_decimal_converter</span><span class="p">(</span>
+                    <span class="n">precision</span><span class="p">,</span> <span class="n">scale</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># No type information. This normally comes from a</span>
+                <span class="c1"># mathematical expression in the SELECT list. Guess int</span>
+                <span class="c1"># or Decimal based on whether it has a decimal point.</span>
+                <span class="n">outconverter</span> <span class="o">=</span> <span class="n">FormatStylePlaceholderCursor</span><span class="o">.</span><span class="n">_output_number_converter</span>
+            <span class="k">return</span> <span class="n">cursor</span><span class="o">.</span><span class="n">var</span><span class="p">(</span>
+                <span class="n">Database</span><span class="o">.</span><span class="n">STRING</span><span class="p">,</span>
+                <span class="n">size</span><span class="o">=</span><span class="mi">255</span><span class="p">,</span>
+                <span class="n">arraysize</span><span class="o">=</span><span class="n">cursor</span><span class="o">.</span><span class="n">arraysize</span><span class="p">,</span>
+                <span class="n">outconverter</span><span class="o">=</span><span class="n">outconverter</span><span class="p">,</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_format_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">OracleParam</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="bp">self</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">params</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">OracleParam</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="bp">self</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">params</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_guess_input_sizes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params_list</span><span class="p">):</span>
+        <span class="c1"># Try dict handling; if that fails, treat as sequence</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">params_list</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="s2">&quot;keys&quot;</span><span class="p">):</span>
+            <span class="n">sizes</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="k">for</span> <span class="n">params</span> <span class="ow">in</span> <span class="n">params_list</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">params</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                    <span class="k">if</span> <span class="n">value</span><span class="o">.</span><span class="n">input_size</span><span class="p">:</span>
+                        <span class="n">sizes</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">input_size</span>
+            <span class="k">if</span> <span class="n">sizes</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">setinputsizes</span><span class="p">(</span><span class="o">**</span><span class="n">sizes</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># It&#39;s not a list of dicts; it&#39;s a list of sequences</span>
+            <span class="n">sizes</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">params_list</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="k">for</span> <span class="n">params</span> <span class="ow">in</span> <span class="n">params_list</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">params</span><span class="p">):</span>
+                    <span class="k">if</span> <span class="n">value</span><span class="o">.</span><span class="n">input_size</span><span class="p">:</span>
+                        <span class="n">sizes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">input_size</span>
+            <span class="k">if</span> <span class="n">sizes</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">setinputsizes</span><span class="p">(</span><span class="o">*</span><span class="n">sizes</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_param_generator</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="c1"># Try dict handling; if that fails, treat as sequence</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="s2">&quot;items&quot;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span><span class="o">.</span><span class="n">force_bytes</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">params</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[</span><span class="n">p</span><span class="o">.</span><span class="n">force_bytes</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">params</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_fix_for_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">unify_by_values</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="c1"># cx_Oracle wants no trailing &#39;;&#39; for SQL statements.  For PL/SQL, it</span>
+        <span class="c1"># it does want a trailing &#39;;&#39; but not a trailing &#39;/&#39;.  However, these</span>
+        <span class="c1"># characters must be included in the original query in case the query</span>
+        <span class="c1"># is being passed to SQL*Plus.</span>
+        <span class="k">if</span> <span class="n">query</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;;&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">query</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">):</span>
+            <span class="n">query</span> <span class="o">=</span> <span class="n">query</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">params</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">params</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">elif</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="s2">&quot;keys&quot;</span><span class="p">):</span>
+            <span class="c1"># Handle params as dict</span>
+            <span class="n">args</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="s2">&quot;:</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">params</span><span class="p">}</span>
+            <span class="n">query</span> <span class="o">%=</span> <span class="n">args</span>
+        <span class="k">elif</span> <span class="n">unify_by_values</span> <span class="ow">and</span> <span class="n">params</span><span class="p">:</span>
+            <span class="c1"># Handle params as a dict with unified query parameters by their</span>
+            <span class="c1"># values. It can be used only in single query execute() because</span>
+            <span class="c1"># executemany() shares the formatted query with each of the params</span>
+            <span class="c1"># list. e.g. for input params = [0.75, 2, 0.75, &#39;sth&#39;, 0.75]</span>
+            <span class="c1"># params_dict = {0.75: &#39;:arg0&#39;, 2: &#39;:arg1&#39;, &#39;sth&#39;: &#39;:arg2&#39;}</span>
+            <span class="c1"># args = [&#39;:arg0&#39;, &#39;:arg1&#39;, &#39;:arg0&#39;, &#39;:arg2&#39;, &#39;:arg0&#39;]</span>
+            <span class="c1"># params = {&#39;:arg0&#39;: 0.75, &#39;:arg1&#39;: 2, &#39;:arg2&#39;: &#39;sth&#39;}</span>
+            <span class="n">params_dict</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="n">param</span><span class="p">:</span> <span class="s2">&quot;:arg</span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">param</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">dict</span><span class="o">.</span><span class="n">fromkeys</span><span class="p">(</span><span class="n">params</span><span class="p">))</span>
+            <span class="p">}</span>
+            <span class="n">args</span> <span class="o">=</span> <span class="p">[</span><span class="n">params_dict</span><span class="p">[</span><span class="n">param</span><span class="p">]</span> <span class="k">for</span> <span class="n">param</span> <span class="ow">in</span> <span class="n">params</span><span class="p">]</span>
+            <span class="n">params</span> <span class="o">=</span> <span class="p">{</span><span class="n">value</span><span class="p">:</span> <span class="n">key</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">params_dict</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+            <span class="n">query</span> <span class="o">%=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Handle params as sequence</span>
+            <span class="n">args</span> <span class="o">=</span> <span class="p">[(</span><span class="s2">&quot;:arg</span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">params</span><span class="p">))]</span>
+            <span class="n">query</span> <span class="o">%=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">query</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_format_params</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+
+<div class="viewcode-block" id="FormatStylePlaceholderCursor.execute">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.FormatStylePlaceholderCursor.execute">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">execute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="n">query</span><span class="p">,</span> <span class="n">params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fix_for_params</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">unify_by_values</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_guess_input_sizes</span><span class="p">([</span><span class="n">params</span><span class="p">])</span>
+        <span class="k">with</span> <span class="n">wrap_oracle_errors</span><span class="p">():</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_param_generator</span><span class="p">(</span><span class="n">params</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="FormatStylePlaceholderCursor.executemany">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.FormatStylePlaceholderCursor.executemany">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">executemany</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">params</span><span class="p">:</span>
+            <span class="c1"># No params given, nothing to do</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="c1"># uniform treatment for sequences and iterables</span>
+        <span class="n">params_iter</span> <span class="o">=</span> <span class="nb">iter</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="n">query</span><span class="p">,</span> <span class="n">firstparams</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fix_for_params</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="nb">next</span><span class="p">(</span><span class="n">params_iter</span><span class="p">))</span>
+        <span class="c1"># we build a list of formatted params; as we&#39;re going to traverse it</span>
+        <span class="c1"># more than once, we can&#39;t make it lazy by using a generator</span>
+        <span class="n">formatted</span> <span class="o">=</span> <span class="p">[</span><span class="n">firstparams</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_format_params</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">params_iter</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_guess_input_sizes</span><span class="p">(</span><span class="n">formatted</span><span class="p">)</span>
+        <span class="k">with</span> <span class="n">wrap_oracle_errors</span><span class="p">():</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="o">.</span><span class="n">executemany</span><span class="p">(</span>
+                <span class="n">query</span><span class="p">,</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_param_generator</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">formatted</span><span class="p">]</span>
+            <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="FormatStylePlaceholderCursor.close">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.FormatStylePlaceholderCursor.close">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="k">except</span> <span class="n">Database</span><span class="o">.</span><span class="n">InterfaceError</span><span class="p">:</span>
+            <span class="c1"># already closed</span>
+            <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="FormatStylePlaceholderCursor.var">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.FormatStylePlaceholderCursor.var">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">var</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">VariableWrapper</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="o">.</span><span class="n">var</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="FormatStylePlaceholderCursor.arrayvar">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/base/index.html#django.db.backends.oracle.base.FormatStylePlaceholderCursor.arrayvar">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">arrayvar</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">VariableWrapper</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="o">.</span><span class="n">arrayvar</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">))</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__getattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">attr</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="p">,</span> <span class="n">attr</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">iter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="p">)</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

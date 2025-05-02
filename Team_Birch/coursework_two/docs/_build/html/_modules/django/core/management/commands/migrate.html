@@ -1,0 +1,642 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.core.management.commands.migrate &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../../management.html">django.core.management</a></li>
+      <li class="breadcrumb-item active">django.core.management.commands.migrate</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.core.management.commands.migrate</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">importlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">import_module</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.apps</span><span class="w"> </span><span class="kn">import</span> <span class="n">apps</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.management.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseCommand</span><span class="p">,</span> <span class="n">CommandError</span><span class="p">,</span> <span class="n">no_translations</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.management.sql</span><span class="w"> </span><span class="kn">import</span> <span class="n">emit_post_migrate_signal</span><span class="p">,</span> <span class="n">emit_pre_migrate_signal</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">DEFAULT_DB_ALIAS</span><span class="p">,</span> <span class="n">connections</span><span class="p">,</span> <span class="n">router</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.migrations.autodetector</span><span class="w"> </span><span class="kn">import</span> <span class="n">MigrationAutodetector</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.migrations.executor</span><span class="w"> </span><span class="kn">import</span> <span class="n">MigrationExecutor</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.migrations.loader</span><span class="w"> </span><span class="kn">import</span> <span class="n">AmbiguityError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.migrations.state</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelState</span><span class="p">,</span> <span class="n">ProjectState</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.module_loading</span><span class="w"> </span><span class="kn">import</span> <span class="n">module_has_submodule</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.text</span><span class="w"> </span><span class="kn">import</span> <span class="n">Truncator</span>
+
+
+<div class="viewcode-block" id="Command">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/migrate/index.html#django.core.management.commands.migrate.Command">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Command</span><span class="p">(</span><span class="n">BaseCommand</span><span class="p">):</span>
+<div class="viewcode-block" id="Command.help">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/migrate/index.html#django.core.management.commands.migrate.Command.help">[docs]</a>
+    <span class="n">help</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="s2">&quot;Updates database schema. Manages both apps with migrations and those without.&quot;</span>
+    <span class="p">)</span></div>
+
+<div class="viewcode-block" id="Command.requires_system_checks">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/migrate/index.html#django.core.management.commands.migrate.Command.requires_system_checks">[docs]</a>
+    <span class="n">requires_system_checks</span> <span class="o">=</span> <span class="p">[]</span></div>
+
+
+<div class="viewcode-block" id="Command.add_arguments">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/migrate/index.html#django.core.management.commands.migrate.Command.add_arguments">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add_arguments</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parser</span><span class="p">):</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;--skip-checks&quot;</span><span class="p">,</span>
+            <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Skip system checks.&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;app_label&quot;</span><span class="p">,</span>
+            <span class="n">nargs</span><span class="o">=</span><span class="s2">&quot;?&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="s2">&quot;App label of an application to synchronize the state.&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;migration_name&quot;</span><span class="p">,</span>
+            <span class="n">nargs</span><span class="o">=</span><span class="s2">&quot;?&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Database state will be brought to the state after that &quot;</span>
+            <span class="s1">&#39;migration. Use the name &quot;zero&quot; to unapply all migrations.&#39;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;--noinput&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;--no-input&quot;</span><span class="p">,</span>
+            <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_false&quot;</span><span class="p">,</span>
+            <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;interactive&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Tells Django to NOT prompt the user for input of any kind.&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;--database&quot;</span><span class="p">,</span>
+            <span class="n">default</span><span class="o">=</span><span class="n">DEFAULT_DB_ALIAS</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+                <span class="s1">&#39;Nominates a database to synchronize. Defaults to the &quot;default&quot; &#39;</span>
+                <span class="s2">&quot;database.&quot;</span>
+            <span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;--fake&quot;</span><span class="p">,</span>
+            <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Mark migrations as run without actually running them.&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;--fake-initial&quot;</span><span class="p">,</span>
+            <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+                <span class="s2">&quot;Detect if tables already exist and fake-apply initial migrations if &quot;</span>
+                <span class="s2">&quot;so. Make sure that the current database schema matches your initial &quot;</span>
+                <span class="s2">&quot;migration before using this flag. Django will only check for an &quot;</span>
+                <span class="s2">&quot;existing table name.&quot;</span>
+            <span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;--plan&quot;</span><span class="p">,</span>
+            <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Shows a list of the migration actions that will be performed.&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;--run-syncdb&quot;</span><span class="p">,</span>
+            <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Creates tables for apps without migrations.&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;--check&quot;</span><span class="p">,</span>
+            <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+            <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;check_unapplied&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+                <span class="s2">&quot;Exits with a non-zero status if unapplied migrations exist and does &quot;</span>
+                <span class="s2">&quot;not actually apply migrations.&quot;</span>
+            <span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;--prune&quot;</span><span class="p">,</span>
+            <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+            <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;prune&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Delete nonexistent migrations from the django_migrations table.&quot;</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+    <span class="nd">@no_translations</span>
+<div class="viewcode-block" id="Command.handle">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/migrate/index.html#django.core.management.commands.migrate.Command.handle">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">options</span><span class="p">):</span>
+        <span class="n">database</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;database&quot;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;skip_checks&quot;</span><span class="p">]:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="n">databases</span><span class="o">=</span><span class="p">[</span><span class="n">database</span><span class="p">])</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;verbosity&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">interactive</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;interactive&quot;</span><span class="p">]</span>
+
+        <span class="c1"># Import the &#39;management&#39; module within each installed app, to register</span>
+        <span class="c1"># dispatcher events.</span>
+        <span class="k">for</span> <span class="n">app_config</span> <span class="ow">in</span> <span class="n">apps</span><span class="o">.</span><span class="n">get_app_configs</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">module_has_submodule</span><span class="p">(</span><span class="n">app_config</span><span class="o">.</span><span class="n">module</span><span class="p">,</span> <span class="s2">&quot;management&quot;</span><span class="p">):</span>
+                <span class="n">import_module</span><span class="p">(</span><span class="s2">&quot;.management&quot;</span><span class="p">,</span> <span class="n">app_config</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+
+        <span class="c1"># Get the database we&#39;re operating from</span>
+        <span class="n">connection</span> <span class="o">=</span> <span class="n">connections</span><span class="p">[</span><span class="n">database</span><span class="p">]</span>
+
+        <span class="c1"># Hook for backends needing any database preparation</span>
+        <span class="n">connection</span><span class="o">.</span><span class="n">prepare_database</span><span class="p">()</span>
+        <span class="c1"># Work out which apps have migrations and which do not</span>
+        <span class="n">executor</span> <span class="o">=</span> <span class="n">MigrationExecutor</span><span class="p">(</span><span class="n">connection</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">migration_progress_callback</span><span class="p">)</span>
+
+        <span class="c1"># Raise an error if any migrations are applied before their dependencies.</span>
+        <span class="n">executor</span><span class="o">.</span><span class="n">loader</span><span class="o">.</span><span class="n">check_consistent_history</span><span class="p">(</span><span class="n">connection</span><span class="p">)</span>
+
+        <span class="c1"># Before anything else, see if there&#39;s conflicting apps and drop out</span>
+        <span class="c1"># hard if there are any</span>
+        <span class="n">conflicts</span> <span class="o">=</span> <span class="n">executor</span><span class="o">.</span><span class="n">loader</span><span class="o">.</span><span class="n">detect_conflicts</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">conflicts</span><span class="p">:</span>
+            <span class="n">name_str</span> <span class="o">=</span> <span class="s2">&quot;; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+                <span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> in </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">names</span><span class="p">),</span> <span class="n">app</span><span class="p">)</span> <span class="k">for</span> <span class="n">app</span><span class="p">,</span> <span class="n">names</span> <span class="ow">in</span> <span class="n">conflicts</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+            <span class="p">)</span>
+            <span class="k">raise</span> <span class="n">CommandError</span><span class="p">(</span>
+                <span class="s2">&quot;Conflicting migrations detected; multiple leaf nodes in the &quot;</span>
+                <span class="s2">&quot;migration graph: (</span><span class="si">%s</span><span class="s2">).</span><span class="se">\n</span><span class="s2">To fix them run &quot;</span>
+                <span class="s2">&quot;&#39;python manage.py makemigrations --merge&#39;&quot;</span> <span class="o">%</span> <span class="n">name_str</span>
+            <span class="p">)</span>
+
+        <span class="c1"># If they supplied command line arguments, work out what they mean.</span>
+        <span class="n">run_syncdb</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;run_syncdb&quot;</span><span class="p">]</span>
+        <span class="n">target_app_labels_only</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">if</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;app_label&quot;</span><span class="p">]:</span>
+            <span class="c1"># Validate app_label.</span>
+            <span class="n">app_label</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;app_label&quot;</span><span class="p">]</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">apps</span><span class="o">.</span><span class="n">get_app_config</span><span class="p">(</span><span class="n">app_label</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">LookupError</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">CommandError</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">err</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">run_syncdb</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">app_label</span> <span class="ow">in</span> <span class="n">executor</span><span class="o">.</span><span class="n">loader</span><span class="o">.</span><span class="n">migrated_apps</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">CommandError</span><span class="p">(</span>
+                        <span class="s2">&quot;Can&#39;t use run_syncdb with app &#39;</span><span class="si">%s</span><span class="s2">&#39; as it has migrations.&quot;</span>
+                        <span class="o">%</span> <span class="n">app_label</span>
+                    <span class="p">)</span>
+            <span class="k">elif</span> <span class="n">app_label</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">executor</span><span class="o">.</span><span class="n">loader</span><span class="o">.</span><span class="n">migrated_apps</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">CommandError</span><span class="p">(</span><span class="s2">&quot;App &#39;</span><span class="si">%s</span><span class="s2">&#39; does not have migrations.&quot;</span> <span class="o">%</span> <span class="n">app_label</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;app_label&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;migration_name&quot;</span><span class="p">]:</span>
+            <span class="n">migration_name</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;migration_name&quot;</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">migration_name</span> <span class="o">==</span> <span class="s2">&quot;zero&quot;</span><span class="p">:</span>
+                <span class="n">targets</span> <span class="o">=</span> <span class="p">[(</span><span class="n">app_label</span><span class="p">,</span> <span class="kc">None</span><span class="p">)]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">migration</span> <span class="o">=</span> <span class="n">executor</span><span class="o">.</span><span class="n">loader</span><span class="o">.</span><span class="n">get_migration_by_prefix</span><span class="p">(</span>
+                        <span class="n">app_label</span><span class="p">,</span> <span class="n">migration_name</span>
+                    <span class="p">)</span>
+                <span class="k">except</span> <span class="n">AmbiguityError</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">CommandError</span><span class="p">(</span>
+                        <span class="s2">&quot;More than one migration matches &#39;</span><span class="si">%s</span><span class="s2">&#39; in app &#39;</span><span class="si">%s</span><span class="s2">&#39;. &quot;</span>
+                        <span class="s2">&quot;Please be more specific.&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">migration_name</span><span class="p">,</span> <span class="n">app_label</span><span class="p">)</span>
+                    <span class="p">)</span>
+                <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">CommandError</span><span class="p">(</span>
+                        <span class="s2">&quot;Cannot find a migration matching &#39;</span><span class="si">%s</span><span class="s2">&#39; from app &#39;</span><span class="si">%s</span><span class="s2">&#39;.&quot;</span>
+                        <span class="o">%</span> <span class="p">(</span><span class="n">migration_name</span><span class="p">,</span> <span class="n">app_label</span><span class="p">)</span>
+                    <span class="p">)</span>
+                <span class="n">target</span> <span class="o">=</span> <span class="p">(</span><span class="n">app_label</span><span class="p">,</span> <span class="n">migration</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+                <span class="c1"># Partially applied squashed migrations are not included in the</span>
+                <span class="c1"># graph, use the last replacement instead.</span>
+                <span class="k">if</span> <span class="p">(</span>
+                    <span class="n">target</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">executor</span><span class="o">.</span><span class="n">loader</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">nodes</span>
+                    <span class="ow">and</span> <span class="n">target</span> <span class="ow">in</span> <span class="n">executor</span><span class="o">.</span><span class="n">loader</span><span class="o">.</span><span class="n">replacements</span>
+                <span class="p">):</span>
+                    <span class="n">incomplete_migration</span> <span class="o">=</span> <span class="n">executor</span><span class="o">.</span><span class="n">loader</span><span class="o">.</span><span class="n">replacements</span><span class="p">[</span><span class="n">target</span><span class="p">]</span>
+                    <span class="n">target</span> <span class="o">=</span> <span class="n">incomplete_migration</span><span class="o">.</span><span class="n">replaces</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+                <span class="n">targets</span> <span class="o">=</span> <span class="p">[</span><span class="n">target</span><span class="p">]</span>
+            <span class="n">target_app_labels_only</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">elif</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;app_label&quot;</span><span class="p">]:</span>
+            <span class="n">targets</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="n">key</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">executor</span><span class="o">.</span><span class="n">loader</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">leaf_nodes</span><span class="p">()</span> <span class="k">if</span> <span class="n">key</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">app_label</span>
+            <span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">targets</span> <span class="o">=</span> <span class="n">executor</span><span class="o">.</span><span class="n">loader</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">leaf_nodes</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;prune&quot;</span><span class="p">]:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;app_label&quot;</span><span class="p">]:</span>
+                <span class="k">raise</span> <span class="n">CommandError</span><span class="p">(</span>
+                    <span class="s2">&quot;Migrations can be pruned only when an app is specified.&quot;</span>
+                <span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;Pruning migrations:&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">MIGRATE_HEADING</span><span class="p">)</span>
+            <span class="n">to_prune</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">executor</span><span class="o">.</span><span class="n">loader</span><span class="o">.</span><span class="n">applied_migrations</span><span class="p">)</span> <span class="o">-</span> <span class="nb">set</span><span class="p">(</span>
+                <span class="n">executor</span><span class="o">.</span><span class="n">loader</span><span class="o">.</span><span class="n">disk_migrations</span>
+            <span class="p">)</span>
+            <span class="n">squashed_migrations_with_deleted_replaced_migrations</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="n">migration_key</span>
+                <span class="k">for</span> <span class="n">migration_key</span><span class="p">,</span> <span class="n">migration_obj</span> <span class="ow">in</span> <span class="n">executor</span><span class="o">.</span><span class="n">loader</span><span class="o">.</span><span class="n">replacements</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+                <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">replaced</span> <span class="ow">in</span> <span class="n">to_prune</span> <span class="k">for</span> <span class="n">replaced</span> <span class="ow">in</span> <span class="n">migration_obj</span><span class="o">.</span><span class="n">replaces</span><span class="p">)</span>
+            <span class="p">]</span>
+            <span class="k">if</span> <span class="n">squashed_migrations_with_deleted_replaced_migrations</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">NOTICE</span><span class="p">(</span>
+                        <span class="s2">&quot;  Cannot use --prune because the following squashed &quot;</span>
+                        <span class="s2">&quot;migrations have their &#39;replaces&#39; attributes and may not &quot;</span>
+                        <span class="s2">&quot;be recorded as applied:&quot;</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+                <span class="k">for</span> <span class="n">migration</span> <span class="ow">in</span> <span class="n">squashed_migrations_with_deleted_replaced_migrations</span><span class="p">:</span>
+                    <span class="n">app</span><span class="p">,</span> <span class="n">name</span> <span class="o">=</span> <span class="n">migration</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;    </span><span class="si">{</span><span class="n">app</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">NOTICE</span><span class="p">(</span>
+                        <span class="s2">&quot;  Re-run &#39;manage.py migrate&#39; if they are not marked as &quot;</span>
+                        <span class="s2">&quot;applied, and remove &#39;replaces&#39; attributes in their &quot;</span>
+                        <span class="s2">&quot;Migration classes.&quot;</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">to_prune</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span>
+                    <span class="n">migration</span> <span class="k">for</span> <span class="n">migration</span> <span class="ow">in</span> <span class="n">to_prune</span> <span class="k">if</span> <span class="n">migration</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">app_label</span>
+                <span class="p">)</span>
+                <span class="k">if</span> <span class="n">to_prune</span><span class="p">:</span>
+                    <span class="k">for</span> <span class="n">migration</span> <span class="ow">in</span> <span class="n">to_prune</span><span class="p">:</span>
+                        <span class="n">app</span><span class="p">,</span> <span class="n">name</span> <span class="o">=</span> <span class="n">migration</span>
+                        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                                <span class="bp">self</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">MIGRATE_LABEL</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Pruning </span><span class="si">{</span><span class="n">app</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">),</span>
+                                <span class="n">ending</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+                            <span class="p">)</span>
+                        <span class="n">executor</span><span class="o">.</span><span class="n">recorder</span><span class="o">.</span><span class="n">record_unapplied</span><span class="p">(</span><span class="n">app</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">SUCCESS</span><span class="p">(</span><span class="s2">&quot; OK&quot;</span><span class="p">))</span>
+                <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;  No migrations to prune.&quot;</span><span class="p">)</span>
+
+        <span class="n">plan</span> <span class="o">=</span> <span class="n">executor</span><span class="o">.</span><span class="n">migration_plan</span><span class="p">(</span><span class="n">targets</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;plan&quot;</span><span class="p">]:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;Planned operations:&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">MIGRATE_LABEL</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">plan</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;  No planned migration operations.&quot;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">migration</span><span class="p">,</span> <span class="n">backwards</span> <span class="ow">in</span> <span class="n">plan</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">migration</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">MIGRATE_HEADING</span><span class="p">)</span>
+                    <span class="k">for</span> <span class="n">operation</span> <span class="ow">in</span> <span class="n">migration</span><span class="o">.</span><span class="n">operations</span><span class="p">:</span>
+                        <span class="n">message</span><span class="p">,</span> <span class="n">is_error</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">describe_operation</span><span class="p">(</span>
+                            <span class="n">operation</span><span class="p">,</span> <span class="n">backwards</span>
+                        <span class="p">)</span>
+                        <span class="n">style</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">WARNING</span> <span class="k">if</span> <span class="n">is_error</span> <span class="k">else</span> <span class="kc">None</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;    &quot;</span> <span class="o">+</span> <span class="n">message</span><span class="p">,</span> <span class="n">style</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;check_unapplied&quot;</span><span class="p">]:</span>
+                    <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+            <span class="k">return</span>
+        <span class="k">if</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;check_unapplied&quot;</span><span class="p">]:</span>
+            <span class="k">if</span> <span class="n">plan</span><span class="p">:</span>
+                <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+            <span class="k">return</span>
+        <span class="k">if</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;prune&quot;</span><span class="p">]:</span>
+            <span class="k">return</span>
+
+        <span class="c1"># At this point, ignore run_syncdb if there aren&#39;t any apps to sync.</span>
+        <span class="n">run_syncdb</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;run_syncdb&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">executor</span><span class="o">.</span><span class="n">loader</span><span class="o">.</span><span class="n">unmigrated_apps</span>
+        <span class="c1"># Print some useful info</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">MIGRATE_HEADING</span><span class="p">(</span><span class="s2">&quot;Operations to perform:&quot;</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">run_syncdb</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;app_label&quot;</span><span class="p">]:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">MIGRATE_LABEL</span><span class="p">(</span>
+                            <span class="s2">&quot;  Synchronize unmigrated app: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">app_label</span>
+                        <span class="p">)</span>
+                    <span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">MIGRATE_LABEL</span><span class="p">(</span><span class="s2">&quot;  Synchronize unmigrated apps: &quot;</span><span class="p">)</span>
+                        <span class="o">+</span> <span class="p">(</span><span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">executor</span><span class="o">.</span><span class="n">loader</span><span class="o">.</span><span class="n">unmigrated_apps</span><span class="p">)))</span>
+                    <span class="p">)</span>
+            <span class="k">if</span> <span class="n">target_app_labels_only</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">MIGRATE_LABEL</span><span class="p">(</span><span class="s2">&quot;  Apply all migrations: &quot;</span><span class="p">)</span>
+                    <span class="o">+</span> <span class="p">(</span><span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">sorted</span><span class="p">({</span><span class="n">a</span> <span class="k">for</span> <span class="n">a</span><span class="p">,</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">targets</span><span class="p">}))</span> <span class="ow">or</span> <span class="s2">&quot;(none)&quot;</span><span class="p">)</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">targets</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">MIGRATE_LABEL</span><span class="p">(</span><span class="s2">&quot;  Unapply all migrations: &quot;</span><span class="p">)</span>
+                        <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">targets</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span>
+                    <span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">MIGRATE_LABEL</span><span class="p">(</span><span class="s2">&quot;  Target specific migration: &quot;</span><span class="p">)</span>
+                        <span class="o">+</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">, from </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">targets</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">],</span> <span class="n">targets</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span>
+                    <span class="p">)</span>
+
+        <span class="n">pre_migrate_state</span> <span class="o">=</span> <span class="n">executor</span><span class="o">.</span><span class="n">_create_project_state</span><span class="p">(</span><span class="n">with_applied_migrations</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">pre_migrate_apps</span> <span class="o">=</span> <span class="n">pre_migrate_state</span><span class="o">.</span><span class="n">apps</span>
+        <span class="n">emit_pre_migrate_signal</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">interactive</span><span class="p">,</span>
+            <span class="n">connection</span><span class="o">.</span><span class="n">alias</span><span class="p">,</span>
+            <span class="n">stdout</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="p">,</span>
+            <span class="n">apps</span><span class="o">=</span><span class="n">pre_migrate_apps</span><span class="p">,</span>
+            <span class="n">plan</span><span class="o">=</span><span class="n">plan</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Run the syncdb phase.</span>
+        <span class="k">if</span> <span class="n">run_syncdb</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">MIGRATE_HEADING</span><span class="p">(</span><span class="s2">&quot;Synchronizing apps without migrations:&quot;</span><span class="p">)</span>
+                <span class="p">)</span>
+            <span class="k">if</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;app_label&quot;</span><span class="p">]:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">sync_apps</span><span class="p">(</span><span class="n">connection</span><span class="p">,</span> <span class="p">[</span><span class="n">app_label</span><span class="p">])</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">sync_apps</span><span class="p">(</span><span class="n">connection</span><span class="p">,</span> <span class="n">executor</span><span class="o">.</span><span class="n">loader</span><span class="o">.</span><span class="n">unmigrated_apps</span><span class="p">)</span>
+
+        <span class="c1"># Migrate!</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">MIGRATE_HEADING</span><span class="p">(</span><span class="s2">&quot;Running migrations:&quot;</span><span class="p">))</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">plan</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;  No migrations to apply.&quot;</span><span class="p">)</span>
+                <span class="c1"># If there&#39;s changes that aren&#39;t in migrations yet, tell them</span>
+                <span class="c1"># how to fix it.</span>
+                <span class="n">autodetector</span> <span class="o">=</span> <span class="n">MigrationAutodetector</span><span class="p">(</span>
+                    <span class="n">executor</span><span class="o">.</span><span class="n">loader</span><span class="o">.</span><span class="n">project_state</span><span class="p">(),</span>
+                    <span class="n">ProjectState</span><span class="o">.</span><span class="n">from_apps</span><span class="p">(</span><span class="n">apps</span><span class="p">),</span>
+                <span class="p">)</span>
+                <span class="n">changes</span> <span class="o">=</span> <span class="n">autodetector</span><span class="o">.</span><span class="n">changes</span><span class="p">(</span><span class="n">graph</span><span class="o">=</span><span class="n">executor</span><span class="o">.</span><span class="n">loader</span><span class="o">.</span><span class="n">graph</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">changes</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">NOTICE</span><span class="p">(</span>
+                            <span class="s2">&quot;  Your models in app(s): </span><span class="si">%s</span><span class="s2"> have changes that are not &quot;</span>
+                            <span class="s2">&quot;yet reflected in a migration, and so won&#39;t be &quot;</span>
+                            <span class="s2">&quot;applied.&quot;</span> <span class="o">%</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="n">app</span><span class="p">)</span> <span class="k">for</span> <span class="n">app</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">changes</span><span class="p">))</span>
+                        <span class="p">)</span>
+                    <span class="p">)</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">NOTICE</span><span class="p">(</span>
+                            <span class="s2">&quot;  Run &#39;manage.py makemigrations&#39; to make new &quot;</span>
+                            <span class="s2">&quot;migrations, and then re-run &#39;manage.py migrate&#39; to &quot;</span>
+                            <span class="s2">&quot;apply them.&quot;</span>
+                        <span class="p">)</span>
+                    <span class="p">)</span>
+            <span class="n">fake</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="n">fake_initial</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">fake</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;fake&quot;</span><span class="p">]</span>
+            <span class="n">fake_initial</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;fake_initial&quot;</span><span class="p">]</span>
+        <span class="n">post_migrate_state</span> <span class="o">=</span> <span class="n">executor</span><span class="o">.</span><span class="n">migrate</span><span class="p">(</span>
+            <span class="n">targets</span><span class="p">,</span>
+            <span class="n">plan</span><span class="o">=</span><span class="n">plan</span><span class="p">,</span>
+            <span class="n">state</span><span class="o">=</span><span class="n">pre_migrate_state</span><span class="o">.</span><span class="n">clone</span><span class="p">(),</span>
+            <span class="n">fake</span><span class="o">=</span><span class="n">fake</span><span class="p">,</span>
+            <span class="n">fake_initial</span><span class="o">=</span><span class="n">fake_initial</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="c1"># post_migrate signals have access to all models. Ensure that all models</span>
+        <span class="c1"># are reloaded in case any are delayed.</span>
+        <span class="n">post_migrate_state</span><span class="o">.</span><span class="n">clear_delayed_apps_cache</span><span class="p">()</span>
+        <span class="n">post_migrate_apps</span> <span class="o">=</span> <span class="n">post_migrate_state</span><span class="o">.</span><span class="n">apps</span>
+
+        <span class="c1"># Re-render models of real apps to include relationships now that</span>
+        <span class="c1"># we&#39;ve got a final state. This wouldn&#39;t be necessary if real apps</span>
+        <span class="c1"># models were rendered with relationships in the first place.</span>
+        <span class="k">with</span> <span class="n">post_migrate_apps</span><span class="o">.</span><span class="n">bulk_update</span><span class="p">():</span>
+            <span class="n">model_keys</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">model_state</span> <span class="ow">in</span> <span class="n">post_migrate_apps</span><span class="o">.</span><span class="n">real_models</span><span class="p">:</span>
+                <span class="n">model_key</span> <span class="o">=</span> <span class="n">model_state</span><span class="o">.</span><span class="n">app_label</span><span class="p">,</span> <span class="n">model_state</span><span class="o">.</span><span class="n">name_lower</span>
+                <span class="n">model_keys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">model_key</span><span class="p">)</span>
+                <span class="n">post_migrate_apps</span><span class="o">.</span><span class="n">unregister_model</span><span class="p">(</span><span class="o">*</span><span class="n">model_key</span><span class="p">)</span>
+        <span class="n">post_migrate_apps</span><span class="o">.</span><span class="n">render_multiple</span><span class="p">(</span>
+            <span class="p">[</span><span class="n">ModelState</span><span class="o">.</span><span class="n">from_model</span><span class="p">(</span><span class="n">apps</span><span class="o">.</span><span class="n">get_model</span><span class="p">(</span><span class="o">*</span><span class="n">model</span><span class="p">))</span> <span class="k">for</span> <span class="n">model</span> <span class="ow">in</span> <span class="n">model_keys</span><span class="p">]</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Send the post_migrate signal, so individual apps can do whatever they need</span>
+        <span class="c1"># to do at this point.</span>
+        <span class="n">emit_post_migrate_signal</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">interactive</span><span class="p">,</span>
+            <span class="n">connection</span><span class="o">.</span><span class="n">alias</span><span class="p">,</span>
+            <span class="n">stdout</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="p">,</span>
+            <span class="n">apps</span><span class="o">=</span><span class="n">post_migrate_apps</span><span class="p">,</span>
+            <span class="n">plan</span><span class="o">=</span><span class="n">plan</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Command.migration_progress_callback">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/migrate/index.html#django.core.management.commands.migrate.Command.migration_progress_callback">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">migration_progress_callback</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">migration</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">fake</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">compute_time</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">&gt;</span> <span class="mi">1</span>
+            <span class="k">if</span> <span class="n">action</span> <span class="o">==</span> <span class="s2">&quot;apply_start&quot;</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">compute_time</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;  Applying </span><span class="si">%s</span><span class="s2">...&quot;</span> <span class="o">%</span> <span class="n">migration</span><span class="p">,</span> <span class="n">ending</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+            <span class="k">elif</span> <span class="n">action</span> <span class="o">==</span> <span class="s2">&quot;apply_success&quot;</span><span class="p">:</span>
+                <span class="n">elapsed</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="s2">&quot; (</span><span class="si">%.3f</span><span class="s2">s)&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">start</span><span class="p">)</span> <span class="k">if</span> <span class="n">compute_time</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+                <span class="p">)</span>
+                <span class="k">if</span> <span class="n">fake</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">SUCCESS</span><span class="p">(</span><span class="s2">&quot; FAKED&quot;</span> <span class="o">+</span> <span class="n">elapsed</span><span class="p">))</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">SUCCESS</span><span class="p">(</span><span class="s2">&quot; OK&quot;</span> <span class="o">+</span> <span class="n">elapsed</span><span class="p">))</span>
+            <span class="k">elif</span> <span class="n">action</span> <span class="o">==</span> <span class="s2">&quot;unapply_start&quot;</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">compute_time</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;  Unapplying </span><span class="si">%s</span><span class="s2">...&quot;</span> <span class="o">%</span> <span class="n">migration</span><span class="p">,</span> <span class="n">ending</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+            <span class="k">elif</span> <span class="n">action</span> <span class="o">==</span> <span class="s2">&quot;unapply_success&quot;</span><span class="p">:</span>
+                <span class="n">elapsed</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="s2">&quot; (</span><span class="si">%.3f</span><span class="s2">s)&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">start</span><span class="p">)</span> <span class="k">if</span> <span class="n">compute_time</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+                <span class="p">)</span>
+                <span class="k">if</span> <span class="n">fake</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">SUCCESS</span><span class="p">(</span><span class="s2">&quot; FAKED&quot;</span> <span class="o">+</span> <span class="n">elapsed</span><span class="p">))</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">SUCCESS</span><span class="p">(</span><span class="s2">&quot; OK&quot;</span> <span class="o">+</span> <span class="n">elapsed</span><span class="p">))</span>
+            <span class="k">elif</span> <span class="n">action</span> <span class="o">==</span> <span class="s2">&quot;render_start&quot;</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">compute_time</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;  Rendering model states...&quot;</span><span class="p">,</span> <span class="n">ending</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+            <span class="k">elif</span> <span class="n">action</span> <span class="o">==</span> <span class="s2">&quot;render_success&quot;</span><span class="p">:</span>
+                <span class="n">elapsed</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="s2">&quot; (</span><span class="si">%.3f</span><span class="s2">s)&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">start</span><span class="p">)</span> <span class="k">if</span> <span class="n">compute_time</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+                <span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">SUCCESS</span><span class="p">(</span><span class="s2">&quot; DONE&quot;</span> <span class="o">+</span> <span class="n">elapsed</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="Command.sync_apps">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/migrate/index.html#django.core.management.commands.migrate.Command.sync_apps">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">sync_apps</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">connection</span><span class="p">,</span> <span class="n">app_labels</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Run the old syncdb-style operation on a list of app_labels.&quot;&quot;&quot;</span>
+        <span class="k">with</span> <span class="n">connection</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="n">tables</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="n">introspection</span><span class="o">.</span><span class="n">table_names</span><span class="p">(</span><span class="n">cursor</span><span class="p">)</span>
+
+        <span class="c1"># Build the manifest of apps and models that are to be synchronized.</span>
+        <span class="n">all_models</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="p">(</span>
+                <span class="n">app_config</span><span class="o">.</span><span class="n">label</span><span class="p">,</span>
+                <span class="n">router</span><span class="o">.</span><span class="n">get_migratable_models</span><span class="p">(</span>
+                    <span class="n">app_config</span><span class="p">,</span> <span class="n">connection</span><span class="o">.</span><span class="n">alias</span><span class="p">,</span> <span class="n">include_auto_created</span><span class="o">=</span><span class="kc">False</span>
+                <span class="p">),</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">app_config</span> <span class="ow">in</span> <span class="n">apps</span><span class="o">.</span><span class="n">get_app_configs</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">app_config</span><span class="o">.</span><span class="n">models_module</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">app_config</span><span class="o">.</span><span class="n">label</span> <span class="ow">in</span> <span class="n">app_labels</span>
+        <span class="p">]</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">model_installed</span><span class="p">(</span><span class="n">model</span><span class="p">):</span>
+            <span class="n">opts</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span>
+            <span class="n">converter</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="n">introspection</span><span class="o">.</span><span class="n">identifier_converter</span>
+            <span class="k">return</span> <span class="ow">not</span> <span class="p">(</span>
+                <span class="p">(</span><span class="n">converter</span><span class="p">(</span><span class="n">opts</span><span class="o">.</span><span class="n">db_table</span><span class="p">)</span> <span class="ow">in</span> <span class="n">tables</span><span class="p">)</span>
+                <span class="ow">or</span> <span class="p">(</span>
+                    <span class="n">opts</span><span class="o">.</span><span class="n">auto_created</span>
+                    <span class="ow">and</span> <span class="n">converter</span><span class="p">(</span><span class="n">opts</span><span class="o">.</span><span class="n">auto_created</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span><span class="p">)</span> <span class="ow">in</span> <span class="n">tables</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+
+        <span class="n">manifest</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="n">app_name</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="nb">filter</span><span class="p">(</span><span class="n">model_installed</span><span class="p">,</span> <span class="n">model_list</span><span class="p">))</span>
+            <span class="k">for</span> <span class="n">app_name</span><span class="p">,</span> <span class="n">model_list</span> <span class="ow">in</span> <span class="n">all_models</span>
+        <span class="p">}</span>
+
+        <span class="c1"># Create the tables for each model</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;  Creating tables...&quot;</span><span class="p">)</span>
+        <span class="k">with</span> <span class="n">connection</span><span class="o">.</span><span class="n">schema_editor</span><span class="p">()</span> <span class="k">as</span> <span class="n">editor</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">app_name</span><span class="p">,</span> <span class="n">model_list</span> <span class="ow">in</span> <span class="n">manifest</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">for</span> <span class="n">model</span> <span class="ow">in</span> <span class="n">model_list</span><span class="p">:</span>
+                    <span class="c1"># Never install unmanaged models, etc.</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">can_migrate</span><span class="p">(</span><span class="n">connection</span><span class="p">):</span>
+                        <span class="k">continue</span>
+                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">&gt;=</span> <span class="mi">3</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                            <span class="s2">&quot;    Processing </span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2"> model&quot;</span>
+                            <span class="o">%</span> <span class="p">(</span><span class="n">app_name</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">object_name</span><span class="p">)</span>
+                        <span class="p">)</span>
+                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                            <span class="s2">&quot;    Creating table </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span>
+                        <span class="p">)</span>
+                    <span class="n">editor</span><span class="o">.</span><span class="n">create_model</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+
+            <span class="c1"># Deferred SQL is executed when exiting the editor&#39;s context.</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;    Running deferred SQL...&quot;</span><span class="p">)</span></div>
+
+
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="Command.describe_operation">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/migrate/index.html#django.core.management.commands.migrate.Command.describe_operation">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">describe_operation</span><span class="p">(</span><span class="n">operation</span><span class="p">,</span> <span class="n">backwards</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a string that describes a migration operation for --plan.&quot;&quot;&quot;</span>
+        <span class="n">prefix</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+        <span class="n">is_error</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">operation</span><span class="p">,</span> <span class="s2">&quot;code&quot;</span><span class="p">):</span>
+            <span class="n">code</span> <span class="o">=</span> <span class="n">operation</span><span class="o">.</span><span class="n">reverse_code</span> <span class="k">if</span> <span class="n">backwards</span> <span class="k">else</span> <span class="n">operation</span><span class="o">.</span><span class="n">code</span>
+            <span class="n">action</span> <span class="o">=</span> <span class="p">(</span><span class="n">code</span><span class="o">.</span><span class="vm">__doc__</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">code</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="k">elif</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">operation</span><span class="p">,</span> <span class="s2">&quot;sql&quot;</span><span class="p">):</span>
+            <span class="n">action</span> <span class="o">=</span> <span class="n">operation</span><span class="o">.</span><span class="n">reverse_sql</span> <span class="k">if</span> <span class="n">backwards</span> <span class="k">else</span> <span class="n">operation</span><span class="o">.</span><span class="n">sql</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">action</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+            <span class="k">if</span> <span class="n">backwards</span><span class="p">:</span>
+                <span class="n">prefix</span> <span class="o">=</span> <span class="s2">&quot;Undo &quot;</span>
+        <span class="k">if</span> <span class="n">action</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">action</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">action</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">backwards</span><span class="p">:</span>
+            <span class="n">action</span> <span class="o">=</span> <span class="s2">&quot;IRREVERSIBLE&quot;</span>
+            <span class="n">is_error</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">if</span> <span class="n">action</span><span class="p">:</span>
+            <span class="n">action</span> <span class="o">=</span> <span class="s2">&quot; -&gt; &quot;</span> <span class="o">+</span> <span class="n">action</span>
+        <span class="n">truncated</span> <span class="o">=</span> <span class="n">Truncator</span><span class="p">(</span><span class="n">action</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">prefix</span> <span class="o">+</span> <span class="n">operation</span><span class="o">.</span><span class="n">describe</span><span class="p">()</span> <span class="o">+</span> <span class="n">truncated</span><span class="o">.</span><span class="n">chars</span><span class="p">(</span><span class="mi">40</span><span class="p">),</span> <span class="n">is_error</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

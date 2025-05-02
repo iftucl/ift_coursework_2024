@@ -1,0 +1,823 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.contrib.auth.forms &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../auth.html">django.contrib.auth</a></li>
+      <li class="breadcrumb-item active">django.contrib.auth.forms</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.contrib.auth.forms</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">unicodedata</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django</span><span class="w"> </span><span class="kn">import</span> <span class="n">forms</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.auth</span><span class="w"> </span><span class="kn">import</span> <span class="n">authenticate</span><span class="p">,</span> <span class="n">get_user_model</span><span class="p">,</span> <span class="n">password_validation</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.auth.hashers</span><span class="w"> </span><span class="kn">import</span> <span class="n">UNUSABLE_PASSWORD_PREFIX</span><span class="p">,</span> <span class="n">identify_hasher</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.auth.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">User</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.auth.tokens</span><span class="w"> </span><span class="kn">import</span> <span class="n">default_token_generator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.sites.shortcuts</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_current_site</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ValidationError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.mail</span><span class="w"> </span><span class="kn">import</span> <span class="n">EmailMultiAlternatives</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.template</span><span class="w"> </span><span class="kn">import</span> <span class="n">loader</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.encoding</span><span class="w"> </span><span class="kn">import</span> <span class="n">force_bytes</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.http</span><span class="w"> </span><span class="kn">import</span> <span class="n">urlsafe_base64_encode</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.text</span><span class="w"> </span><span class="kn">import</span> <span class="n">capfirst</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.translation</span><span class="w"> </span><span class="kn">import</span> <span class="n">gettext</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.translation</span><span class="w"> </span><span class="kn">import</span> <span class="n">gettext_lazy</span> <span class="k">as</span> <span class="n">_</span>
+
+<div class="viewcode-block" id="UserModel">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.UserModel">[docs]</a>
+<span class="n">UserModel</span> <span class="o">=</span> <span class="n">get_user_model</span><span class="p">()</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_unicode_ci_compare</span><span class="p">(</span><span class="n">s1</span><span class="p">,</span> <span class="n">s2</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Perform case-insensitive comparison of two identifiers, using the</span>
+<span class="sd">    recommended algorithm from Unicode Technical Report 36, section</span>
+<span class="sd">    2.11.2(B)(2).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="n">unicodedata</span><span class="o">.</span><span class="n">normalize</span><span class="p">(</span><span class="s2">&quot;NFKC&quot;</span><span class="p">,</span> <span class="n">s1</span><span class="p">)</span><span class="o">.</span><span class="n">casefold</span><span class="p">()</span>
+        <span class="o">==</span> <span class="n">unicodedata</span><span class="o">.</span><span class="n">normalize</span><span class="p">(</span><span class="s2">&quot;NFKC&quot;</span><span class="p">,</span> <span class="n">s2</span><span class="p">)</span><span class="o">.</span><span class="n">casefold</span><span class="p">()</span>
+    <span class="p">)</span>
+
+
+<div class="viewcode-block" id="ReadOnlyPasswordHashWidget">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.ReadOnlyPasswordHashWidget">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ReadOnlyPasswordHashWidget</span><span class="p">(</span><span class="n">forms</span><span class="o">.</span><span class="n">Widget</span><span class="p">):</span>
+<div class="viewcode-block" id="ReadOnlyPasswordHashWidget.template_name">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.ReadOnlyPasswordHashWidget.template_name">[docs]</a>
+    <span class="n">template_name</span> <span class="o">=</span> <span class="s2">&quot;auth/widgets/read_only_password_hash.html&quot;</span></div>
+
+<div class="viewcode-block" id="ReadOnlyPasswordHashWidget.read_only">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.ReadOnlyPasswordHashWidget.read_only">[docs]</a>
+    <span class="n">read_only</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="ReadOnlyPasswordHashWidget.get_context">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.ReadOnlyPasswordHashWidget.get_context">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_context</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">attrs</span><span class="p">):</span>
+        <span class="n">context</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">get_context</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">attrs</span><span class="p">)</span>
+        <span class="n">summary</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">value</span> <span class="ow">or</span> <span class="n">value</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">UNUSABLE_PASSWORD_PREFIX</span><span class="p">):</span>
+            <span class="n">summary</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s2">&quot;label&quot;</span><span class="p">:</span> <span class="n">gettext</span><span class="p">(</span><span class="s2">&quot;No password set.&quot;</span><span class="p">)})</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">hasher</span> <span class="o">=</span> <span class="n">identify_hasher</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                <span class="n">summary</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="p">{</span>
+                        <span class="s2">&quot;label&quot;</span><span class="p">:</span> <span class="n">gettext</span><span class="p">(</span>
+                            <span class="s2">&quot;Invalid password format or unknown hashing algorithm.&quot;</span>
+                        <span class="p">)</span>
+                    <span class="p">}</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value_</span> <span class="ow">in</span> <span class="n">hasher</span><span class="o">.</span><span class="n">safe_summary</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                    <span class="n">summary</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s2">&quot;label&quot;</span><span class="p">:</span> <span class="n">gettext</span><span class="p">(</span><span class="n">key</span><span class="p">),</span> <span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value_</span><span class="p">})</span>
+        <span class="n">context</span><span class="p">[</span><span class="s2">&quot;summary&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">summary</span>
+        <span class="k">return</span> <span class="n">context</span></div>
+
+
+<div class="viewcode-block" id="ReadOnlyPasswordHashWidget.id_for_label">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.ReadOnlyPasswordHashWidget.id_for_label">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">id_for_label</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">id_</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">None</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="ReadOnlyPasswordHashField">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.ReadOnlyPasswordHashField">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ReadOnlyPasswordHashField</span><span class="p">(</span><span class="n">forms</span><span class="o">.</span><span class="n">Field</span><span class="p">):</span>
+<div class="viewcode-block" id="ReadOnlyPasswordHashField.widget">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.ReadOnlyPasswordHashField.widget">[docs]</a>
+    <span class="n">widget</span> <span class="o">=</span> <span class="n">ReadOnlyPasswordHashWidget</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">&quot;required&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+        <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">&quot;disabled&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="UsernameField">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.UsernameField">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">UsernameField</span><span class="p">(</span><span class="n">forms</span><span class="o">.</span><span class="n">CharField</span><span class="p">):</span>
+<div class="viewcode-block" id="UsernameField.to_python">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.UsernameField.to_python">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_python</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">to_python</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_length</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_length</span><span class="p">:</span>
+            <span class="c1"># Normalization can increase the string length (e.g.</span>
+            <span class="c1"># &quot;ﬀ&quot; -&gt; &quot;ff&quot;, &quot;½&quot; -&gt; &quot;1⁄2&quot;) but cannot reduce it, so there is no</span>
+            <span class="c1"># point in normalizing invalid data. Moreover, Unicode</span>
+            <span class="c1"># normalization is very slow on Windows and can be a DoS attack</span>
+            <span class="c1"># vector.</span>
+            <span class="k">return</span> <span class="n">value</span>
+        <span class="k">return</span> <span class="n">unicodedata</span><span class="o">.</span><span class="n">normalize</span><span class="p">(</span><span class="s2">&quot;NFKC&quot;</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="UsernameField.widget_attrs">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.UsernameField.widget_attrs">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">widget_attrs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">widget</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="o">**</span><span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">widget_attrs</span><span class="p">(</span><span class="n">widget</span><span class="p">),</span>
+            <span class="s2">&quot;autocapitalize&quot;</span><span class="p">:</span> <span class="s2">&quot;none&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;autocomplete&quot;</span><span class="p">:</span> <span class="s2">&quot;username&quot;</span><span class="p">,</span>
+        <span class="p">}</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="BaseUserCreationForm">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.BaseUserCreationForm">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BaseUserCreationForm</span><span class="p">(</span><span class="n">forms</span><span class="o">.</span><span class="n">ModelForm</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A form that creates a user, with no privileges, from the given username and</span>
+<span class="sd">    password.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="BaseUserCreationForm.error_messages">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.BaseUserCreationForm.error_messages">[docs]</a>
+    <span class="n">error_messages</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;password_mismatch&quot;</span><span class="p">:</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;The two password fields didn’t match.&quot;</span><span class="p">),</span>
+    <span class="p">}</span></div>
+
+<div class="viewcode-block" id="BaseUserCreationForm.password1">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.BaseUserCreationForm.password1">[docs]</a>
+    <span class="n">password1</span> <span class="o">=</span> <span class="n">forms</span><span class="o">.</span><span class="n">CharField</span><span class="p">(</span>
+        <span class="n">label</span><span class="o">=</span><span class="n">_</span><span class="p">(</span><span class="s2">&quot;Password&quot;</span><span class="p">),</span>
+        <span class="n">strip</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">widget</span><span class="o">=</span><span class="n">forms</span><span class="o">.</span><span class="n">PasswordInput</span><span class="p">(</span><span class="n">attrs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;autocomplete&quot;</span><span class="p">:</span> <span class="s2">&quot;new-password&quot;</span><span class="p">}),</span>
+        <span class="n">help_text</span><span class="o">=</span><span class="n">password_validation</span><span class="o">.</span><span class="n">password_validators_help_text_html</span><span class="p">(),</span>
+    <span class="p">)</span></div>
+
+<div class="viewcode-block" id="BaseUserCreationForm.password2">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.BaseUserCreationForm.password2">[docs]</a>
+    <span class="n">password2</span> <span class="o">=</span> <span class="n">forms</span><span class="o">.</span><span class="n">CharField</span><span class="p">(</span>
+        <span class="n">label</span><span class="o">=</span><span class="n">_</span><span class="p">(</span><span class="s2">&quot;Password confirmation&quot;</span><span class="p">),</span>
+        <span class="n">widget</span><span class="o">=</span><span class="n">forms</span><span class="o">.</span><span class="n">PasswordInput</span><span class="p">(</span><span class="n">attrs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;autocomplete&quot;</span><span class="p">:</span> <span class="s2">&quot;new-password&quot;</span><span class="p">}),</span>
+        <span class="n">strip</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">help_text</span><span class="o">=</span><span class="n">_</span><span class="p">(</span><span class="s2">&quot;Enter the same password as before, for verification.&quot;</span><span class="p">),</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseUserCreationForm.Meta">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.BaseUserCreationForm.Meta">[docs]</a>
+    <span class="k">class</span><span class="w"> </span><span class="nc">Meta</span><span class="p">:</span>
+<div class="viewcode-block" id="BaseUserCreationForm.Meta.model">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.BaseUserCreationForm.Meta.model">[docs]</a>
+        <span class="n">model</span> <span class="o">=</span> <span class="n">User</span></div>
+
+<div class="viewcode-block" id="BaseUserCreationForm.Meta.fields">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.BaseUserCreationForm.Meta.fields">[docs]</a>
+        <span class="n">fields</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;username&quot;</span><span class="p">,)</span></div>
+
+<div class="viewcode-block" id="BaseUserCreationForm.Meta.field_classes">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.BaseUserCreationForm.Meta.field_classes">[docs]</a>
+        <span class="n">field_classes</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;username&quot;</span><span class="p">:</span> <span class="n">UsernameField</span><span class="p">}</span></div>
+</div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">USERNAME_FIELD</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">fields</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">USERNAME_FIELD</span><span class="p">]</span><span class="o">.</span><span class="n">widget</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span>
+                <span class="s2">&quot;autofocus&quot;</span>
+            <span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+
+<div class="viewcode-block" id="BaseUserCreationForm.clean_password2">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.BaseUserCreationForm.clean_password2">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clean_password2</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">password1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cleaned_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;password1&quot;</span><span class="p">)</span>
+        <span class="n">password2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cleaned_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;password2&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">password1</span> <span class="ow">and</span> <span class="n">password2</span> <span class="ow">and</span> <span class="n">password1</span> <span class="o">!=</span> <span class="n">password2</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">error_messages</span><span class="p">[</span><span class="s2">&quot;password_mismatch&quot;</span><span class="p">],</span>
+                <span class="n">code</span><span class="o">=</span><span class="s2">&quot;password_mismatch&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">password2</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_post_clean</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">_post_clean</span><span class="p">()</span>
+        <span class="c1"># Validate the password after self.instance is updated with form data</span>
+        <span class="c1"># by super().</span>
+        <span class="n">password</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cleaned_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;password2&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">password</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">password_validation</span><span class="o">.</span><span class="n">validate_password</span><span class="p">(</span><span class="n">password</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">instance</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">ValidationError</span> <span class="k">as</span> <span class="n">error</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">add_error</span><span class="p">(</span><span class="s2">&quot;password2&quot;</span><span class="p">,</span> <span class="n">error</span><span class="p">)</span>
+
+<div class="viewcode-block" id="BaseUserCreationForm.save">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.BaseUserCreationForm.save">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">commit</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="n">user</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">commit</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="n">user</span><span class="o">.</span><span class="n">set_password</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cleaned_data</span><span class="p">[</span><span class="s2">&quot;password1&quot;</span><span class="p">])</span>
+        <span class="k">if</span> <span class="n">commit</span><span class="p">:</span>
+            <span class="n">user</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;save_m2m&quot;</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">save_m2m</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">user</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="UserCreationForm">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.UserCreationForm">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">UserCreationForm</span><span class="p">(</span><span class="n">BaseUserCreationForm</span><span class="p">):</span>
+<div class="viewcode-block" id="UserCreationForm.clean_username">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.UserCreationForm.clean_username">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clean_username</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Reject usernames that differ only in case.&quot;&quot;&quot;</span>
+        <span class="n">username</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cleaned_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;username&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="n">username</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">username__iexact</span><span class="o">=</span><span class="n">username</span><span class="p">)</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span>
+        <span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_update_errors</span><span class="p">(</span>
+                <span class="n">ValidationError</span><span class="p">(</span>
+                    <span class="p">{</span>
+                        <span class="s2">&quot;username&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">instance</span><span class="o">.</span><span class="n">unique_error_message</span><span class="p">(</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;username&quot;</span><span class="p">]</span>
+                        <span class="p">)</span>
+                    <span class="p">}</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">username</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="UserChangeForm">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.UserChangeForm">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">UserChangeForm</span><span class="p">(</span><span class="n">forms</span><span class="o">.</span><span class="n">ModelForm</span><span class="p">):</span>
+<div class="viewcode-block" id="UserChangeForm.password">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.UserChangeForm.password">[docs]</a>
+    <span class="n">password</span> <span class="o">=</span> <span class="n">ReadOnlyPasswordHashField</span><span class="p">(</span>
+        <span class="n">label</span><span class="o">=</span><span class="n">_</span><span class="p">(</span><span class="s2">&quot;Password&quot;</span><span class="p">),</span>
+        <span class="n">help_text</span><span class="o">=</span><span class="n">_</span><span class="p">(</span>
+            <span class="s2">&quot;Raw passwords are not stored, so there is no way to see this &quot;</span>
+            <span class="s2">&quot;user’s password, but you can change the password using &quot;</span>
+            <span class="s1">&#39;&lt;a href=&quot;</span><span class="si">{}</span><span class="s1">&quot;&gt;this form&lt;/a&gt;.&#39;</span>
+        <span class="p">),</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="UserChangeForm.Meta">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.UserChangeForm.Meta">[docs]</a>
+    <span class="k">class</span><span class="w"> </span><span class="nc">Meta</span><span class="p">:</span>
+<div class="viewcode-block" id="UserChangeForm.Meta.model">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.UserChangeForm.Meta.model">[docs]</a>
+        <span class="n">model</span> <span class="o">=</span> <span class="n">User</span></div>
+
+<div class="viewcode-block" id="UserChangeForm.Meta.fields">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.UserChangeForm.Meta.fields">[docs]</a>
+        <span class="n">fields</span> <span class="o">=</span> <span class="s2">&quot;__all__&quot;</span></div>
+
+<div class="viewcode-block" id="UserChangeForm.Meta.field_classes">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.UserChangeForm.Meta.field_classes">[docs]</a>
+        <span class="n">field_classes</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;username&quot;</span><span class="p">:</span> <span class="n">UsernameField</span><span class="p">}</span></div>
+</div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="n">password</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;password&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">password</span><span class="p">:</span>
+            <span class="n">password</span><span class="o">.</span><span class="n">help_text</span> <span class="o">=</span> <span class="n">password</span><span class="o">.</span><span class="n">help_text</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;../../</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">instance</span><span class="o">.</span><span class="n">pk</span><span class="si">}</span><span class="s2">/password/&quot;</span>
+            <span class="p">)</span>
+        <span class="n">user_permissions</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;user_permissions&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">user_permissions</span><span class="p">:</span>
+            <span class="n">user_permissions</span><span class="o">.</span><span class="n">queryset</span> <span class="o">=</span> <span class="n">user_permissions</span><span class="o">.</span><span class="n">queryset</span><span class="o">.</span><span class="n">select_related</span><span class="p">(</span>
+                <span class="s2">&quot;content_type&quot;</span>
+            <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="AuthenticationForm">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.AuthenticationForm">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">AuthenticationForm</span><span class="p">(</span><span class="n">forms</span><span class="o">.</span><span class="n">Form</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Base class for authenticating users. Extend this to get a form that accepts</span>
+<span class="sd">    username/password logins.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="AuthenticationForm.username">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.AuthenticationForm.username">[docs]</a>
+    <span class="n">username</span> <span class="o">=</span> <span class="n">UsernameField</span><span class="p">(</span><span class="n">widget</span><span class="o">=</span><span class="n">forms</span><span class="o">.</span><span class="n">TextInput</span><span class="p">(</span><span class="n">attrs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;autofocus&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}))</span></div>
+
+<div class="viewcode-block" id="AuthenticationForm.password">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.AuthenticationForm.password">[docs]</a>
+    <span class="n">password</span> <span class="o">=</span> <span class="n">forms</span><span class="o">.</span><span class="n">CharField</span><span class="p">(</span>
+        <span class="n">label</span><span class="o">=</span><span class="n">_</span><span class="p">(</span><span class="s2">&quot;Password&quot;</span><span class="p">),</span>
+        <span class="n">strip</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">widget</span><span class="o">=</span><span class="n">forms</span><span class="o">.</span><span class="n">PasswordInput</span><span class="p">(</span><span class="n">attrs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;autocomplete&quot;</span><span class="p">:</span> <span class="s2">&quot;current-password&quot;</span><span class="p">}),</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="AuthenticationForm.error_messages">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.AuthenticationForm.error_messages">[docs]</a>
+    <span class="n">error_messages</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;invalid_login&quot;</span><span class="p">:</span> <span class="n">_</span><span class="p">(</span>
+            <span class="s2">&quot;Please enter a correct </span><span class="si">%(username)s</span><span class="s2"> and password. Note that both &quot;</span>
+            <span class="s2">&quot;fields may be case-sensitive.&quot;</span>
+        <span class="p">),</span>
+        <span class="s2">&quot;inactive&quot;</span><span class="p">:</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;This account is inactive.&quot;</span><span class="p">),</span>
+    <span class="p">}</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The &#39;request&#39; parameter is set for custom auth use by subclasses.</span>
+<span class="sd">        The form data comes in via the standard &#39;data&#39; kwarg.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+<div class="viewcode-block" id="AuthenticationForm.request">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.AuthenticationForm.request">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">request</span> <span class="o">=</span> <span class="n">request</span></div>
+
+<div class="viewcode-block" id="AuthenticationForm.user_cache">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.AuthenticationForm.user_cache">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">user_cache</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="c1"># Set the max length and label for the &quot;username&quot; field.</span>
+<div class="viewcode-block" id="AuthenticationForm.username_field">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.AuthenticationForm.username_field">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">username_field</span> <span class="o">=</span> <span class="n">UserModel</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">get_field</span><span class="p">(</span><span class="n">UserModel</span><span class="o">.</span><span class="n">USERNAME_FIELD</span><span class="p">)</span></div>
+
+        <span class="n">username_max_length</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">username_field</span><span class="o">.</span><span class="n">max_length</span> <span class="ow">or</span> <span class="mi">254</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="s2">&quot;username&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">max_length</span> <span class="o">=</span> <span class="n">username_max_length</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="s2">&quot;username&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">widget</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">&quot;maxlength&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">username_max_length</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="s2">&quot;username&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">label</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="s2">&quot;username&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">label</span> <span class="o">=</span> <span class="n">capfirst</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">username_field</span><span class="o">.</span><span class="n">verbose_name</span><span class="p">)</span>
+
+<div class="viewcode-block" id="AuthenticationForm.clean">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.AuthenticationForm.clean">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clean</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">username</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cleaned_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;username&quot;</span><span class="p">)</span>
+        <span class="n">password</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cleaned_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;password&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">username</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">password</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">user_cache</span> <span class="o">=</span> <span class="n">authenticate</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">request</span><span class="p">,</span> <span class="n">username</span><span class="o">=</span><span class="n">username</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="n">password</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">user_cache</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_invalid_login_error</span><span class="p">()</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">confirm_login_allowed</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">user_cache</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cleaned_data</span></div>
+
+
+<div class="viewcode-block" id="AuthenticationForm.confirm_login_allowed">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.AuthenticationForm.confirm_login_allowed">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">confirm_login_allowed</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">user</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Controls whether the given User may log in. This is a policy setting,</span>
+<span class="sd">        independent of end-user authentication. This default behavior is to</span>
+<span class="sd">        allow login by active users, and reject login by inactive users.</span>
+
+<span class="sd">        If the given user cannot log in, this method should raise a</span>
+<span class="sd">        ``ValidationError``.</span>
+
+<span class="sd">        If the given user may log in, this method should return None.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">user</span><span class="o">.</span><span class="n">is_active</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">error_messages</span><span class="p">[</span><span class="s2">&quot;inactive&quot;</span><span class="p">],</span>
+                <span class="n">code</span><span class="o">=</span><span class="s2">&quot;inactive&quot;</span><span class="p">,</span>
+            <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="AuthenticationForm.get_user">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.AuthenticationForm.get_user">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_user</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">user_cache</span></div>
+
+
+<div class="viewcode-block" id="AuthenticationForm.get_invalid_login_error">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.AuthenticationForm.get_invalid_login_error">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_invalid_login_error</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">ValidationError</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">error_messages</span><span class="p">[</span><span class="s2">&quot;invalid_login&quot;</span><span class="p">],</span>
+            <span class="n">code</span><span class="o">=</span><span class="s2">&quot;invalid_login&quot;</span><span class="p">,</span>
+            <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;username&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">username_field</span><span class="o">.</span><span class="n">verbose_name</span><span class="p">},</span>
+        <span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="PasswordResetForm">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.PasswordResetForm">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">PasswordResetForm</span><span class="p">(</span><span class="n">forms</span><span class="o">.</span><span class="n">Form</span><span class="p">):</span>
+<div class="viewcode-block" id="PasswordResetForm.email">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.PasswordResetForm.email">[docs]</a>
+    <span class="n">email</span> <span class="o">=</span> <span class="n">forms</span><span class="o">.</span><span class="n">EmailField</span><span class="p">(</span>
+        <span class="n">label</span><span class="o">=</span><span class="n">_</span><span class="p">(</span><span class="s2">&quot;Email&quot;</span><span class="p">),</span>
+        <span class="n">max_length</span><span class="o">=</span><span class="mi">254</span><span class="p">,</span>
+        <span class="n">widget</span><span class="o">=</span><span class="n">forms</span><span class="o">.</span><span class="n">EmailInput</span><span class="p">(</span><span class="n">attrs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;autocomplete&quot;</span><span class="p">:</span> <span class="s2">&quot;email&quot;</span><span class="p">}),</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PasswordResetForm.send_mail">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.PasswordResetForm.send_mail">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">send_mail</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">subject_template_name</span><span class="p">,</span>
+        <span class="n">email_template_name</span><span class="p">,</span>
+        <span class="n">context</span><span class="p">,</span>
+        <span class="n">from_email</span><span class="p">,</span>
+        <span class="n">to_email</span><span class="p">,</span>
+        <span class="n">html_email_template_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Send a django.core.mail.EmailMultiAlternatives to `to_email`.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">subject</span> <span class="o">=</span> <span class="n">loader</span><span class="o">.</span><span class="n">render_to_string</span><span class="p">(</span><span class="n">subject_template_name</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
+        <span class="c1"># Email subject *must not* contain newlines</span>
+        <span class="n">subject</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">subject</span><span class="o">.</span><span class="n">splitlines</span><span class="p">())</span>
+        <span class="n">body</span> <span class="o">=</span> <span class="n">loader</span><span class="o">.</span><span class="n">render_to_string</span><span class="p">(</span><span class="n">email_template_name</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
+
+        <span class="n">email_message</span> <span class="o">=</span> <span class="n">EmailMultiAlternatives</span><span class="p">(</span><span class="n">subject</span><span class="p">,</span> <span class="n">body</span><span class="p">,</span> <span class="n">from_email</span><span class="p">,</span> <span class="p">[</span><span class="n">to_email</span><span class="p">])</span>
+        <span class="k">if</span> <span class="n">html_email_template_name</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">html_email</span> <span class="o">=</span> <span class="n">loader</span><span class="o">.</span><span class="n">render_to_string</span><span class="p">(</span><span class="n">html_email_template_name</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
+            <span class="n">email_message</span><span class="o">.</span><span class="n">attach_alternative</span><span class="p">(</span><span class="n">html_email</span><span class="p">,</span> <span class="s2">&quot;text/html&quot;</span><span class="p">)</span>
+
+        <span class="n">email_message</span><span class="o">.</span><span class="n">send</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="PasswordResetForm.get_users">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.PasswordResetForm.get_users">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_users</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">email</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Given an email, return matching user(s) who should receive a reset.</span>
+
+<span class="sd">        This allows subclasses to more easily customize the default policies</span>
+<span class="sd">        that prevent inactive users and users with unusable passwords from</span>
+<span class="sd">        resetting their password.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">email_field_name</span> <span class="o">=</span> <span class="n">UserModel</span><span class="o">.</span><span class="n">get_email_field_name</span><span class="p">()</span>
+        <span class="n">active_users</span> <span class="o">=</span> <span class="n">UserModel</span><span class="o">.</span><span class="n">_default_manager</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+            <span class="o">**</span><span class="p">{</span>
+                <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">__iexact&quot;</span> <span class="o">%</span> <span class="n">email_field_name</span><span class="p">:</span> <span class="n">email</span><span class="p">,</span>
+                <span class="s2">&quot;is_active&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="n">u</span>
+            <span class="k">for</span> <span class="n">u</span> <span class="ow">in</span> <span class="n">active_users</span>
+            <span class="k">if</span> <span class="n">u</span><span class="o">.</span><span class="n">has_usable_password</span><span class="p">()</span>
+            <span class="ow">and</span> <span class="n">_unicode_ci_compare</span><span class="p">(</span><span class="n">email</span><span class="p">,</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">u</span><span class="p">,</span> <span class="n">email_field_name</span><span class="p">))</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PasswordResetForm.save">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.PasswordResetForm.save">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">save</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">domain_override</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">subject_template_name</span><span class="o">=</span><span class="s2">&quot;registration/password_reset_subject.txt&quot;</span><span class="p">,</span>
+        <span class="n">email_template_name</span><span class="o">=</span><span class="s2">&quot;registration/password_reset_email.html&quot;</span><span class="p">,</span>
+        <span class="n">use_https</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">token_generator</span><span class="o">=</span><span class="n">default_token_generator</span><span class="p">,</span>
+        <span class="n">from_email</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">request</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">html_email_template_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">extra_email_context</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Generate a one-use only link for resetting password and send it to the</span>
+<span class="sd">        user.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">email</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cleaned_data</span><span class="p">[</span><span class="s2">&quot;email&quot;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">domain_override</span><span class="p">:</span>
+            <span class="n">current_site</span> <span class="o">=</span> <span class="n">get_current_site</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+            <span class="n">site_name</span> <span class="o">=</span> <span class="n">current_site</span><span class="o">.</span><span class="n">name</span>
+            <span class="n">domain</span> <span class="o">=</span> <span class="n">current_site</span><span class="o">.</span><span class="n">domain</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">site_name</span> <span class="o">=</span> <span class="n">domain</span> <span class="o">=</span> <span class="n">domain_override</span>
+        <span class="n">email_field_name</span> <span class="o">=</span> <span class="n">UserModel</span><span class="o">.</span><span class="n">get_email_field_name</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">user</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_users</span><span class="p">(</span><span class="n">email</span><span class="p">):</span>
+            <span class="n">user_email</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">user</span><span class="p">,</span> <span class="n">email_field_name</span><span class="p">)</span>
+            <span class="n">context</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">&quot;email&quot;</span><span class="p">:</span> <span class="n">user_email</span><span class="p">,</span>
+                <span class="s2">&quot;domain&quot;</span><span class="p">:</span> <span class="n">domain</span><span class="p">,</span>
+                <span class="s2">&quot;site_name&quot;</span><span class="p">:</span> <span class="n">site_name</span><span class="p">,</span>
+                <span class="s2">&quot;uid&quot;</span><span class="p">:</span> <span class="n">urlsafe_base64_encode</span><span class="p">(</span><span class="n">force_bytes</span><span class="p">(</span><span class="n">user</span><span class="o">.</span><span class="n">pk</span><span class="p">)),</span>
+                <span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="n">user</span><span class="p">,</span>
+                <span class="s2">&quot;token&quot;</span><span class="p">:</span> <span class="n">token_generator</span><span class="o">.</span><span class="n">make_token</span><span class="p">(</span><span class="n">user</span><span class="p">),</span>
+                <span class="s2">&quot;protocol&quot;</span><span class="p">:</span> <span class="s2">&quot;https&quot;</span> <span class="k">if</span> <span class="n">use_https</span> <span class="k">else</span> <span class="s2">&quot;http&quot;</span><span class="p">,</span>
+                <span class="o">**</span><span class="p">(</span><span class="n">extra_email_context</span> <span class="ow">or</span> <span class="p">{}),</span>
+            <span class="p">}</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">send_mail</span><span class="p">(</span>
+                <span class="n">subject_template_name</span><span class="p">,</span>
+                <span class="n">email_template_name</span><span class="p">,</span>
+                <span class="n">context</span><span class="p">,</span>
+                <span class="n">from_email</span><span class="p">,</span>
+                <span class="n">user_email</span><span class="p">,</span>
+                <span class="n">html_email_template_name</span><span class="o">=</span><span class="n">html_email_template_name</span><span class="p">,</span>
+            <span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="SetPasswordForm">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.SetPasswordForm">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SetPasswordForm</span><span class="p">(</span><span class="n">forms</span><span class="o">.</span><span class="n">Form</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A form that lets a user set their password without entering the old</span>
+<span class="sd">    password</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="SetPasswordForm.error_messages">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.SetPasswordForm.error_messages">[docs]</a>
+    <span class="n">error_messages</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;password_mismatch&quot;</span><span class="p">:</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;The two password fields didn’t match.&quot;</span><span class="p">),</span>
+    <span class="p">}</span></div>
+
+<div class="viewcode-block" id="SetPasswordForm.new_password1">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.SetPasswordForm.new_password1">[docs]</a>
+    <span class="n">new_password1</span> <span class="o">=</span> <span class="n">forms</span><span class="o">.</span><span class="n">CharField</span><span class="p">(</span>
+        <span class="n">label</span><span class="o">=</span><span class="n">_</span><span class="p">(</span><span class="s2">&quot;New password&quot;</span><span class="p">),</span>
+        <span class="n">widget</span><span class="o">=</span><span class="n">forms</span><span class="o">.</span><span class="n">PasswordInput</span><span class="p">(</span><span class="n">attrs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;autocomplete&quot;</span><span class="p">:</span> <span class="s2">&quot;new-password&quot;</span><span class="p">}),</span>
+        <span class="n">strip</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">help_text</span><span class="o">=</span><span class="n">password_validation</span><span class="o">.</span><span class="n">password_validators_help_text_html</span><span class="p">(),</span>
+    <span class="p">)</span></div>
+
+<div class="viewcode-block" id="SetPasswordForm.new_password2">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.SetPasswordForm.new_password2">[docs]</a>
+    <span class="n">new_password2</span> <span class="o">=</span> <span class="n">forms</span><span class="o">.</span><span class="n">CharField</span><span class="p">(</span>
+        <span class="n">label</span><span class="o">=</span><span class="n">_</span><span class="p">(</span><span class="s2">&quot;New password confirmation&quot;</span><span class="p">),</span>
+        <span class="n">strip</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">widget</span><span class="o">=</span><span class="n">forms</span><span class="o">.</span><span class="n">PasswordInput</span><span class="p">(</span><span class="n">attrs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;autocomplete&quot;</span><span class="p">:</span> <span class="s2">&quot;new-password&quot;</span><span class="p">}),</span>
+    <span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">user</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<div class="viewcode-block" id="SetPasswordForm.user">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.SetPasswordForm.user">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">user</span> <span class="o">=</span> <span class="n">user</span></div>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="SetPasswordForm.clean_new_password2">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.SetPasswordForm.clean_new_password2">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clean_new_password2</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">password1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cleaned_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;new_password1&quot;</span><span class="p">)</span>
+        <span class="n">password2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cleaned_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;new_password2&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">password1</span> <span class="ow">and</span> <span class="n">password2</span> <span class="ow">and</span> <span class="n">password1</span> <span class="o">!=</span> <span class="n">password2</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">error_messages</span><span class="p">[</span><span class="s2">&quot;password_mismatch&quot;</span><span class="p">],</span>
+                <span class="n">code</span><span class="o">=</span><span class="s2">&quot;password_mismatch&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="n">password_validation</span><span class="o">.</span><span class="n">validate_password</span><span class="p">(</span><span class="n">password2</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">user</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">password2</span></div>
+
+
+<div class="viewcode-block" id="SetPasswordForm.save">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.SetPasswordForm.save">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">commit</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="n">password</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cleaned_data</span><span class="p">[</span><span class="s2">&quot;new_password1&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">user</span><span class="o">.</span><span class="n">set_password</span><span class="p">(</span><span class="n">password</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">commit</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">user</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">user</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="PasswordChangeForm">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.PasswordChangeForm">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">PasswordChangeForm</span><span class="p">(</span><span class="n">SetPasswordForm</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A form that lets a user change their password by entering their old</span>
+<span class="sd">    password.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="PasswordChangeForm.error_messages">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.PasswordChangeForm.error_messages">[docs]</a>
+    <span class="n">error_messages</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="o">**</span><span class="n">SetPasswordForm</span><span class="o">.</span><span class="n">error_messages</span><span class="p">,</span>
+        <span class="s2">&quot;password_incorrect&quot;</span><span class="p">:</span> <span class="n">_</span><span class="p">(</span>
+            <span class="s2">&quot;Your old password was entered incorrectly. Please enter it again.&quot;</span>
+        <span class="p">),</span>
+    <span class="p">}</span></div>
+
+<div class="viewcode-block" id="PasswordChangeForm.old_password">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.PasswordChangeForm.old_password">[docs]</a>
+    <span class="n">old_password</span> <span class="o">=</span> <span class="n">forms</span><span class="o">.</span><span class="n">CharField</span><span class="p">(</span>
+        <span class="n">label</span><span class="o">=</span><span class="n">_</span><span class="p">(</span><span class="s2">&quot;Old password&quot;</span><span class="p">),</span>
+        <span class="n">strip</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">widget</span><span class="o">=</span><span class="n">forms</span><span class="o">.</span><span class="n">PasswordInput</span><span class="p">(</span>
+            <span class="n">attrs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;autocomplete&quot;</span><span class="p">:</span> <span class="s2">&quot;current-password&quot;</span><span class="p">,</span> <span class="s2">&quot;autofocus&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+        <span class="p">),</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PasswordChangeForm.field_order">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.PasswordChangeForm.field_order">[docs]</a>
+    <span class="n">field_order</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;old_password&quot;</span><span class="p">,</span> <span class="s2">&quot;new_password1&quot;</span><span class="p">,</span> <span class="s2">&quot;new_password2&quot;</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="PasswordChangeForm.clean_old_password">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.PasswordChangeForm.clean_old_password">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clean_old_password</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Validate that the old_password field is correct.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">old_password</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cleaned_data</span><span class="p">[</span><span class="s2">&quot;old_password&quot;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">user</span><span class="o">.</span><span class="n">check_password</span><span class="p">(</span><span class="n">old_password</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">error_messages</span><span class="p">[</span><span class="s2">&quot;password_incorrect&quot;</span><span class="p">],</span>
+                <span class="n">code</span><span class="o">=</span><span class="s2">&quot;password_incorrect&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">old_password</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="AdminPasswordChangeForm">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.AdminPasswordChangeForm">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">AdminPasswordChangeForm</span><span class="p">(</span><span class="n">forms</span><span class="o">.</span><span class="n">Form</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A form used to change the password of a user in the admin interface.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="AdminPasswordChangeForm.error_messages">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.AdminPasswordChangeForm.error_messages">[docs]</a>
+    <span class="n">error_messages</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;password_mismatch&quot;</span><span class="p">:</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;The two password fields didn’t match.&quot;</span><span class="p">),</span>
+    <span class="p">}</span></div>
+
+<div class="viewcode-block" id="AdminPasswordChangeForm.required_css_class">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.AdminPasswordChangeForm.required_css_class">[docs]</a>
+    <span class="n">required_css_class</span> <span class="o">=</span> <span class="s2">&quot;required&quot;</span></div>
+
+<div class="viewcode-block" id="AdminPasswordChangeForm.password1">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.AdminPasswordChangeForm.password1">[docs]</a>
+    <span class="n">password1</span> <span class="o">=</span> <span class="n">forms</span><span class="o">.</span><span class="n">CharField</span><span class="p">(</span>
+        <span class="n">label</span><span class="o">=</span><span class="n">_</span><span class="p">(</span><span class="s2">&quot;Password&quot;</span><span class="p">),</span>
+        <span class="n">widget</span><span class="o">=</span><span class="n">forms</span><span class="o">.</span><span class="n">PasswordInput</span><span class="p">(</span>
+            <span class="n">attrs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;autocomplete&quot;</span><span class="p">:</span> <span class="s2">&quot;new-password&quot;</span><span class="p">,</span> <span class="s2">&quot;autofocus&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+        <span class="p">),</span>
+        <span class="n">strip</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">help_text</span><span class="o">=</span><span class="n">password_validation</span><span class="o">.</span><span class="n">password_validators_help_text_html</span><span class="p">(),</span>
+    <span class="p">)</span></div>
+
+<div class="viewcode-block" id="AdminPasswordChangeForm.password2">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.AdminPasswordChangeForm.password2">[docs]</a>
+    <span class="n">password2</span> <span class="o">=</span> <span class="n">forms</span><span class="o">.</span><span class="n">CharField</span><span class="p">(</span>
+        <span class="n">label</span><span class="o">=</span><span class="n">_</span><span class="p">(</span><span class="s2">&quot;Password (again)&quot;</span><span class="p">),</span>
+        <span class="n">widget</span><span class="o">=</span><span class="n">forms</span><span class="o">.</span><span class="n">PasswordInput</span><span class="p">(</span><span class="n">attrs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;autocomplete&quot;</span><span class="p">:</span> <span class="s2">&quot;new-password&quot;</span><span class="p">}),</span>
+        <span class="n">strip</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">help_text</span><span class="o">=</span><span class="n">_</span><span class="p">(</span><span class="s2">&quot;Enter the same password as before, for verification.&quot;</span><span class="p">),</span>
+    <span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">user</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<div class="viewcode-block" id="AdminPasswordChangeForm.user">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.AdminPasswordChangeForm.user">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">user</span> <span class="o">=</span> <span class="n">user</span></div>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="AdminPasswordChangeForm.clean_password2">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.AdminPasswordChangeForm.clean_password2">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clean_password2</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">password1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cleaned_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;password1&quot;</span><span class="p">)</span>
+        <span class="n">password2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cleaned_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;password2&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">password1</span> <span class="ow">and</span> <span class="n">password2</span> <span class="ow">and</span> <span class="n">password1</span> <span class="o">!=</span> <span class="n">password2</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">error_messages</span><span class="p">[</span><span class="s2">&quot;password_mismatch&quot;</span><span class="p">],</span>
+                <span class="n">code</span><span class="o">=</span><span class="s2">&quot;password_mismatch&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="n">password_validation</span><span class="o">.</span><span class="n">validate_password</span><span class="p">(</span><span class="n">password2</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">user</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">password2</span></div>
+
+
+<div class="viewcode-block" id="AdminPasswordChangeForm.save">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.AdminPasswordChangeForm.save">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">commit</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Save the new password.&quot;&quot;&quot;</span>
+        <span class="n">password</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cleaned_data</span><span class="p">[</span><span class="s2">&quot;password1&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">user</span><span class="o">.</span><span class="n">set_password</span><span class="p">(</span><span class="n">password</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">commit</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">user</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">user</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="AdminPasswordChangeForm.changed_data">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/forms/index.html#django.contrib.auth.forms.AdminPasswordChangeForm.changed_data">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">changed_data</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">changed_data</span>
+        <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">fields</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">return</span> <span class="p">[</span><span class="s2">&quot;password&quot;</span><span class="p">]</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

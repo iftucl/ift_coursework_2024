@@ -1,0 +1,332 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.core.management.commands.compilemessages &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../../management.html">django.core.management</a></li>
+      <li class="breadcrumb-item active">django.core.management.commands.compilemessages</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.core.management.commands.compilemessages</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">codecs</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">concurrent.futures</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">glob</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.management.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseCommand</span><span class="p">,</span> <span class="n">CommandError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.management.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">find_command</span><span class="p">,</span> <span class="n">is_ignored_path</span><span class="p">,</span> <span class="n">popen_wrapper</span>
+
+
+<div class="viewcode-block" id="has_bom">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/compilemessages/index.html#django.core.management.commands.compilemessages.has_bom">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">has_bom</span><span class="p">(</span><span class="n">fn</span><span class="p">):</span>
+    <span class="k">with</span> <span class="n">fn</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;rb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">sample</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">sample</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span>
+        <span class="p">(</span><span class="n">codecs</span><span class="o">.</span><span class="n">BOM_UTF8</span><span class="p">,</span> <span class="n">codecs</span><span class="o">.</span><span class="n">BOM_UTF16_LE</span><span class="p">,</span> <span class="n">codecs</span><span class="o">.</span><span class="n">BOM_UTF16_BE</span><span class="p">)</span>
+    <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="is_writable">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/compilemessages/index.html#django.core.management.commands.compilemessages.is_writable">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_writable</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+    <span class="c1"># Known side effect: updating file access/modified time to current time if</span>
+    <span class="c1"># it is writable.</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s2">&quot;a&quot;</span><span class="p">):</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">utime</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">return</span> <span class="kc">True</span></div>
+
+
+
+<div class="viewcode-block" id="Command">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/compilemessages/index.html#django.core.management.commands.compilemessages.Command">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Command</span><span class="p">(</span><span class="n">BaseCommand</span><span class="p">):</span>
+<div class="viewcode-block" id="Command.help">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/compilemessages/index.html#django.core.management.commands.compilemessages.Command.help">[docs]</a>
+    <span class="n">help</span> <span class="o">=</span> <span class="s2">&quot;Compiles .po files to .mo files for use with builtin gettext support.&quot;</span></div>
+
+
+<div class="viewcode-block" id="Command.requires_system_checks">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/compilemessages/index.html#django.core.management.commands.compilemessages.Command.requires_system_checks">[docs]</a>
+    <span class="n">requires_system_checks</span> <span class="o">=</span> <span class="p">[]</span></div>
+
+
+<div class="viewcode-block" id="Command.program">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/compilemessages/index.html#django.core.management.commands.compilemessages.Command.program">[docs]</a>
+    <span class="n">program</span> <span class="o">=</span> <span class="s2">&quot;msgfmt&quot;</span></div>
+
+<div class="viewcode-block" id="Command.program_options">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/compilemessages/index.html#django.core.management.commands.compilemessages.Command.program_options">[docs]</a>
+    <span class="n">program_options</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;--check-format&quot;</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="Command.add_arguments">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/compilemessages/index.html#django.core.management.commands.compilemessages.Command.add_arguments">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add_arguments</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parser</span><span class="p">):</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;--locale&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;-l&quot;</span><span class="p">,</span>
+            <span class="n">action</span><span class="o">=</span><span class="s2">&quot;append&quot;</span><span class="p">,</span>
+            <span class="n">default</span><span class="o">=</span><span class="p">[],</span>
+            <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Locale(s) to process (e.g. de_AT). Default is to process all. &quot;</span>
+            <span class="s2">&quot;Can be used multiple times.&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;--exclude&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;-x&quot;</span><span class="p">,</span>
+            <span class="n">action</span><span class="o">=</span><span class="s2">&quot;append&quot;</span><span class="p">,</span>
+            <span class="n">default</span><span class="o">=</span><span class="p">[],</span>
+            <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Locales to exclude. Default is none. Can be used multiple times.&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;--use-fuzzy&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;-f&quot;</span><span class="p">,</span>
+            <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;fuzzy&quot;</span><span class="p">,</span>
+            <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Use fuzzy translations.&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;--ignore&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;-i&quot;</span><span class="p">,</span>
+            <span class="n">action</span><span class="o">=</span><span class="s2">&quot;append&quot;</span><span class="p">,</span>
+            <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;ignore_patterns&quot;</span><span class="p">,</span>
+            <span class="n">default</span><span class="o">=</span><span class="p">[],</span>
+            <span class="n">metavar</span><span class="o">=</span><span class="s2">&quot;PATTERN&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Ignore directories matching this glob-style pattern. &quot;</span>
+            <span class="s2">&quot;Use multiple times to ignore more.&quot;</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Command.handle">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/compilemessages/index.html#django.core.management.commands.compilemessages.Command.handle">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">options</span><span class="p">):</span>
+        <span class="n">locale</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;locale&quot;</span><span class="p">]</span>
+        <span class="n">exclude</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;exclude&quot;</span><span class="p">]</span>
+        <span class="n">ignore_patterns</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">options</span><span class="p">[</span><span class="s2">&quot;ignore_patterns&quot;</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;verbosity&quot;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;fuzzy&quot;</span><span class="p">]:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">program_options</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">program_options</span> <span class="o">+</span> <span class="p">[</span><span class="s2">&quot;-f&quot;</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">find_command</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">program</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">CommandError</span><span class="p">(</span>
+                <span class="s2">&quot;Can&#39;t find </span><span class="si">%s</span><span class="s2">. Make sure you have GNU gettext &quot;</span>
+                <span class="s2">&quot;tools 0.15 or newer installed.&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">program</span>
+            <span class="p">)</span>
+
+        <span class="n">basedirs</span> <span class="o">=</span> <span class="p">[</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s2">&quot;conf&quot;</span><span class="p">,</span> <span class="s2">&quot;locale&quot;</span><span class="p">),</span> <span class="s2">&quot;locale&quot;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;DJANGO_SETTINGS_MODULE&quot;</span><span class="p">):</span>
+            <span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+
+            <span class="n">basedirs</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">LOCALE_PATHS</span><span class="p">)</span>
+
+        <span class="c1"># Walk entire tree, looking for locale directories</span>
+        <span class="k">for</span> <span class="n">dirpath</span><span class="p">,</span> <span class="n">dirnames</span><span class="p">,</span> <span class="n">filenames</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">walk</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">,</span> <span class="n">topdown</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">dirname</span> <span class="ow">in</span> <span class="n">dirnames</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">is_ignored_path</span><span class="p">(</span>
+                    <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">dirpath</span><span class="p">,</span> <span class="n">dirname</span><span class="p">)),</span> <span class="n">ignore_patterns</span>
+                <span class="p">):</span>
+                    <span class="n">dirnames</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">dirname</span><span class="p">)</span>
+                <span class="k">elif</span> <span class="n">dirname</span> <span class="o">==</span> <span class="s2">&quot;locale&quot;</span><span class="p">:</span>
+                    <span class="n">basedirs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">dirpath</span><span class="p">,</span> <span class="n">dirname</span><span class="p">))</span>
+
+        <span class="c1"># Gather existing directories.</span>
+        <span class="n">basedirs</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">,</span> <span class="nb">filter</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">,</span> <span class="n">basedirs</span><span class="p">)))</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">basedirs</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">CommandError</span><span class="p">(</span>
+                <span class="s2">&quot;This script should be run from the Django Git &quot;</span>
+                <span class="s2">&quot;checkout or your project or app tree, or with &quot;</span>
+                <span class="s2">&quot;the settings module specified.&quot;</span>
+            <span class="p">)</span>
+
+        <span class="c1"># Build locale list</span>
+        <span class="n">all_locales</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">basedir</span> <span class="ow">in</span> <span class="n">basedirs</span><span class="p">:</span>
+            <span class="n">locale_dirs</span> <span class="o">=</span> <span class="nb">filter</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">,</span> <span class="n">glob</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">/*&quot;</span> <span class="o">%</span> <span class="n">basedir</span><span class="p">))</span>
+            <span class="n">all_locales</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">,</span> <span class="n">locale_dirs</span><span class="p">))</span>
+
+        <span class="c1"># Account for excluded locales</span>
+        <span class="n">locales</span> <span class="o">=</span> <span class="n">locale</span> <span class="ow">or</span> <span class="n">all_locales</span>
+        <span class="n">locales</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">locales</span><span class="p">)</span><span class="o">.</span><span class="n">difference</span><span class="p">(</span><span class="n">exclude</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">has_errors</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">for</span> <span class="n">basedir</span> <span class="ow">in</span> <span class="n">basedirs</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">locales</span><span class="p">:</span>
+                <span class="n">dirs</span> <span class="o">=</span> <span class="p">[</span>
+                    <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">basedir</span><span class="p">,</span> <span class="n">locale</span><span class="p">,</span> <span class="s2">&quot;LC_MESSAGES&quot;</span><span class="p">)</span> <span class="k">for</span> <span class="n">locale</span> <span class="ow">in</span> <span class="n">locales</span>
+                <span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">dirs</span> <span class="o">=</span> <span class="p">[</span><span class="n">basedir</span><span class="p">]</span>
+            <span class="n">locations</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">ldir</span> <span class="ow">in</span> <span class="n">dirs</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">dirpath</span><span class="p">,</span> <span class="n">dirnames</span><span class="p">,</span> <span class="n">filenames</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">walk</span><span class="p">(</span><span class="n">ldir</span><span class="p">):</span>
+                    <span class="n">locations</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span>
+                        <span class="p">(</span><span class="n">dirpath</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">filenames</span> <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;.po&quot;</span><span class="p">)</span>
+                    <span class="p">)</span>
+            <span class="k">if</span> <span class="n">locations</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">compile_messages</span><span class="p">(</span><span class="n">locations</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_errors</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">CommandError</span><span class="p">(</span><span class="s2">&quot;compilemessages generated one or more errors.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Command.compile_messages">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/compilemessages/index.html#django.core.management.commands.compilemessages.Command.compile_messages">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">compile_messages</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">locations</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Locations is a list of tuples: [(directory, file), ...]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">with</span> <span class="n">concurrent</span><span class="o">.</span><span class="n">futures</span><span class="o">.</span><span class="n">ThreadPoolExecutor</span><span class="p">()</span> <span class="k">as</span> <span class="n">executor</span><span class="p">:</span>
+            <span class="n">futures</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">dirpath</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">locations</span><span class="p">):</span>
+                <span class="n">po_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">dirpath</span><span class="p">)</span> <span class="o">/</span> <span class="n">f</span>
+                <span class="n">mo_path</span> <span class="o">=</span> <span class="n">po_path</span><span class="o">.</span><span class="n">with_suffix</span><span class="p">(</span><span class="s2">&quot;.mo&quot;</span><span class="p">)</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">mo_path</span><span class="o">.</span><span class="n">stat</span><span class="p">()</span><span class="o">.</span><span class="n">st_mtime</span> <span class="o">&gt;=</span> <span class="n">po_path</span><span class="o">.</span><span class="n">stat</span><span class="p">()</span><span class="o">.</span><span class="n">st_mtime</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                                <span class="s2">&quot;File “</span><span class="si">%s</span><span class="s2">” is already compiled and up to date.&quot;</span>
+                                <span class="o">%</span> <span class="n">po_path</span>
+                            <span class="p">)</span>
+                        <span class="k">continue</span>
+                <span class="k">except</span> <span class="ne">FileNotFoundError</span><span class="p">:</span>
+                    <span class="k">pass</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;processing file </span><span class="si">%s</span><span class="s2"> in </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">dirpath</span><span class="p">))</span>
+
+                <span class="k">if</span> <span class="n">has_bom</span><span class="p">(</span><span class="n">po_path</span><span class="p">):</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                        <span class="s2">&quot;The </span><span class="si">%s</span><span class="s2"> file has a BOM (Byte Order Mark). Django only &quot;</span>
+                        <span class="s2">&quot;supports .po files encoded in UTF-8 and without any BOM.&quot;</span>
+                        <span class="o">%</span> <span class="n">po_path</span>
+                    <span class="p">)</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">has_errors</span> <span class="o">=</span> <span class="kc">True</span>
+                    <span class="k">continue</span>
+
+                <span class="c1"># Check writability on first location</span>
+                <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">is_writable</span><span class="p">(</span><span class="n">mo_path</span><span class="p">):</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                        <span class="s2">&quot;The po files under </span><span class="si">%s</span><span class="s2"> are in a seemingly not writable &quot;</span>
+                        <span class="s2">&quot;location. mo files will not be updated/created.&quot;</span> <span class="o">%</span> <span class="n">dirpath</span>
+                    <span class="p">)</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">has_errors</span> <span class="o">=</span> <span class="kc">True</span>
+                    <span class="k">return</span>
+
+                <span class="n">args</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">program</span><span class="p">,</span> <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">program_options</span><span class="p">,</span> <span class="s2">&quot;-o&quot;</span><span class="p">,</span> <span class="n">mo_path</span><span class="p">,</span> <span class="n">po_path</span><span class="p">]</span>
+                <span class="n">futures</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">executor</span><span class="o">.</span><span class="n">submit</span><span class="p">(</span><span class="n">popen_wrapper</span><span class="p">,</span> <span class="n">args</span><span class="p">))</span>
+
+            <span class="k">for</span> <span class="n">future</span> <span class="ow">in</span> <span class="n">concurrent</span><span class="o">.</span><span class="n">futures</span><span class="o">.</span><span class="n">as_completed</span><span class="p">(</span><span class="n">futures</span><span class="p">):</span>
+                <span class="n">output</span><span class="p">,</span> <span class="n">errors</span><span class="p">,</span> <span class="n">status</span> <span class="o">=</span> <span class="n">future</span><span class="o">.</span><span class="n">result</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">status</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="n">errors</span><span class="p">:</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                                <span class="s2">&quot;Execution of </span><span class="si">%s</span><span class="s2"> failed: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">program</span><span class="p">,</span> <span class="n">errors</span><span class="p">)</span>
+                            <span class="p">)</span>
+                        <span class="k">else</span><span class="p">:</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;Execution of </span><span class="si">%s</span><span class="s2"> failed&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">program</span><span class="p">)</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">has_errors</span> <span class="o">=</span> <span class="kc">True</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

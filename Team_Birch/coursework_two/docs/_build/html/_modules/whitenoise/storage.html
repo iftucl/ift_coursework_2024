@@ -1,0 +1,326 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>whitenoise.storage &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">whitenoise.storage</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for whitenoise.storage</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">errno</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">textwrap</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Iterator</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.staticfiles.storage</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">ManifestStaticFilesStorage</span><span class="p">,</span>
+    <span class="n">StaticFilesStorage</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">whitenoise.compress</span><span class="w"> </span><span class="kn">import</span> <span class="n">Compressor</span>
+
+<span class="n">_PostProcessT</span> <span class="o">=</span> <span class="n">Iterator</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">bool</span><span class="p">],</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="ne">RuntimeError</span><span class="p">]]]</span>
+
+
+<div class="viewcode-block" id="CompressedStaticFilesStorage">
+<a class="viewcode-back" href="../../autoapi/whitenoise/storage/index.html#whitenoise.storage.CompressedStaticFilesStorage">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">CompressedStaticFilesStorage</span><span class="p">(</span><span class="n">StaticFilesStorage</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    StaticFilesStorage subclass that compresses output files.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="CompressedStaticFilesStorage.post_process">
+<a class="viewcode-back" href="../../autoapi/whitenoise/storage/index.html#whitenoise.storage.CompressedStaticFilesStorage.post_process">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">post_process</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">paths</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">dry_run</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">options</span><span class="p">:</span> <span class="n">Any</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_PostProcessT</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">dry_run</span><span class="p">:</span>
+            <span class="k">return</span>
+
+        <span class="n">extensions</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">settings</span><span class="p">,</span> <span class="s2">&quot;WHITENOISE_SKIP_COMPRESS_EXTENSIONS&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="n">compressor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_compressor</span><span class="p">(</span><span class="n">extensions</span><span class="o">=</span><span class="n">extensions</span><span class="p">,</span> <span class="n">quiet</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">paths</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">compressor</span><span class="o">.</span><span class="n">should_compress</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+                <span class="n">full_path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+                <span class="n">prefix_len</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">full_path</span><span class="p">)</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">compressed_path</span> <span class="ow">in</span> <span class="n">compressor</span><span class="o">.</span><span class="n">compress</span><span class="p">(</span><span class="n">full_path</span><span class="p">):</span>
+                    <span class="n">compressed_name</span> <span class="o">=</span> <span class="n">compressed_path</span><span class="p">[</span><span class="n">prefix_len</span><span class="p">:]</span>
+                    <span class="k">yield</span> <span class="n">path</span><span class="p">,</span> <span class="n">compressed_name</span><span class="p">,</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="CompressedStaticFilesStorage.create_compressor">
+<a class="viewcode-back" href="../../autoapi/whitenoise/storage/index.html#whitenoise.storage.CompressedStaticFilesStorage.create_compressor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_compressor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Compressor</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">Compressor</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="MissingFileError">
+<a class="viewcode-back" href="../../autoapi/whitenoise/storage/index.html#whitenoise.storage.MissingFileError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MissingFileError</span><span class="p">(</span><span class="ne">ValueError</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+
+
+<div class="viewcode-block" id="CompressedManifestStaticFilesStorage">
+<a class="viewcode-back" href="../../autoapi/whitenoise/storage/index.html#whitenoise.storage.CompressedManifestStaticFilesStorage">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">CompressedManifestStaticFilesStorage</span><span class="p">(</span><span class="n">ManifestStaticFilesStorage</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Extends ManifestStaticFilesStorage instance to create compressed versions</span>
+<span class="sd">    of its output files and, optionally, to delete the non-hashed files (i.e.</span>
+<span class="sd">    those without the hash in their name)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">_new_files</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">manifest_strict</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">settings</span><span class="p">,</span> <span class="s2">&quot;WHITENOISE_MANIFEST_STRICT&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">manifest_strict</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">manifest_strict</span> <span class="o">=</span> <span class="n">manifest_strict</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="CompressedManifestStaticFilesStorage.post_process">
+<a class="viewcode-back" href="../../autoapi/whitenoise/storage/index.html#whitenoise.storage.CompressedManifestStaticFilesStorage.post_process">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">post_process</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">files</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">post_process</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;dry_run&quot;</span><span class="p">):</span>
+            <span class="n">files</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">post_process_with_compression</span><span class="p">(</span><span class="n">files</span><span class="p">)</span>
+
+        <span class="c1"># Make exception messages helpful</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">hashed_name</span><span class="p">,</span> <span class="n">processed</span> <span class="ow">in</span> <span class="n">files</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">processed</span><span class="p">,</span> <span class="ne">Exception</span><span class="p">):</span>
+                <span class="n">processed</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_helpful_exception</span><span class="p">(</span><span class="n">processed</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+            <span class="k">yield</span> <span class="n">name</span><span class="p">,</span> <span class="n">hashed_name</span><span class="p">,</span> <span class="n">processed</span></div>
+
+
+<div class="viewcode-block" id="CompressedManifestStaticFilesStorage.post_process_with_compression">
+<a class="viewcode-back" href="../../autoapi/whitenoise/storage/index.html#whitenoise.storage.CompressedManifestStaticFilesStorage.post_process_with_compression">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">post_process_with_compression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">files</span><span class="p">):</span>
+        <span class="c1"># Files may get hashed multiple times, we want to keep track of all the</span>
+        <span class="c1"># intermediate files generated during the process and which of these</span>
+        <span class="c1"># are the final names used for each file. As not every intermediate</span>
+        <span class="c1"># file is yielded we have to hook in to the `hashed_name` method to</span>
+        <span class="c1"># keep track of them all.</span>
+        <span class="n">hashed_names</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">new_files</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">start_tracking_new_files</span><span class="p">(</span><span class="n">new_files</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">hashed_name</span><span class="p">,</span> <span class="n">processed</span> <span class="ow">in</span> <span class="n">files</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">hashed_name</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">processed</span><span class="p">,</span> <span class="ne">Exception</span><span class="p">):</span>
+                <span class="n">hashed_names</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">clean_name</span><span class="p">(</span><span class="n">name</span><span class="p">)]</span> <span class="o">=</span> <span class="n">hashed_name</span>
+            <span class="k">yield</span> <span class="n">name</span><span class="p">,</span> <span class="n">hashed_name</span><span class="p">,</span> <span class="n">processed</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stop_tracking_new_files</span><span class="p">()</span>
+        <span class="n">original_files</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">hashed_names</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+        <span class="n">hashed_files</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">hashed_names</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">keep_only_hashed_files</span><span class="p">:</span>
+            <span class="n">files_to_delete</span> <span class="o">=</span> <span class="p">(</span><span class="n">original_files</span> <span class="o">|</span> <span class="n">new_files</span><span class="p">)</span> <span class="o">-</span> <span class="n">hashed_files</span>
+            <span class="n">files_to_compress</span> <span class="o">=</span> <span class="n">hashed_files</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">files_to_delete</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+            <span class="n">files_to_compress</span> <span class="o">=</span> <span class="n">original_files</span> <span class="o">|</span> <span class="n">hashed_files</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">delete_files</span><span class="p">(</span><span class="n">files_to_delete</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">compressed_name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">compress_files</span><span class="p">(</span><span class="n">files_to_compress</span><span class="p">):</span>
+            <span class="k">yield</span> <span class="n">name</span><span class="p">,</span> <span class="n">compressed_name</span><span class="p">,</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="CompressedManifestStaticFilesStorage.hashed_name">
+<a class="viewcode-back" href="../../autoapi/whitenoise/storage/index.html#whitenoise.storage.CompressedManifestStaticFilesStorage.hashed_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">hashed_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">hashed_name</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_new_files</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_new_files</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">clean_name</span><span class="p">(</span><span class="n">name</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">name</span></div>
+
+
+<div class="viewcode-block" id="CompressedManifestStaticFilesStorage.start_tracking_new_files">
+<a class="viewcode-back" href="../../autoapi/whitenoise/storage/index.html#whitenoise.storage.CompressedManifestStaticFilesStorage.start_tracking_new_files">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">start_tracking_new_files</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">new_files</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_new_files</span> <span class="o">=</span> <span class="n">new_files</span></div>
+
+
+<div class="viewcode-block" id="CompressedManifestStaticFilesStorage.stop_tracking_new_files">
+<a class="viewcode-back" href="../../autoapi/whitenoise/storage/index.html#whitenoise.storage.CompressedManifestStaticFilesStorage.stop_tracking_new_files">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">stop_tracking_new_files</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_new_files</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="CompressedManifestStaticFilesStorage.keep_only_hashed_files">
+<a class="viewcode-back" href="../../autoapi/whitenoise/storage/index.html#whitenoise.storage.CompressedManifestStaticFilesStorage.keep_only_hashed_files">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">keep_only_hashed_files</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">settings</span><span class="p">,</span> <span class="s2">&quot;WHITENOISE_KEEP_ONLY_HASHED_FILES&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="CompressedManifestStaticFilesStorage.delete_files">
+<a class="viewcode-back" href="../../autoapi/whitenoise/storage/index.html#whitenoise.storage.CompressedManifestStaticFilesStorage.delete_files">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">delete_files</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">files_to_delete</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">files_to_delete</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">os</span><span class="o">.</span><span class="n">unlink</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">path</span><span class="p">(</span><span class="n">name</span><span class="p">))</span>
+            <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">e</span><span class="o">.</span><span class="n">errno</span> <span class="o">!=</span> <span class="n">errno</span><span class="o">.</span><span class="n">ENOENT</span><span class="p">:</span>
+                    <span class="k">raise</span></div>
+
+
+<div class="viewcode-block" id="CompressedManifestStaticFilesStorage.create_compressor">
+<a class="viewcode-back" href="../../autoapi/whitenoise/storage/index.html#whitenoise.storage.CompressedManifestStaticFilesStorage.create_compressor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_compressor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">Compressor</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="CompressedManifestStaticFilesStorage.compress_files">
+<a class="viewcode-back" href="../../autoapi/whitenoise/storage/index.html#whitenoise.storage.CompressedManifestStaticFilesStorage.compress_files">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">compress_files</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">names</span><span class="p">):</span>
+        <span class="n">extensions</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">settings</span><span class="p">,</span> <span class="s2">&quot;WHITENOISE_SKIP_COMPRESS_EXTENSIONS&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="n">compressor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_compressor</span><span class="p">(</span><span class="n">extensions</span><span class="o">=</span><span class="n">extensions</span><span class="p">,</span> <span class="n">quiet</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">names</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">compressor</span><span class="o">.</span><span class="n">should_compress</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+                <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">path</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+                <span class="n">prefix_len</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">compressed_path</span> <span class="ow">in</span> <span class="n">compressor</span><span class="o">.</span><span class="n">compress</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+                    <span class="n">compressed_name</span> <span class="o">=</span> <span class="n">compressed_path</span><span class="p">[</span><span class="n">prefix_len</span><span class="p">:]</span>
+                    <span class="k">yield</span> <span class="n">name</span><span class="p">,</span> <span class="n">compressed_name</span></div>
+
+
+<div class="viewcode-block" id="CompressedManifestStaticFilesStorage.make_helpful_exception">
+<a class="viewcode-back" href="../../autoapi/whitenoise/storage/index.html#whitenoise.storage.CompressedManifestStaticFilesStorage.make_helpful_exception">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">make_helpful_exception</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exception</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        If a CSS file contains references to images, fonts etc that can&#39;t be found</span>
+<span class="sd">        then Django&#39;s `post_process` blows up with a not particularly helpful</span>
+<span class="sd">        ValueError that leads people to think WhiteNoise is broken.</span>
+
+<span class="sd">        Here we attempt to intercept such errors and reformat them to be more</span>
+<span class="sd">        helpful in revealing the source of the problem.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">exception</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
+            <span class="n">message</span> <span class="o">=</span> <span class="n">exception</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">exception</span><span class="o">.</span><span class="n">args</span><span class="p">)</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+            <span class="c1"># Stringly typed exceptions. Yay!</span>
+            <span class="n">match</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_error_msg_re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">match</span><span class="p">:</span>
+                <span class="n">extension</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">splitext</span><span class="p">(</span><span class="n">name</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+                <span class="n">message</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_error_msg</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                    <span class="n">orig_message</span><span class="o">=</span><span class="n">message</span><span class="p">,</span>
+                    <span class="n">filename</span><span class="o">=</span><span class="n">name</span><span class="p">,</span>
+                    <span class="n">missing</span><span class="o">=</span><span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">),</span>
+                    <span class="n">ext</span><span class="o">=</span><span class="n">extension</span><span class="p">,</span>
+                <span class="p">)</span>
+                <span class="n">exception</span> <span class="o">=</span> <span class="n">MissingFileError</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">exception</span></div>
+
+
+    <span class="n">_error_msg_re</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;^The file &#39;(.+)&#39; could not be found&quot;</span><span class="p">)</span>
+
+    <span class="n">_error_msg</span> <span class="o">=</span> <span class="n">textwrap</span><span class="o">.</span><span class="n">dedent</span><span class="p">(</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;\</span>
+<span class="sd">        {orig_message}</span>
+
+<span class="sd">        The {ext} file &#39;{filename}&#39; references a file which could not be found:</span>
+<span class="sd">          {missing}</span>
+
+<span class="sd">        Please check the URL references in this {ext} file, particularly any</span>
+<span class="sd">        relative paths which might be pointing to the wrong location.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+    <span class="p">)</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

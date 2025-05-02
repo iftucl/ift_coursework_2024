@@ -1,0 +1,349 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.contrib.gis.geos.libgeos &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+      <li class="breadcrumb-item active">django.contrib.gis.geos.libgeos</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.contrib.gis.geos.libgeos</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd"> This module houses the ctypes initialization procedures, as well</span>
+<span class="sd"> as the notice and error handler function callbacks (get called</span>
+<span class="sd"> when an error occurs in GEOS).</span>
+
+<span class="sd"> This module also houses GEOS Pointer utilities, including</span>
+<span class="sd"> get_pointer_arr(), and GEOM_PTR.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ctypes</span><span class="w"> </span><span class="kn">import</span> <span class="n">CDLL</span><span class="p">,</span> <span class="n">CFUNCTYPE</span><span class="p">,</span> <span class="n">POINTER</span><span class="p">,</span> <span class="n">Structure</span><span class="p">,</span> <span class="n">c_char_p</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ctypes.util</span><span class="w"> </span><span class="kn">import</span> <span class="n">find_library</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImproperlyConfigured</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">SimpleLazyObject</span><span class="p">,</span> <span class="n">cached_property</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.version</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_version_tuple</span>
+
+<div class="viewcode-block" id="logger">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/geos/libgeos/index.html#django.contrib.gis.geos.libgeos.logger">[docs]</a>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;django.contrib.gis&quot;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="load_geos">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/geos/libgeos/index.html#django.contrib.gis.geos.libgeos.load_geos">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">load_geos</span><span class="p">():</span>
+    <span class="c1"># Custom library path set?</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+
+        <span class="n">lib_path</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">GEOS_LIBRARY_PATH</span>
+    <span class="k">except</span> <span class="p">(</span><span class="ne">AttributeError</span><span class="p">,</span> <span class="ne">ImportError</span><span class="p">,</span> <span class="n">ImproperlyConfigured</span><span class="p">,</span> <span class="ne">OSError</span><span class="p">):</span>
+        <span class="n">lib_path</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="c1"># Setting the appropriate names for the GEOS-C library.</span>
+    <span class="k">if</span> <span class="n">lib_path</span><span class="p">:</span>
+        <span class="n">lib_names</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">elif</span> <span class="n">os</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;nt&quot;</span><span class="p">:</span>
+        <span class="c1"># Windows NT libraries</span>
+        <span class="n">lib_names</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;geos_c&quot;</span><span class="p">,</span> <span class="s2">&quot;libgeos_c-1&quot;</span><span class="p">]</span>
+    <span class="k">elif</span> <span class="n">os</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;posix&quot;</span><span class="p">:</span>
+        <span class="c1"># *NIX libraries</span>
+        <span class="n">lib_names</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;geos_c&quot;</span><span class="p">,</span> <span class="s2">&quot;GEOS&quot;</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ImportError</span><span class="p">(</span><span class="s1">&#39;Unsupported OS &quot;</span><span class="si">%s</span><span class="s1">&quot;&#39;</span> <span class="o">%</span> <span class="n">os</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+
+    <span class="c1"># Using the ctypes `find_library` utility to find the path to the GEOS</span>
+    <span class="c1"># shared library.  This is better than manually specifying each library name</span>
+    <span class="c1"># and extension (e.g., libgeos_c.[so|so.1|dylib].).</span>
+    <span class="k">if</span> <span class="n">lib_names</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">lib_name</span> <span class="ow">in</span> <span class="n">lib_names</span><span class="p">:</span>
+            <span class="n">lib_path</span> <span class="o">=</span> <span class="n">find_library</span><span class="p">(</span><span class="n">lib_name</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">lib_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">break</span>
+
+    <span class="c1"># No GEOS library could be found.</span>
+    <span class="k">if</span> <span class="n">lib_path</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ImportError</span><span class="p">(</span>
+            <span class="s1">&#39;Could not find the GEOS library (tried &quot;</span><span class="si">%s</span><span class="s1">&quot;). &#39;</span>
+            <span class="s2">&quot;Try setting GEOS_LIBRARY_PATH in your settings.&quot;</span> <span class="o">%</span> <span class="s1">&#39;&quot;, &quot;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lib_names</span><span class="p">)</span>
+        <span class="p">)</span>
+    <span class="c1"># Getting the GEOS C library.  The C interface (CDLL) is used for</span>
+    <span class="c1"># both *NIX and Windows.</span>
+    <span class="c1"># See the GEOS C API source code for more details on the library function calls:</span>
+    <span class="c1"># https://libgeos.org/doxygen/geos__c_8h_source.html</span>
+    <span class="n">_lgeos</span> <span class="o">=</span> <span class="n">CDLL</span><span class="p">(</span><span class="n">lib_path</span><span class="p">)</span>
+    <span class="c1"># Here we set up the prototypes for the initGEOS_r and finishGEOS_r</span>
+    <span class="c1"># routines.  These functions aren&#39;t actually called until they are</span>
+    <span class="c1"># attached to a GEOS context handle -- this actually occurs in</span>
+    <span class="c1"># geos/prototypes/threadsafe.py.</span>
+    <span class="n">_lgeos</span><span class="o">.</span><span class="n">initGEOS_r</span><span class="o">.</span><span class="n">restype</span> <span class="o">=</span> <span class="n">CONTEXT_PTR</span>
+    <span class="n">_lgeos</span><span class="o">.</span><span class="n">finishGEOS_r</span><span class="o">.</span><span class="n">argtypes</span> <span class="o">=</span> <span class="p">[</span><span class="n">CONTEXT_PTR</span><span class="p">]</span>
+    <span class="c1"># Set restype for compatibility across 32 and 64-bit platforms.</span>
+    <span class="n">_lgeos</span><span class="o">.</span><span class="n">GEOSversion</span><span class="o">.</span><span class="n">restype</span> <span class="o">=</span> <span class="n">c_char_p</span>
+    <span class="k">return</span> <span class="n">_lgeos</span></div>
+
+
+
+<span class="c1"># The notice and error handler C function callback definitions.</span>
+<span class="c1"># Supposed to mimic the GEOS message handler (C below):</span>
+<span class="c1">#  typedef void (*GEOSMessageHandler)(const char *fmt, ...);</span>
+<div class="viewcode-block" id="NOTICEFUNC">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/geos/libgeos/index.html#django.contrib.gis.geos.libgeos.NOTICEFUNC">[docs]</a>
+<span class="n">NOTICEFUNC</span> <span class="o">=</span> <span class="n">CFUNCTYPE</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">c_char_p</span><span class="p">,</span> <span class="n">c_char_p</span><span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">notice_h</span><span class="p">(</span><span class="n">fmt</span><span class="p">,</span> <span class="n">lst</span><span class="p">):</span>
+    <span class="n">fmt</span><span class="p">,</span> <span class="n">lst</span> <span class="o">=</span> <span class="n">fmt</span><span class="o">.</span><span class="n">decode</span><span class="p">(),</span> <span class="n">lst</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">warn_msg</span> <span class="o">=</span> <span class="n">fmt</span> <span class="o">%</span> <span class="n">lst</span>
+    <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
+        <span class="n">warn_msg</span> <span class="o">=</span> <span class="n">fmt</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;GEOS_NOTICE: </span><span class="si">%s</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">warn_msg</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="notice_h">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/geos/libgeos/index.html#django.contrib.gis.geos.libgeos.notice_h">[docs]</a>
+<span class="n">notice_h</span> <span class="o">=</span> <span class="n">NOTICEFUNC</span><span class="p">(</span><span class="n">notice_h</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ERRORFUNC">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/geos/libgeos/index.html#django.contrib.gis.geos.libgeos.ERRORFUNC">[docs]</a>
+<span class="n">ERRORFUNC</span> <span class="o">=</span> <span class="n">CFUNCTYPE</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">c_char_p</span><span class="p">,</span> <span class="n">c_char_p</span><span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">error_h</span><span class="p">(</span><span class="n">fmt</span><span class="p">,</span> <span class="n">lst</span><span class="p">):</span>
+    <span class="n">fmt</span><span class="p">,</span> <span class="n">lst</span> <span class="o">=</span> <span class="n">fmt</span><span class="o">.</span><span class="n">decode</span><span class="p">(),</span> <span class="n">lst</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">err_msg</span> <span class="o">=</span> <span class="n">fmt</span> <span class="o">%</span> <span class="n">lst</span>
+    <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
+        <span class="n">err_msg</span> <span class="o">=</span> <span class="n">fmt</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">&quot;GEOS_ERROR: </span><span class="si">%s</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">err_msg</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="error_h">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/geos/libgeos/index.html#django.contrib.gis.geos.libgeos.error_h">[docs]</a>
+<span class="n">error_h</span> <span class="o">=</span> <span class="n">ERRORFUNC</span><span class="p">(</span><span class="n">error_h</span><span class="p">)</span></div>
+
+
+<span class="c1"># #### GEOS Geometry C data structures, and utility functions. ####</span>
+
+
+<span class="c1"># Opaque GEOS geometry structures, used for GEOM_PTR and CS_PTR</span>
+<div class="viewcode-block" id="GEOSGeom_t">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/geos/libgeos/index.html#django.contrib.gis.geos.libgeos.GEOSGeom_t">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">GEOSGeom_t</span><span class="p">(</span><span class="n">Structure</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+
+
+<div class="viewcode-block" id="GEOSPrepGeom_t">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/geos/libgeos/index.html#django.contrib.gis.geos.libgeos.GEOSPrepGeom_t">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">GEOSPrepGeom_t</span><span class="p">(</span><span class="n">Structure</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+
+
+<div class="viewcode-block" id="GEOSCoordSeq_t">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/geos/libgeos/index.html#django.contrib.gis.geos.libgeos.GEOSCoordSeq_t">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">GEOSCoordSeq_t</span><span class="p">(</span><span class="n">Structure</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+
+
+<div class="viewcode-block" id="GEOSContextHandle_t">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/geos/libgeos/index.html#django.contrib.gis.geos.libgeos.GEOSContextHandle_t">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">GEOSContextHandle_t</span><span class="p">(</span><span class="n">Structure</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+
+
+<span class="c1"># Pointers to opaque GEOS geometry structures.</span>
+<div class="viewcode-block" id="GEOM_PTR">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/geos/libgeos/index.html#django.contrib.gis.geos.libgeos.GEOM_PTR">[docs]</a>
+<span class="n">GEOM_PTR</span> <span class="o">=</span> <span class="n">POINTER</span><span class="p">(</span><span class="n">GEOSGeom_t</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="PREPGEOM_PTR">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/geos/libgeos/index.html#django.contrib.gis.geos.libgeos.PREPGEOM_PTR">[docs]</a>
+<span class="n">PREPGEOM_PTR</span> <span class="o">=</span> <span class="n">POINTER</span><span class="p">(</span><span class="n">GEOSPrepGeom_t</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="CS_PTR">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/geos/libgeos/index.html#django.contrib.gis.geos.libgeos.CS_PTR">[docs]</a>
+<span class="n">CS_PTR</span> <span class="o">=</span> <span class="n">POINTER</span><span class="p">(</span><span class="n">GEOSCoordSeq_t</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="CONTEXT_PTR">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/geos/libgeos/index.html#django.contrib.gis.geos.libgeos.CONTEXT_PTR">[docs]</a>
+<span class="n">CONTEXT_PTR</span> <span class="o">=</span> <span class="n">POINTER</span><span class="p">(</span><span class="n">GEOSContextHandle_t</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="lgeos">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/geos/libgeos/index.html#django.contrib.gis.geos.libgeos.lgeos">[docs]</a>
+<span class="n">lgeos</span> <span class="o">=</span> <span class="n">SimpleLazyObject</span><span class="p">(</span><span class="n">load_geos</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="GEOSFuncFactory">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/geos/libgeos/index.html#django.contrib.gis.geos.libgeos.GEOSFuncFactory">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">GEOSFuncFactory</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Lazy loading of GEOS functions.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="GEOSFuncFactory.argtypes">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/geos/libgeos/index.html#django.contrib.gis.geos.libgeos.GEOSFuncFactory.argtypes">[docs]</a>
+    <span class="n">argtypes</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="GEOSFuncFactory.restype">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/geos/libgeos/index.html#django.contrib.gis.geos.libgeos.GEOSFuncFactory.restype">[docs]</a>
+    <span class="n">restype</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="GEOSFuncFactory.errcheck">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/geos/libgeos/index.html#django.contrib.gis.geos.libgeos.GEOSFuncFactory.errcheck">[docs]</a>
+    <span class="n">errcheck</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">func_name</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">restype</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">errcheck</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">argtypes</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<div class="viewcode-block" id="GEOSFuncFactory.func_name">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/geos/libgeos/index.html#django.contrib.gis.geos.libgeos.GEOSFuncFactory.func_name">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">func_name</span> <span class="o">=</span> <span class="n">func_name</span></div>
+
+        <span class="k">if</span> <span class="n">restype</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">restype</span> <span class="o">=</span> <span class="n">restype</span>
+        <span class="k">if</span> <span class="n">errcheck</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">errcheck</span> <span class="o">=</span> <span class="n">errcheck</span>
+        <span class="k">if</span> <span class="n">argtypes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">argtypes</span> <span class="o">=</span> <span class="n">argtypes</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">)</span>
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="GEOSFuncFactory.func">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/geos/libgeos/index.html#django.contrib.gis.geos.libgeos.GEOSFuncFactory.func">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">func</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.geos.prototypes.threadsafe</span><span class="w"> </span><span class="kn">import</span> <span class="n">GEOSFunc</span>
+
+        <span class="n">func</span> <span class="o">=</span> <span class="n">GEOSFunc</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">func_name</span><span class="p">)</span>
+        <span class="n">func</span><span class="o">.</span><span class="n">argtypes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">argtypes</span> <span class="ow">or</span> <span class="p">[]</span>
+        <span class="n">func</span><span class="o">.</span><span class="n">restype</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">restype</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">errcheck</span><span class="p">:</span>
+            <span class="n">func</span><span class="o">.</span><span class="n">errcheck</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">errcheck</span>
+        <span class="k">return</span> <span class="n">func</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="geos_version">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/geos/libgeos/index.html#django.contrib.gis.geos.libgeos.geos_version">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">geos_version</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the string version of the GEOS library.&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">lgeos</span><span class="o">.</span><span class="n">GEOSversion</span><span class="p">()</span></div>
+
+
+
+<div class="viewcode-block" id="geos_version_tuple">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/geos/libgeos/index.html#django.contrib.gis.geos.libgeos.geos_version_tuple">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">geos_version_tuple</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the GEOS version as a tuple (major, minor, subminor).&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">get_version_tuple</span><span class="p">(</span><span class="n">geos_version</span><span class="p">()</span><span class="o">.</span><span class="n">decode</span><span class="p">())</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

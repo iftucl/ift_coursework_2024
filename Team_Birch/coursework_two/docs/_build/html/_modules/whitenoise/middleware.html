@@ -1,0 +1,336 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>whitenoise.middleware &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">whitenoise.middleware</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for whitenoise.middleware</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">posixpath</span><span class="w"> </span><span class="kn">import</span> <span class="n">basename</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">urllib.parse</span><span class="w"> </span><span class="kn">import</span> <span class="n">urlparse</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.staticfiles</span><span class="w"> </span><span class="kn">import</span> <span class="n">finders</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.staticfiles.storage</span><span class="w"> </span><span class="kn">import</span> <span class="n">staticfiles_storage</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.http</span><span class="w"> </span><span class="kn">import</span> <span class="n">FileResponse</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.urls</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_script_prefix</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">whitenoise.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">WhiteNoise</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">whitenoise.string_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">ensure_leading_trailing_slash</span>
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;WhiteNoiseMiddleware&quot;</span><span class="p">]</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">WhiteNoiseFileResponse</span><span class="p">(</span><span class="n">FileResponse</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Wrap Django&#39;s FileResponse to prevent setting any default headers. For the</span>
+<span class="sd">    most part these just duplicate work already done by WhiteNoise but in some</span>
+<span class="sd">    cases (e.g. the content-disposition header introduced in Django 3.0) they</span>
+<span class="sd">    are actively harmful.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_headers</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+
+<div class="viewcode-block" id="WhiteNoiseMiddleware">
+<a class="viewcode-back" href="../../autoapi/whitenoise/middleware/index.html#whitenoise.middleware.WhiteNoiseMiddleware">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">WhiteNoiseMiddleware</span><span class="p">(</span><span class="n">WhiteNoise</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Wrap WhiteNoise to allow it to function as Django middleware, rather</span>
+<span class="sd">    than WSGI middleware.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">get_response</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">settings</span><span class="o">=</span><span class="n">settings</span><span class="p">):</span>
+<div class="viewcode-block" id="WhiteNoiseMiddleware.get_response">
+<a class="viewcode-back" href="../../autoapi/whitenoise/middleware/index.html#whitenoise.middleware.WhiteNoiseMiddleware.get_response">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">get_response</span> <span class="o">=</span> <span class="n">get_response</span></div>
+
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">autorefresh</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">WHITENOISE_AUTOREFRESH</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="n">autorefresh</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">DEBUG</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">max_age</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">WHITENOISE_MAX_AGE</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">:</span>
+                <span class="n">max_age</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">max_age</span> <span class="o">=</span> <span class="mi">60</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">allow_all_origins</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">WHITENOISE_ALLOW_ALL_ORIGINS</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="n">allow_all_origins</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">charset</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">WHITENOISE_CHARSET</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="n">charset</span> <span class="o">=</span> <span class="s2">&quot;utf-8&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">mimetypes</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">WHITENOISE_MIMETYPES</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="n">mimetypes</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">add_headers_function</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">WHITENOISE_ADD_HEADERS_FUNCTION</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="n">add_headers_function</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">index_file</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">WHITENOISE_INDEX_FILE</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="n">index_file</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">immutable_file_test</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">WHITENOISE_IMMUTABLE_FILE_TEST</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="n">immutable_file_test</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="n">application</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+            <span class="n">autorefresh</span><span class="o">=</span><span class="n">autorefresh</span><span class="p">,</span>
+            <span class="n">max_age</span><span class="o">=</span><span class="n">max_age</span><span class="p">,</span>
+            <span class="n">allow_all_origins</span><span class="o">=</span><span class="n">allow_all_origins</span><span class="p">,</span>
+            <span class="n">charset</span><span class="o">=</span><span class="n">charset</span><span class="p">,</span>
+            <span class="n">mimetypes</span><span class="o">=</span><span class="n">mimetypes</span><span class="p">,</span>
+            <span class="n">add_headers_function</span><span class="o">=</span><span class="n">add_headers_function</span><span class="p">,</span>
+            <span class="n">index_file</span><span class="o">=</span><span class="n">index_file</span><span class="p">,</span>
+            <span class="n">immutable_file_test</span><span class="o">=</span><span class="n">immutable_file_test</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">use_finders</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">WHITENOISE_USE_FINDERS</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">use_finders</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">DEBUG</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">static_prefix</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">WHITENOISE_STATIC_PREFIX</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">static_prefix</span> <span class="o">=</span> <span class="n">urlparse</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">STATIC_URL</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">path</span>
+            <span class="n">script_prefix</span> <span class="o">=</span> <span class="n">get_script_prefix</span><span class="p">()</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">script_prefix</span><span class="p">:</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">static_prefix</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">script_prefix</span><span class="p">):</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">static_prefix</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">static_prefix</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">script_prefix</span><span class="p">)</span> <span class="p">:]</span>
+<div class="viewcode-block" id="WhiteNoiseMiddleware.static_prefix">
+<a class="viewcode-back" href="../../autoapi/whitenoise/middleware/index.html#whitenoise.middleware.WhiteNoiseMiddleware.static_prefix">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">static_prefix</span> <span class="o">=</span> <span class="n">ensure_leading_trailing_slash</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">static_prefix</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="WhiteNoiseMiddleware.static_root">
+<a class="viewcode-back" href="../../autoapi/whitenoise/middleware/index.html#whitenoise.middleware.WhiteNoiseMiddleware.static_root">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">static_root</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">STATIC_ROOT</span></div>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">static_root</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">add_files</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">static_root</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">static_prefix</span><span class="p">)</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">root</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">WHITENOISE_ROOT</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="n">root</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">root</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">add_files</span><span class="p">(</span><span class="n">root</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_finders</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">autorefresh</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">add_files_from_finders</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">autorefresh</span><span class="p">:</span>
+            <span class="n">static_file</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">find_file</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">path_info</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">static_file</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">files</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">path_info</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">static_file</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">serve</span><span class="p">(</span><span class="n">static_file</span><span class="p">,</span> <span class="n">request</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_response</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="WhiteNoiseMiddleware.serve">
+<a class="viewcode-back" href="../../autoapi/whitenoise/middleware/index.html#whitenoise.middleware.WhiteNoiseMiddleware.serve">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">serve</span><span class="p">(</span><span class="n">static_file</span><span class="p">,</span> <span class="n">request</span><span class="p">):</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="n">static_file</span><span class="o">.</span><span class="n">get_response</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">method</span><span class="p">,</span> <span class="n">request</span><span class="o">.</span><span class="n">META</span><span class="p">)</span>
+        <span class="n">status</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">status</span><span class="p">)</span>
+        <span class="n">http_response</span> <span class="o">=</span> <span class="n">WhiteNoiseFileResponse</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">file</span> <span class="ow">or</span> <span class="p">(),</span> <span class="n">status</span><span class="o">=</span><span class="n">status</span><span class="p">)</span>
+        <span class="c1"># Remove default content-type</span>
+        <span class="k">del</span> <span class="n">http_response</span><span class="p">[</span><span class="s2">&quot;content-type&quot;</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">response</span><span class="o">.</span><span class="n">headers</span><span class="p">:</span>
+            <span class="n">http_response</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+        <span class="k">return</span> <span class="n">http_response</span></div>
+
+
+<div class="viewcode-block" id="WhiteNoiseMiddleware.add_files_from_finders">
+<a class="viewcode-back" href="../../autoapi/whitenoise/middleware/index.html#whitenoise.middleware.WhiteNoiseMiddleware.add_files_from_finders">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add_files_from_finders</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">files</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">finder</span> <span class="ow">in</span> <span class="n">finders</span><span class="o">.</span><span class="n">get_finders</span><span class="p">():</span>
+            <span class="k">for</span> <span class="n">path</span><span class="p">,</span> <span class="n">storage</span> <span class="ow">in</span> <span class="n">finder</span><span class="o">.</span><span class="n">list</span><span class="p">(</span><span class="kc">None</span><span class="p">):</span>
+                <span class="n">prefix</span> <span class="o">=</span> <span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">storage</span><span class="p">,</span> <span class="s2">&quot;prefix&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)</span>
+                <span class="n">url</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+                    <span class="p">(</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">static_prefix</span><span class="p">,</span>
+                        <span class="n">prefix</span><span class="p">,</span>
+                        <span class="s2">&quot;/&quot;</span> <span class="k">if</span> <span class="n">prefix</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+                        <span class="n">path</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\\</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;/&quot;</span><span class="p">),</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+                <span class="c1"># Use setdefault as only first matching file should be used</span>
+                <span class="n">files</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">storage</span><span class="o">.</span><span class="n">path</span><span class="p">(</span><span class="n">path</span><span class="p">))</span>
+        <span class="n">stat_cache</span> <span class="o">=</span> <span class="p">{</span><span class="n">path</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">stat</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">files</span><span class="o">.</span><span class="n">values</span><span class="p">()}</span>
+        <span class="k">for</span> <span class="n">url</span><span class="p">,</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">files</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">add_file_to_dictionary</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">stat_cache</span><span class="o">=</span><span class="n">stat_cache</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="WhiteNoiseMiddleware.candidate_paths_for_url">
+<a class="viewcode-back" href="../../autoapi/whitenoise/middleware/index.html#whitenoise.middleware.WhiteNoiseMiddleware.candidate_paths_for_url">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">candidate_paths_for_url</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">url</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_finders</span> <span class="ow">and</span> <span class="n">url</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">static_prefix</span><span class="p">):</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="n">finders</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="n">url</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">static_prefix</span><span class="p">)</span> <span class="p">:])</span>
+            <span class="k">if</span> <span class="n">path</span><span class="p">:</span>
+                <span class="k">yield</span> <span class="n">path</span>
+        <span class="n">paths</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">candidate_paths_for_url</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">paths</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="n">path</span></div>
+
+
+<div class="viewcode-block" id="WhiteNoiseMiddleware.immutable_file_test">
+<a class="viewcode-back" href="../../autoapi/whitenoise/middleware/index.html#whitenoise.middleware.WhiteNoiseMiddleware.immutable_file_test">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">immutable_file_test</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">url</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Determine whether given URL represents an immutable file (i.e. a</span>
+<span class="sd">        file with a hash of its contents as part of its name) which can</span>
+<span class="sd">        therefore be cached forever</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">url</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">static_prefix</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="n">url</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">static_prefix</span><span class="p">)</span> <span class="p">:]</span>
+        <span class="n">name_without_hash</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_name_without_hash</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">name</span> <span class="o">==</span> <span class="n">name_without_hash</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">static_url</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_static_url</span><span class="p">(</span><span class="n">name_without_hash</span><span class="p">)</span>
+        <span class="c1"># If the static_url function maps the name without hash</span>
+        <span class="c1"># back to the original name, then we know we&#39;ve got a</span>
+        <span class="c1"># versioned filename</span>
+        <span class="k">if</span> <span class="n">static_url</span> <span class="ow">and</span> <span class="n">basename</span><span class="p">(</span><span class="n">static_url</span><span class="p">)</span> <span class="o">==</span> <span class="n">basename</span><span class="p">(</span><span class="n">url</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+
+
+<div class="viewcode-block" id="WhiteNoiseMiddleware.get_name_without_hash">
+<a class="viewcode-back" href="../../autoapi/whitenoise/middleware/index.html#whitenoise.middleware.WhiteNoiseMiddleware.get_name_without_hash">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_name_without_hash</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Removes the version hash from a filename e.g, transforms</span>
+<span class="sd">        &#39;css/application.f3ea4bcc2.css&#39; into &#39;css/application.css&#39;</span>
+
+<span class="sd">        Note: this is specific to the naming scheme used by Django&#39;s</span>
+<span class="sd">        CachedStaticFilesStorage. You may have to override this if</span>
+<span class="sd">        you are using a different static files versioning system</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">name_with_hash</span><span class="p">,</span> <span class="n">ext</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">splitext</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">splitext</span><span class="p">(</span><span class="n">name_with_hash</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">name</span> <span class="o">+</span> <span class="n">ext</span></div>
+
+
+<div class="viewcode-block" id="WhiteNoiseMiddleware.get_static_url">
+<a class="viewcode-back" href="../../autoapi/whitenoise/middleware/index.html#whitenoise.middleware.WhiteNoiseMiddleware.get_static_url">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_static_url</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">staticfiles_storage</span><span class="o">.</span><span class="n">url</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

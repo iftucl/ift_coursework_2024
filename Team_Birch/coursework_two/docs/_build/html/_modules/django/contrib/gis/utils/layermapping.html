@@ -1,0 +1,911 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.contrib.gis.utils.layermapping &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+      <li class="breadcrumb-item active">django.contrib.gis.utils.layermapping</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.contrib.gis.utils.layermapping</h1><div class="highlight"><pre>
+<span></span><span class="c1"># LayerMapping -- A Django Model/OGR Layer Mapping Utility</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd"> The LayerMapping class provides a way to map the contents of OGR</span>
+<span class="sd"> vector files (e.g. SHP files) to Geographic-enabled Django models.</span>
+
+<span class="sd"> For more information, please consult the GeoDjango documentation:</span>
+<span class="sd">   https://docs.djangoproject.com/en/dev/ref/contrib/gis/layermapping/</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">decimal</span><span class="w"> </span><span class="kn">import</span> <span class="n">Decimal</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">decimal</span><span class="w"> </span><span class="kn">import</span> <span class="n">InvalidOperation</span> <span class="k">as</span> <span class="n">DecimalInvalidOperation</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.db.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">GeometryField</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.gdal</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">CoordTransform</span><span class="p">,</span>
+    <span class="n">DataSource</span><span class="p">,</span>
+    <span class="n">GDALException</span><span class="p">,</span>
+    <span class="n">OGRGeometry</span><span class="p">,</span>
+    <span class="n">OGRGeomType</span><span class="p">,</span>
+    <span class="n">SpatialReference</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.gdal.field</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">OFTDate</span><span class="p">,</span>
+    <span class="n">OFTDateTime</span><span class="p">,</span>
+    <span class="n">OFTInteger</span><span class="p">,</span>
+    <span class="n">OFTInteger64</span><span class="p">,</span>
+    <span class="n">OFTReal</span><span class="p">,</span>
+    <span class="n">OFTString</span><span class="p">,</span>
+    <span class="n">OFTTime</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">FieldDoesNotExist</span><span class="p">,</span> <span class="n">ObjectDoesNotExist</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">connections</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">router</span><span class="p">,</span> <span class="n">transaction</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.encoding</span><span class="w"> </span><span class="kn">import</span> <span class="n">force_str</span>
+
+
+<span class="c1"># LayerMapping exceptions.</span>
+<div class="viewcode-block" id="LayerMapError">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.LayerMapError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">LayerMapError</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+
+
+<div class="viewcode-block" id="InvalidString">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.InvalidString">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">InvalidString</span><span class="p">(</span><span class="n">LayerMapError</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+
+
+<div class="viewcode-block" id="InvalidDecimal">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.InvalidDecimal">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">InvalidDecimal</span><span class="p">(</span><span class="n">LayerMapError</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+
+
+<div class="viewcode-block" id="InvalidInteger">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.InvalidInteger">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">InvalidInteger</span><span class="p">(</span><span class="n">LayerMapError</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+
+
+<div class="viewcode-block" id="MissingForeignKey">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.MissingForeignKey">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MissingForeignKey</span><span class="p">(</span><span class="n">LayerMapError</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+
+
+<div class="viewcode-block" id="LayerMapping">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.LayerMapping">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">LayerMapping</span><span class="p">:</span>
+    <span class="s2">&quot;A class that maps OGR Layers to GeoDjango Models.&quot;</span>
+
+    <span class="c1"># Acceptable &#39;base&#39; types for a multi-geometry type.</span>
+<div class="viewcode-block" id="LayerMapping.MULTI_TYPES">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.LayerMapping.MULTI_TYPES">[docs]</a>
+    <span class="n">MULTI_TYPES</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="mi">1</span><span class="p">:</span> <span class="n">OGRGeomType</span><span class="p">(</span><span class="s2">&quot;MultiPoint&quot;</span><span class="p">),</span>
+        <span class="mi">2</span><span class="p">:</span> <span class="n">OGRGeomType</span><span class="p">(</span><span class="s2">&quot;MultiLineString&quot;</span><span class="p">),</span>
+        <span class="mi">3</span><span class="p">:</span> <span class="n">OGRGeomType</span><span class="p">(</span><span class="s2">&quot;MultiPolygon&quot;</span><span class="p">),</span>
+        <span class="n">OGRGeomType</span><span class="p">(</span><span class="s2">&quot;Point25D&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">num</span><span class="p">:</span> <span class="n">OGRGeomType</span><span class="p">(</span><span class="s2">&quot;MultiPoint25D&quot;</span><span class="p">),</span>
+        <span class="n">OGRGeomType</span><span class="p">(</span><span class="s2">&quot;LineString25D&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">num</span><span class="p">:</span> <span class="n">OGRGeomType</span><span class="p">(</span><span class="s2">&quot;MultiLineString25D&quot;</span><span class="p">),</span>
+        <span class="n">OGRGeomType</span><span class="p">(</span><span class="s2">&quot;Polygon25D&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">num</span><span class="p">:</span> <span class="n">OGRGeomType</span><span class="p">(</span><span class="s2">&quot;MultiPolygon25D&quot;</span><span class="p">),</span>
+    <span class="p">}</span></div>
+
+    <span class="c1"># Acceptable Django field types and corresponding acceptable OGR</span>
+    <span class="c1"># counterparts.</span>
+<div class="viewcode-block" id="LayerMapping.FIELD_TYPES">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.LayerMapping.FIELD_TYPES">[docs]</a>
+    <span class="n">FIELD_TYPES</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">models</span><span class="o">.</span><span class="n">AutoField</span><span class="p">:</span> <span class="n">OFTInteger</span><span class="p">,</span>
+        <span class="n">models</span><span class="o">.</span><span class="n">BigAutoField</span><span class="p">:</span> <span class="n">OFTInteger64</span><span class="p">,</span>
+        <span class="n">models</span><span class="o">.</span><span class="n">SmallAutoField</span><span class="p">:</span> <span class="n">OFTInteger</span><span class="p">,</span>
+        <span class="n">models</span><span class="o">.</span><span class="n">BooleanField</span><span class="p">:</span> <span class="p">(</span><span class="n">OFTInteger</span><span class="p">,</span> <span class="n">OFTReal</span><span class="p">,</span> <span class="n">OFTString</span><span class="p">),</span>
+        <span class="n">models</span><span class="o">.</span><span class="n">IntegerField</span><span class="p">:</span> <span class="p">(</span><span class="n">OFTInteger</span><span class="p">,</span> <span class="n">OFTReal</span><span class="p">,</span> <span class="n">OFTString</span><span class="p">),</span>
+        <span class="n">models</span><span class="o">.</span><span class="n">FloatField</span><span class="p">:</span> <span class="p">(</span><span class="n">OFTInteger</span><span class="p">,</span> <span class="n">OFTReal</span><span class="p">),</span>
+        <span class="n">models</span><span class="o">.</span><span class="n">DateField</span><span class="p">:</span> <span class="n">OFTDate</span><span class="p">,</span>
+        <span class="n">models</span><span class="o">.</span><span class="n">DateTimeField</span><span class="p">:</span> <span class="n">OFTDateTime</span><span class="p">,</span>
+        <span class="n">models</span><span class="o">.</span><span class="n">EmailField</span><span class="p">:</span> <span class="n">OFTString</span><span class="p">,</span>
+        <span class="n">models</span><span class="o">.</span><span class="n">TimeField</span><span class="p">:</span> <span class="n">OFTTime</span><span class="p">,</span>
+        <span class="n">models</span><span class="o">.</span><span class="n">DecimalField</span><span class="p">:</span> <span class="p">(</span><span class="n">OFTInteger</span><span class="p">,</span> <span class="n">OFTReal</span><span class="p">),</span>
+        <span class="n">models</span><span class="o">.</span><span class="n">CharField</span><span class="p">:</span> <span class="n">OFTString</span><span class="p">,</span>
+        <span class="n">models</span><span class="o">.</span><span class="n">SlugField</span><span class="p">:</span> <span class="n">OFTString</span><span class="p">,</span>
+        <span class="n">models</span><span class="o">.</span><span class="n">TextField</span><span class="p">:</span> <span class="n">OFTString</span><span class="p">,</span>
+        <span class="n">models</span><span class="o">.</span><span class="n">URLField</span><span class="p">:</span> <span class="n">OFTString</span><span class="p">,</span>
+        <span class="n">models</span><span class="o">.</span><span class="n">UUIDField</span><span class="p">:</span> <span class="n">OFTString</span><span class="p">,</span>
+        <span class="n">models</span><span class="o">.</span><span class="n">BigIntegerField</span><span class="p">:</span> <span class="p">(</span><span class="n">OFTInteger</span><span class="p">,</span> <span class="n">OFTReal</span><span class="p">,</span> <span class="n">OFTString</span><span class="p">),</span>
+        <span class="n">models</span><span class="o">.</span><span class="n">SmallIntegerField</span><span class="p">:</span> <span class="p">(</span><span class="n">OFTInteger</span><span class="p">,</span> <span class="n">OFTReal</span><span class="p">,</span> <span class="n">OFTString</span><span class="p">),</span>
+        <span class="n">models</span><span class="o">.</span><span class="n">PositiveBigIntegerField</span><span class="p">:</span> <span class="p">(</span><span class="n">OFTInteger</span><span class="p">,</span> <span class="n">OFTReal</span><span class="p">,</span> <span class="n">OFTString</span><span class="p">),</span>
+        <span class="n">models</span><span class="o">.</span><span class="n">PositiveIntegerField</span><span class="p">:</span> <span class="p">(</span><span class="n">OFTInteger</span><span class="p">,</span> <span class="n">OFTReal</span><span class="p">,</span> <span class="n">OFTString</span><span class="p">),</span>
+        <span class="n">models</span><span class="o">.</span><span class="n">PositiveSmallIntegerField</span><span class="p">:</span> <span class="p">(</span><span class="n">OFTInteger</span><span class="p">,</span> <span class="n">OFTReal</span><span class="p">,</span> <span class="n">OFTString</span><span class="p">),</span>
+    <span class="p">}</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">model</span><span class="p">,</span>
+        <span class="n">data</span><span class="p">,</span>
+        <span class="n">mapping</span><span class="p">,</span>
+        <span class="n">layer</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+        <span class="n">source_srs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">,</span>
+        <span class="n">transaction_mode</span><span class="o">=</span><span class="s2">&quot;commit_on_success&quot;</span><span class="p">,</span>
+        <span class="n">transform</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">unique</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">using</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        A LayerMapping object is initialized using the given Model (not an instance),</span>
+<span class="sd">        a DataSource (or string path to an OGR-supported data file), and a mapping</span>
+<span class="sd">        dictionary.  See the module level docstring for more details and keyword</span>
+<span class="sd">        argument usage.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Getting the DataSource and the associated Layer.</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">)):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ds</span> <span class="o">=</span> <span class="n">DataSource</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="n">encoding</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ds</span> <span class="o">=</span> <span class="n">data</span>
+<div class="viewcode-block" id="LayerMapping.layer">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.LayerMapping.layer">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">layer</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ds</span><span class="p">[</span><span class="n">layer</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="LayerMapping.using">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.LayerMapping.using">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">using</span> <span class="o">=</span> <span class="n">using</span> <span class="k">if</span> <span class="n">using</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">router</span><span class="o">.</span><span class="n">db_for_write</span><span class="p">(</span><span class="n">model</span><span class="p">)</span></div>
+
+        <span class="n">connection</span> <span class="o">=</span> <span class="n">connections</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">using</span><span class="p">]</span>
+<div class="viewcode-block" id="LayerMapping.spatial_backend">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.LayerMapping.spatial_backend">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">spatial_backend</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="n">ops</span></div>
+
+
+        <span class="c1"># Setting the mapping &amp; model attributes.</span>
+<div class="viewcode-block" id="LayerMapping.mapping">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.LayerMapping.mapping">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mapping</span> <span class="o">=</span> <span class="n">mapping</span></div>
+
+<div class="viewcode-block" id="LayerMapping.model">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.LayerMapping.model">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">model</span></div>
+
+
+        <span class="c1"># Checking the layer -- initialization of the object will fail if</span>
+        <span class="c1"># things don&#39;t check out before hand.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">check_layer</span><span class="p">()</span>
+
+        <span class="c1"># Getting the geometry column associated with the model (an</span>
+        <span class="c1"># exception will be raised if there is no geometry column).</span>
+        <span class="k">if</span> <span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">supports_transform</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">geo_field</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">geometry_field</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">transform</span> <span class="o">=</span> <span class="kc">False</span>
+
+        <span class="c1"># Checking the source spatial reference system, and getting</span>
+        <span class="c1"># the coordinate transformation object (unless the `transform`</span>
+        <span class="c1"># keyword is set to False)</span>
+        <span class="k">if</span> <span class="n">transform</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">source_srs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">check_srs</span><span class="p">(</span><span class="n">source_srs</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">transform</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">coord_transform</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">transform</span> <span class="o">=</span> <span class="n">transform</span>
+
+        <span class="c1"># Setting the encoding for OFTString fields, if specified.</span>
+        <span class="k">if</span> <span class="n">encoding</span><span class="p">:</span>
+            <span class="c1"># Making sure the encoding exists, if not a LookupError</span>
+            <span class="c1"># exception will be thrown.</span>
+            <span class="kn">from</span><span class="w"> </span><span class="nn">codecs</span><span class="w"> </span><span class="kn">import</span> <span class="n">lookup</span>
+
+            <span class="n">lookup</span><span class="p">(</span><span class="n">encoding</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">encoding</span> <span class="o">=</span> <span class="n">encoding</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">encoding</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="k">if</span> <span class="n">unique</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">check_unique</span><span class="p">(</span><span class="n">unique</span><span class="p">)</span>
+            <span class="n">transaction_mode</span> <span class="o">=</span> <span class="s2">&quot;autocommit&quot;</span>  <span class="c1"># Has to be set to autocommit.</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">unique</span> <span class="o">=</span> <span class="n">unique</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">unique</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="c1"># Setting the transaction decorator with the function in the</span>
+        <span class="c1"># transaction modes dictionary.</span>
+<div class="viewcode-block" id="LayerMapping.transaction_mode">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.LayerMapping.transaction_mode">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">transaction_mode</span> <span class="o">=</span> <span class="n">transaction_mode</span></div>
+
+        <span class="k">if</span> <span class="n">transaction_mode</span> <span class="o">==</span> <span class="s2">&quot;autocommit&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">transaction_decorator</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">elif</span> <span class="n">transaction_mode</span> <span class="o">==</span> <span class="s2">&quot;commit_on_success&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">transaction_decorator</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">atomic</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">LayerMapError</span><span class="p">(</span><span class="s2">&quot;Unrecognized transaction mode: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">transaction_mode</span><span class="p">)</span>
+
+    <span class="c1"># #### Checking routines used during initialization ####</span>
+<div class="viewcode-block" id="LayerMapping.check_fid_range">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.LayerMapping.check_fid_range">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_fid_range</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fid_range</span><span class="p">):</span>
+        <span class="s2">&quot;Check the `fid_range` keyword.&quot;</span>
+        <span class="k">if</span> <span class="n">fid_range</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">fid_range</span><span class="p">,</span> <span class="p">(</span><span class="nb">tuple</span><span class="p">,</span> <span class="nb">list</span><span class="p">)):</span>
+                <span class="k">return</span> <span class="nb">slice</span><span class="p">(</span><span class="o">*</span><span class="n">fid_range</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">fid_range</span><span class="p">,</span> <span class="nb">slice</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">fid_range</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">TypeError</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="LayerMapping.check_layer">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.LayerMapping.check_layer">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_layer</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Check the Layer metadata and ensure that it&#39;s compatible with the</span>
+<span class="sd">        mapping information and model. Unlike previous revisions, there is no</span>
+<span class="sd">        need to increment through each feature in the Layer.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># The geometry field of the model is set here.</span>
+        <span class="c1"># TODO: Support more than one geometry field / model.  However, this</span>
+        <span class="c1"># depends on the GDAL Driver in use.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">geom_field</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fields</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="c1"># Getting lists of the field names and the field types available in</span>
+        <span class="c1"># the OGR Layer.</span>
+        <span class="n">ogr_fields</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">layer</span><span class="o">.</span><span class="n">fields</span>
+        <span class="n">ogr_field_types</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">layer</span><span class="o">.</span><span class="n">field_types</span>
+
+        <span class="c1"># Function for determining if the OGR mapping field is in the Layer.</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">check_ogr_fld</span><span class="p">(</span><span class="n">ogr_map_fld</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">idx</span> <span class="o">=</span> <span class="n">ogr_fields</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">ogr_map_fld</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">LayerMapError</span><span class="p">(</span>
+                    <span class="s1">&#39;Given mapping OGR field &quot;</span><span class="si">%s</span><span class="s1">&quot; not found in OGR Layer.&#39;</span> <span class="o">%</span> <span class="n">ogr_map_fld</span>
+                <span class="p">)</span>
+            <span class="k">return</span> <span class="n">idx</span>
+
+        <span class="c1"># No need to increment through each feature in the model, simply check</span>
+        <span class="c1"># the Layer metadata against what was given in the mapping dictionary.</span>
+        <span class="k">for</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">ogr_name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">mapping</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="c1"># Ensuring that a corresponding field exists in the model</span>
+            <span class="c1"># for the given field name in the mapping.</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">model_field</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">get_field</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">FieldDoesNotExist</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">LayerMapError</span><span class="p">(</span>
+                    <span class="s1">&#39;Given mapping field &quot;</span><span class="si">%s</span><span class="s1">&quot; not in given Model fields.&#39;</span> <span class="o">%</span> <span class="n">field_name</span>
+                <span class="p">)</span>
+
+            <span class="c1"># Getting the string name for the Django field class (e.g., &#39;PointField&#39;).</span>
+            <span class="n">fld_name</span> <span class="o">=</span> <span class="n">model_field</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span>
+
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model_field</span><span class="p">,</span> <span class="n">GeometryField</span><span class="p">):</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">geom_field</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">LayerMapError</span><span class="p">(</span>
+                        <span class="s2">&quot;LayerMapping does not support more than one GeometryField per &quot;</span>
+                        <span class="s2">&quot;model.&quot;</span>
+                    <span class="p">)</span>
+
+                <span class="c1"># Getting the coordinate dimension of the geometry field.</span>
+                <span class="n">coord_dim</span> <span class="o">=</span> <span class="n">model_field</span><span class="o">.</span><span class="n">dim</span>
+
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">coord_dim</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
+                        <span class="n">gtype</span> <span class="o">=</span> <span class="n">OGRGeomType</span><span class="p">(</span><span class="n">ogr_name</span> <span class="o">+</span> <span class="s2">&quot;25D&quot;</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">gtype</span> <span class="o">=</span> <span class="n">OGRGeomType</span><span class="p">(</span><span class="n">ogr_name</span><span class="p">)</span>
+                <span class="k">except</span> <span class="n">GDALException</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">LayerMapError</span><span class="p">(</span>
+                        <span class="s1">&#39;Invalid mapping for GeometryField &quot;</span><span class="si">%s</span><span class="s1">&quot;.&#39;</span> <span class="o">%</span> <span class="n">field_name</span>
+                    <span class="p">)</span>
+
+                <span class="c1"># Making sure that the OGR Layer&#39;s Geometry is compatible.</span>
+                <span class="n">ltype</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">layer</span><span class="o">.</span><span class="n">geom_type</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span>
+                    <span class="n">ltype</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">gtype</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+                    <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_multi</span><span class="p">(</span><span class="n">ltype</span><span class="p">,</span> <span class="n">model_field</span><span class="p">)</span>
+                <span class="p">):</span>
+                    <span class="k">raise</span> <span class="n">LayerMapError</span><span class="p">(</span>
+                        <span class="s2">&quot;Invalid mapping geometry; model has </span><span class="si">%s%s</span><span class="s2">, &quot;</span>
+                        <span class="s2">&quot;layer geometry type is </span><span class="si">%s</span><span class="s2">.&quot;</span>
+                        <span class="o">%</span> <span class="p">(</span><span class="n">fld_name</span><span class="p">,</span> <span class="s2">&quot;(dim=3)&quot;</span> <span class="k">if</span> <span class="n">coord_dim</span> <span class="o">==</span> <span class="mi">3</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">ltype</span><span class="p">)</span>
+                    <span class="p">)</span>
+
+                <span class="c1"># Setting the `geom_field` attribute w/the name of the model field</span>
+                <span class="c1"># that is a Geometry.  Also setting the coordinate dimension</span>
+                <span class="c1"># attribute.</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">geom_field</span> <span class="o">=</span> <span class="n">field_name</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">coord_dim</span> <span class="o">=</span> <span class="n">coord_dim</span>
+                <span class="n">fields_val</span> <span class="o">=</span> <span class="n">model_field</span>
+            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model_field</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">ForeignKey</span><span class="p">):</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ogr_name</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+                    <span class="c1"># Is every given related model mapping field in the Layer?</span>
+                    <span class="n">rel_model</span> <span class="o">=</span> <span class="n">model_field</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">model</span>
+                    <span class="k">for</span> <span class="n">rel_name</span><span class="p">,</span> <span class="n">ogr_field</span> <span class="ow">in</span> <span class="n">ogr_name</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                        <span class="n">idx</span> <span class="o">=</span> <span class="n">check_ogr_fld</span><span class="p">(</span><span class="n">ogr_field</span><span class="p">)</span>
+                        <span class="k">try</span><span class="p">:</span>
+                            <span class="n">rel_model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">get_field</span><span class="p">(</span><span class="n">rel_name</span><span class="p">)</span>
+                        <span class="k">except</span> <span class="n">FieldDoesNotExist</span><span class="p">:</span>
+                            <span class="k">raise</span> <span class="n">LayerMapError</span><span class="p">(</span>
+                                <span class="s1">&#39;ForeignKey mapping field &quot;</span><span class="si">%s</span><span class="s1">&quot; not in </span><span class="si">%s</span><span class="s1"> fields.&#39;</span>
+                                <span class="o">%</span> <span class="p">(</span><span class="n">rel_name</span><span class="p">,</span> <span class="n">rel_model</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
+                            <span class="p">)</span>
+                    <span class="n">fields_val</span> <span class="o">=</span> <span class="n">rel_model</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;ForeignKey mapping must be of dictionary type.&quot;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Is the model field type supported by LayerMapping?</span>
+                <span class="k">if</span> <span class="n">model_field</span><span class="o">.</span><span class="vm">__class__</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">FIELD_TYPES</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">LayerMapError</span><span class="p">(</span>
+                        <span class="s1">&#39;Django field type &quot;</span><span class="si">%s</span><span class="s1">&quot; has no OGR mapping (yet).&#39;</span> <span class="o">%</span> <span class="n">fld_name</span>
+                    <span class="p">)</span>
+
+                <span class="c1"># Is the OGR field in the Layer?</span>
+                <span class="n">idx</span> <span class="o">=</span> <span class="n">check_ogr_fld</span><span class="p">(</span><span class="n">ogr_name</span><span class="p">)</span>
+                <span class="n">ogr_field</span> <span class="o">=</span> <span class="n">ogr_field_types</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+
+                <span class="c1"># Can the OGR field type be mapped to the Django field type?</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="nb">issubclass</span><span class="p">(</span><span class="n">ogr_field</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">FIELD_TYPES</span><span class="p">[</span><span class="n">model_field</span><span class="o">.</span><span class="vm">__class__</span><span class="p">]):</span>
+                    <span class="k">raise</span> <span class="n">LayerMapError</span><span class="p">(</span>
+                        <span class="s1">&#39;OGR field &quot;</span><span class="si">%s</span><span class="s1">&quot; (of type </span><span class="si">%s</span><span class="s1">) cannot be mapped to Django </span><span class="si">%s</span><span class="s1">.&#39;</span>
+                        <span class="o">%</span> <span class="p">(</span><span class="n">ogr_field</span><span class="p">,</span> <span class="n">ogr_field</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="n">fld_name</span><span class="p">)</span>
+                    <span class="p">)</span>
+                <span class="n">fields_val</span> <span class="o">=</span> <span class="n">model_field</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">fields_val</span></div>
+
+
+<div class="viewcode-block" id="LayerMapping.check_srs">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.LayerMapping.check_srs">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_srs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source_srs</span><span class="p">):</span>
+        <span class="s2">&quot;Check the compatibility of the given spatial reference object.&quot;</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">source_srs</span><span class="p">,</span> <span class="n">SpatialReference</span><span class="p">):</span>
+            <span class="n">sr</span> <span class="o">=</span> <span class="n">source_srs</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">source_srs</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">spatial_backend</span><span class="o">.</span><span class="n">spatial_ref_sys</span><span class="p">()):</span>
+            <span class="n">sr</span> <span class="o">=</span> <span class="n">source_srs</span><span class="o">.</span><span class="n">srs</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">source_srs</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">)):</span>
+            <span class="n">sr</span> <span class="o">=</span> <span class="n">SpatialReference</span><span class="p">(</span><span class="n">source_srs</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Otherwise just pulling the SpatialReference from the layer</span>
+            <span class="n">sr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">layer</span><span class="o">.</span><span class="n">srs</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">sr</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">LayerMapError</span><span class="p">(</span><span class="s2">&quot;No source reference system defined.&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">sr</span></div>
+
+
+<div class="viewcode-block" id="LayerMapping.check_unique">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.LayerMapping.check_unique">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_unique</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">unique</span><span class="p">):</span>
+        <span class="s2">&quot;Check the `unique` keyword parameter -- may be a sequence or string.&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">unique</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="c1"># List of fields to determine uniqueness with</span>
+            <span class="k">for</span> <span class="n">attr</span> <span class="ow">in</span> <span class="n">unique</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">attr</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">mapping</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">unique</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="c1"># Only a single field passed in.</span>
+            <span class="k">if</span> <span class="n">unique</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">mapping</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
+                <span class="s2">&quot;Unique keyword argument must be set with a tuple, list, or string.&quot;</span>
+            <span class="p">)</span></div>
+
+
+    <span class="c1"># Keyword argument retrieval routines ####</span>
+<div class="viewcode-block" id="LayerMapping.feature_kwargs">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.LayerMapping.feature_kwargs">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">feature_kwargs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">feat</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Given an OGR Feature, return a dictionary of keyword arguments for</span>
+<span class="sd">        constructing the mapped model.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># The keyword arguments for model construction.</span>
+        <span class="n">kwargs</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="c1"># Incrementing through each model field and OGR field in the</span>
+        <span class="c1"># dictionary mapping.</span>
+        <span class="k">for</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">ogr_name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">mapping</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">model_field</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span>
+
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model_field</span><span class="p">,</span> <span class="n">GeometryField</span><span class="p">):</span>
+                <span class="c1"># Verify OGR geometry.</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">val</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">verify_geom</span><span class="p">(</span><span class="n">feat</span><span class="o">.</span><span class="n">geom</span><span class="p">,</span> <span class="n">model_field</span><span class="p">)</span>
+                <span class="k">except</span> <span class="n">GDALException</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">LayerMapError</span><span class="p">(</span><span class="s2">&quot;Could not retrieve geometry from feature.&quot;</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model_field</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">base</span><span class="o">.</span><span class="n">ModelBase</span><span class="p">):</span>
+                <span class="c1"># The related _model_, not a field was passed in -- indicating</span>
+                <span class="c1"># another mapping for the related Model.</span>
+                <span class="n">val</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">verify_fk</span><span class="p">(</span><span class="n">feat</span><span class="p">,</span> <span class="n">model_field</span><span class="p">,</span> <span class="n">ogr_name</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Otherwise, verify OGR Field type.</span>
+                <span class="n">val</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">verify_ogr_field</span><span class="p">(</span><span class="n">feat</span><span class="p">[</span><span class="n">ogr_name</span><span class="p">],</span> <span class="n">model_field</span><span class="p">)</span>
+
+            <span class="c1"># Setting the keyword arguments for the field name with the</span>
+            <span class="c1"># value obtained above.</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">val</span>
+
+        <span class="k">return</span> <span class="n">kwargs</span></div>
+
+
+<div class="viewcode-block" id="LayerMapping.unique_kwargs">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.LayerMapping.unique_kwargs">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">unique_kwargs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Given the feature keyword arguments (from `feature_kwargs`), construct</span>
+<span class="sd">        and return the uniqueness keyword arguments -- a subset of the feature</span>
+<span class="sd">        kwargs.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">unique</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">unique</span><span class="p">:</span> <span class="n">kwargs</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">unique</span><span class="p">]}</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{</span><span class="n">fld</span><span class="p">:</span> <span class="n">kwargs</span><span class="p">[</span><span class="n">fld</span><span class="p">]</span> <span class="k">for</span> <span class="n">fld</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">unique</span><span class="p">}</span></div>
+
+
+    <span class="c1"># #### Verification routines used in constructing model keyword arguments. ####</span>
+<div class="viewcode-block" id="LayerMapping.verify_ogr_field">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.LayerMapping.verify_ogr_field">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">verify_ogr_field</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ogr_field</span><span class="p">,</span> <span class="n">model_field</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Verify if the OGR Field contents are acceptable to the model field. If</span>
+<span class="sd">        they are, return the verified value, otherwise raise an exception.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ogr_field</span><span class="p">,</span> <span class="n">OFTString</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span>
+            <span class="n">model_field</span><span class="p">,</span> <span class="p">(</span><span class="n">models</span><span class="o">.</span><span class="n">CharField</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">TextField</span><span class="p">)</span>
+        <span class="p">):</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">encoding</span> <span class="ow">and</span> <span class="n">ogr_field</span><span class="o">.</span><span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="c1"># The encoding for OGR data sources may be specified here</span>
+                <span class="c1"># (e.g., &#39;cp437&#39; for Census Bureau boundary files).</span>
+                <span class="n">val</span> <span class="o">=</span> <span class="n">force_str</span><span class="p">(</span><span class="n">ogr_field</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">encoding</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">val</span> <span class="o">=</span> <span class="n">ogr_field</span><span class="o">.</span><span class="n">value</span>
+            <span class="k">if</span> <span class="p">(</span>
+                <span class="n">model_field</span><span class="o">.</span><span class="n">max_length</span>
+                <span class="ow">and</span> <span class="n">val</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+                <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">val</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">model_field</span><span class="o">.</span><span class="n">max_length</span>
+            <span class="p">):</span>
+                <span class="k">raise</span> <span class="n">InvalidString</span><span class="p">(</span>
+                    <span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> model field maximum string length is </span><span class="si">%s</span><span class="s2">, given </span><span class="si">%s</span><span class="s2"> characters.&quot;</span>
+                    <span class="o">%</span> <span class="p">(</span><span class="n">model_field</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">model_field</span><span class="o">.</span><span class="n">max_length</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">val</span><span class="p">))</span>
+                <span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ogr_field</span><span class="p">,</span> <span class="n">OFTReal</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span>
+            <span class="n">model_field</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">DecimalField</span>
+        <span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="c1"># Creating an instance of the Decimal value to use.</span>
+                <span class="n">d</span> <span class="o">=</span> <span class="n">Decimal</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">ogr_field</span><span class="o">.</span><span class="n">value</span><span class="p">))</span>
+            <span class="k">except</span> <span class="n">DecimalInvalidOperation</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">InvalidDecimal</span><span class="p">(</span>
+                    <span class="s2">&quot;Could not construct decimal from: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">ogr_field</span><span class="o">.</span><span class="n">value</span>
+                <span class="p">)</span>
+
+            <span class="c1"># Getting the decimal value as a tuple.</span>
+            <span class="n">dtup</span> <span class="o">=</span> <span class="n">d</span><span class="o">.</span><span class="n">as_tuple</span><span class="p">()</span>
+            <span class="n">digits</span> <span class="o">=</span> <span class="n">dtup</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">d_idx</span> <span class="o">=</span> <span class="n">dtup</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>  <span class="c1"># index where the decimal is</span>
+
+            <span class="c1"># Maximum amount of precision, or digits to the left of the decimal.</span>
+            <span class="n">max_prec</span> <span class="o">=</span> <span class="n">model_field</span><span class="o">.</span><span class="n">max_digits</span> <span class="o">-</span> <span class="n">model_field</span><span class="o">.</span><span class="n">decimal_places</span>
+
+            <span class="c1"># Getting the digits to the left of the decimal place for the</span>
+            <span class="c1"># given decimal.</span>
+            <span class="k">if</span> <span class="n">d_idx</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">n_prec</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">digits</span><span class="p">[:</span><span class="n">d_idx</span><span class="p">])</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">n_prec</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">digits</span><span class="p">)</span> <span class="o">+</span> <span class="n">d_idx</span>
+
+            <span class="c1"># If we have more than the maximum digits allowed, then throw an</span>
+            <span class="c1"># InvalidDecimal exception.</span>
+            <span class="k">if</span> <span class="n">n_prec</span> <span class="o">&gt;</span> <span class="n">max_prec</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">InvalidDecimal</span><span class="p">(</span>
+                    <span class="s2">&quot;A DecimalField with max_digits </span><span class="si">%d</span><span class="s2">, decimal_places </span><span class="si">%d</span><span class="s2"> must &quot;</span>
+                    <span class="s2">&quot;round to an absolute value less than 10^</span><span class="si">%d</span><span class="s2">.&quot;</span>
+                    <span class="o">%</span> <span class="p">(</span><span class="n">model_field</span><span class="o">.</span><span class="n">max_digits</span><span class="p">,</span> <span class="n">model_field</span><span class="o">.</span><span class="n">decimal_places</span><span class="p">,</span> <span class="n">max_prec</span><span class="p">)</span>
+                <span class="p">)</span>
+            <span class="n">val</span> <span class="o">=</span> <span class="n">d</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ogr_field</span><span class="p">,</span> <span class="p">(</span><span class="n">OFTReal</span><span class="p">,</span> <span class="n">OFTString</span><span class="p">))</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span>
+            <span class="n">model_field</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">IntegerField</span>
+        <span class="p">):</span>
+            <span class="c1"># Attempt to convert any OFTReal and OFTString value to an OFTInteger.</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">val</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">ogr_field</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">InvalidInteger</span><span class="p">(</span>
+                    <span class="s2">&quot;Could not construct integer from: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">ogr_field</span><span class="o">.</span><span class="n">value</span>
+                <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">val</span> <span class="o">=</span> <span class="n">ogr_field</span><span class="o">.</span><span class="n">value</span>
+        <span class="k">return</span> <span class="n">val</span></div>
+
+
+<div class="viewcode-block" id="LayerMapping.verify_fk">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.LayerMapping.verify_fk">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">verify_fk</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">feat</span><span class="p">,</span> <span class="n">rel_model</span><span class="p">,</span> <span class="n">rel_mapping</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Given an OGR Feature, the related model and its dictionary mapping,</span>
+<span class="sd">        retrieve the related model for the ForeignKey mapping.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># TODO: It is expensive to retrieve a model for every record --</span>
+        <span class="c1">#  explore if an efficient mechanism exists for caching related</span>
+        <span class="c1">#  ForeignKey models.</span>
+
+        <span class="c1"># Constructing and verifying the related model keyword arguments.</span>
+        <span class="n">fk_kwargs</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">ogr_name</span> <span class="ow">in</span> <span class="n">rel_mapping</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">fk_kwargs</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">verify_ogr_field</span><span class="p">(</span>
+                <span class="n">feat</span><span class="p">[</span><span class="n">ogr_name</span><span class="p">],</span> <span class="n">rel_model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">get_field</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
+            <span class="p">)</span>
+
+        <span class="c1"># Attempting to retrieve and return the related model.</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">rel_model</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">using</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">using</span><span class="p">)</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="o">**</span><span class="n">fk_kwargs</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">ObjectDoesNotExist</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">MissingForeignKey</span><span class="p">(</span>
+                <span class="s2">&quot;No ForeignKey </span><span class="si">%s</span><span class="s2"> model found with keyword arguments: </span><span class="si">%s</span><span class="s2">&quot;</span>
+                <span class="o">%</span> <span class="p">(</span><span class="n">rel_model</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="n">fk_kwargs</span><span class="p">)</span>
+            <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="LayerMapping.verify_geom">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.LayerMapping.verify_geom">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">verify_geom</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">geom</span><span class="p">,</span> <span class="n">model_field</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Verify the geometry -- construct and return a GeometryCollection</span>
+<span class="sd">        if necessary (for example if the model field is MultiPolygonField while</span>
+<span class="sd">        the mapped shapefile only contains Polygons).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Downgrade a 3D geom to a 2D one, if necessary.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">coord_dim</span> <span class="o">!=</span> <span class="n">geom</span><span class="o">.</span><span class="n">coord_dim</span><span class="p">:</span>
+            <span class="n">geom</span><span class="o">.</span><span class="n">coord_dim</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">coord_dim</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_multi</span><span class="p">(</span><span class="n">geom</span><span class="o">.</span><span class="n">geom_type</span><span class="p">,</span> <span class="n">model_field</span><span class="p">):</span>
+            <span class="c1"># Constructing a multi-geometry type to contain the single geometry</span>
+            <span class="n">multi_type</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">MULTI_TYPES</span><span class="p">[</span><span class="n">geom</span><span class="o">.</span><span class="n">geom_type</span><span class="o">.</span><span class="n">num</span><span class="p">]</span>
+            <span class="n">g</span> <span class="o">=</span> <span class="n">OGRGeometry</span><span class="p">(</span><span class="n">multi_type</span><span class="p">)</span>
+            <span class="n">g</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">geom</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">g</span> <span class="o">=</span> <span class="n">geom</span>
+
+        <span class="c1"># Transforming the geometry with our Coordinate Transformation object,</span>
+        <span class="c1"># but only if the class variable `transform` is set w/a CoordTransform</span>
+        <span class="c1"># object.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">transform</span><span class="p">:</span>
+            <span class="n">g</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">transform</span><span class="p">)</span>
+
+        <span class="c1"># Returning the WKT of the geometry.</span>
+        <span class="k">return</span> <span class="n">g</span><span class="o">.</span><span class="n">wkt</span></div>
+
+
+    <span class="c1"># #### Other model methods ####</span>
+<div class="viewcode-block" id="LayerMapping.coord_transform">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.LayerMapping.coord_transform">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">coord_transform</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s2">&quot;Return the coordinate transformation object.&quot;</span>
+        <span class="n">SpatialRefSys</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">spatial_backend</span><span class="o">.</span><span class="n">spatial_ref_sys</span><span class="p">()</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># Getting the target spatial reference system</span>
+            <span class="n">target_srs</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">SpatialRefSys</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">using</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">using</span><span class="p">)</span>
+                <span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">srid</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">geo_field</span><span class="o">.</span><span class="n">srid</span><span class="p">)</span>
+                <span class="o">.</span><span class="n">srs</span>
+            <span class="p">)</span>
+
+            <span class="c1"># Creating the CoordTransform object</span>
+            <span class="k">return</span> <span class="n">CoordTransform</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">source_srs</span><span class="p">,</span> <span class="n">target_srs</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">LayerMapError</span><span class="p">(</span>
+                <span class="s2">&quot;Could not translate between the data source and model geometry.&quot;</span>
+            <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span></div>
+
+
+<div class="viewcode-block" id="LayerMapping.geometry_field">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.LayerMapping.geometry_field">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">geometry_field</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s2">&quot;Return the GeometryField instance associated with the geographic column.&quot;</span>
+        <span class="c1"># Use `get_field()` on the model&#39;s options so that we</span>
+        <span class="c1"># get the correct field instance if there&#39;s model inheritance.</span>
+        <span class="n">opts</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span>
+        <span class="k">return</span> <span class="n">opts</span><span class="o">.</span><span class="n">get_field</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">geom_field</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="LayerMapping.make_multi">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.LayerMapping.make_multi">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">make_multi</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">geom_type</span><span class="p">,</span> <span class="n">model_field</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Given the OGRGeomType for a geometry and its associated GeometryField,</span>
+<span class="sd">        determine whether the geometry should be turned into a GeometryCollection.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="n">geom_type</span><span class="o">.</span><span class="n">num</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">MULTI_TYPES</span>
+            <span class="ow">and</span> <span class="n">model_field</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;Multi</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">geom_type</span><span class="o">.</span><span class="n">django</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="LayerMapping.save">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/gis/utils/layermapping/index.html#django.contrib.gis.utils.layermapping.LayerMapping.save">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">save</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">fid_range</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">step</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">progress</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">silent</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">stream</span><span class="o">=</span><span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="p">,</span>
+        <span class="n">strict</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Save the contents from the OGR DataSource Layer into the database</span>
+<span class="sd">        according to the mapping dictionary given at initialization.</span>
+
+<span class="sd">        Keyword Parameters:</span>
+<span class="sd">         verbose:</span>
+<span class="sd">           If set, information will be printed subsequent to each model save</span>
+<span class="sd">           executed on the database.</span>
+
+<span class="sd">         fid_range:</span>
+<span class="sd">           May be set with a slice or tuple of (begin, end) feature ID&#39;s to map</span>
+<span class="sd">           from the data source.  In other words, this keyword enables the user</span>
+<span class="sd">           to selectively import a subset range of features in the geographic</span>
+<span class="sd">           data source.</span>
+
+<span class="sd">         step:</span>
+<span class="sd">           If set with an integer, transactions will occur at every step</span>
+<span class="sd">           interval. For example, if step=1000, a commit would occur after</span>
+<span class="sd">           the 1,000th feature, the 2,000th feature etc.</span>
+
+<span class="sd">         progress:</span>
+<span class="sd">           When this keyword is set, status information will be printed giving</span>
+<span class="sd">           the number of features processed and successfully saved.  By default,</span>
+<span class="sd">           progress information will pe printed every 1000 features processed,</span>
+<span class="sd">           however, this default may be overridden by setting this keyword with an</span>
+<span class="sd">           integer for the desired interval.</span>
+
+<span class="sd">         stream:</span>
+<span class="sd">           Status information will be written to this file handle.  Defaults to</span>
+<span class="sd">           using `sys.stdout`, but any object with a `write` method is supported.</span>
+
+<span class="sd">         silent:</span>
+<span class="sd">           By default, non-fatal error notifications are printed to stdout, but</span>
+<span class="sd">           this keyword may be set to disable these notifications.</span>
+
+<span class="sd">         strict:</span>
+<span class="sd">           Execution of the model mapping will cease upon the first error</span>
+<span class="sd">           encountered.  The default behavior is to attempt to continue.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Getting the default Feature ID range.</span>
+        <span class="n">default_range</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">check_fid_range</span><span class="p">(</span><span class="n">fid_range</span><span class="p">)</span>
+
+        <span class="c1"># Setting the progress interval, if requested.</span>
+        <span class="k">if</span> <span class="n">progress</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">progress</span> <span class="ow">is</span> <span class="kc">True</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">progress</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+                <span class="n">progress_interval</span> <span class="o">=</span> <span class="mi">1000</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">progress_interval</span> <span class="o">=</span> <span class="n">progress</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">_save</span><span class="p">(</span><span class="n">feat_range</span><span class="o">=</span><span class="n">default_range</span><span class="p">,</span> <span class="n">num_feat</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">num_saved</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">feat_range</span><span class="p">:</span>
+                <span class="n">layer_iter</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">layer</span><span class="p">[</span><span class="n">feat_range</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">layer_iter</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">layer</span>
+
+            <span class="k">for</span> <span class="n">feat</span> <span class="ow">in</span> <span class="n">layer_iter</span><span class="p">:</span>
+                <span class="n">num_feat</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="c1"># Getting the keyword arguments</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">kwargs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">feature_kwargs</span><span class="p">(</span><span class="n">feat</span><span class="p">)</span>
+                <span class="k">except</span> <span class="n">LayerMapError</span> <span class="k">as</span> <span class="n">msg</span><span class="p">:</span>
+                    <span class="c1"># Something borked the validation</span>
+                    <span class="k">if</span> <span class="n">strict</span><span class="p">:</span>
+                        <span class="k">raise</span>
+                    <span class="k">elif</span> <span class="ow">not</span> <span class="n">silent</span><span class="p">:</span>
+                        <span class="n">stream</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                            <span class="s2">&quot;Ignoring Feature ID </span><span class="si">%s</span><span class="s2"> because: </span><span class="si">%s</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">feat</span><span class="o">.</span><span class="n">fid</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
+                        <span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c1"># Constructing the model using the keyword args</span>
+                    <span class="n">is_update</span> <span class="o">=</span> <span class="kc">False</span>
+                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">unique</span><span class="p">:</span>
+                        <span class="c1"># If we want unique models on a particular field, handle the</span>
+                        <span class="c1"># geometry appropriately.</span>
+                        <span class="k">try</span><span class="p">:</span>
+                            <span class="c1"># Getting the keyword arguments and retrieving</span>
+                            <span class="c1"># the unique model.</span>
+                            <span class="n">u_kwargs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">unique_kwargs</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+                            <span class="n">m</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">using</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">using</span><span class="p">)</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="o">**</span><span class="n">u_kwargs</span><span class="p">)</span>
+                            <span class="n">is_update</span> <span class="o">=</span> <span class="kc">True</span>
+
+                            <span class="c1"># Getting the geometry (in OGR form), creating</span>
+                            <span class="c1"># one from the kwargs WKT, adding in additional</span>
+                            <span class="c1"># geometries, and update the attribute with the</span>
+                            <span class="c1"># just-updated geometry WKT.</span>
+                            <span class="n">geom_value</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">geom_field</span><span class="p">)</span>
+                            <span class="k">if</span> <span class="n">geom_value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                                <span class="n">geom</span> <span class="o">=</span> <span class="n">OGRGeometry</span><span class="p">(</span><span class="n">kwargs</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">geom_field</span><span class="p">])</span>
+                            <span class="k">else</span><span class="p">:</span>
+                                <span class="n">geom</span> <span class="o">=</span> <span class="n">geom_value</span><span class="o">.</span><span class="n">ogr</span>
+                                <span class="n">new</span> <span class="o">=</span> <span class="n">OGRGeometry</span><span class="p">(</span><span class="n">kwargs</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">geom_field</span><span class="p">])</span>
+                                <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="n">new</span><span class="p">:</span>
+                                    <span class="n">geom</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">g</span><span class="p">)</span>
+                            <span class="nb">setattr</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">geom_field</span><span class="p">,</span> <span class="n">geom</span><span class="o">.</span><span class="n">wkt</span><span class="p">)</span>
+                        <span class="k">except</span> <span class="n">ObjectDoesNotExist</span><span class="p">:</span>
+                            <span class="c1"># No unique model exists yet, create.</span>
+                            <span class="n">m</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">m</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="c1"># Attempting to save.</span>
+                        <span class="n">m</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">using</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">using</span><span class="p">)</span>
+                        <span class="n">num_saved</span> <span class="o">+=</span> <span class="mi">1</span>
+                        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                            <span class="n">stream</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                                <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="s2">&quot;Updated&quot;</span> <span class="k">if</span> <span class="n">is_update</span> <span class="k">else</span> <span class="s2">&quot;Saved&quot;</span><span class="p">,</span> <span class="n">m</span><span class="p">)</span>
+                            <span class="p">)</span>
+                    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">msg</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="n">strict</span><span class="p">:</span>
+                            <span class="c1"># Bailing out if the `strict` keyword is set.</span>
+                            <span class="k">if</span> <span class="ow">not</span> <span class="n">silent</span><span class="p">:</span>
+                                <span class="n">stream</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                                    <span class="s2">&quot;Failed to save the feature (id: </span><span class="si">%s</span><span class="s2">) into the &quot;</span>
+                                    <span class="s2">&quot;model with the keyword arguments:</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">feat</span><span class="o">.</span><span class="n">fid</span>
+                                <span class="p">)</span>
+                                <span class="n">stream</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%s</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">kwargs</span><span class="p">)</span>
+                            <span class="k">raise</span>
+                        <span class="k">elif</span> <span class="ow">not</span> <span class="n">silent</span><span class="p">:</span>
+                            <span class="n">stream</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                                <span class="s2">&quot;Failed to save </span><span class="si">%s</span><span class="s2">:</span><span class="se">\n</span><span class="s2"> </span><span class="si">%s</span><span class="se">\n</span><span class="s2">Continuing</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">kwargs</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
+                            <span class="p">)</span>
+
+                <span class="c1"># Printing progress information, if requested.</span>
+                <span class="k">if</span> <span class="n">progress</span> <span class="ow">and</span> <span class="n">num_feat</span> <span class="o">%</span> <span class="n">progress_interval</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">stream</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                        <span class="s2">&quot;Processed </span><span class="si">%d</span><span class="s2"> features, saved </span><span class="si">%d</span><span class="s2"> ...</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">num_feat</span><span class="p">,</span> <span class="n">num_saved</span><span class="p">)</span>
+                    <span class="p">)</span>
+
+            <span class="c1"># Only used for status output purposes -- incremental saving uses the</span>
+            <span class="c1"># values returned here.</span>
+            <span class="k">return</span> <span class="n">num_saved</span><span class="p">,</span> <span class="n">num_feat</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">transaction_decorator</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">_save</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">transaction_decorator</span><span class="p">(</span><span class="n">_save</span><span class="p">)</span>
+
+        <span class="n">nfeat</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">layer</span><span class="o">.</span><span class="n">num_feat</span>
+        <span class="k">if</span> <span class="n">step</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">step</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="ow">and</span> <span class="n">step</span> <span class="o">&lt;</span> <span class="n">nfeat</span><span class="p">:</span>
+            <span class="c1"># Incremental saving is requested at the given interval (step)</span>
+            <span class="k">if</span> <span class="n">default_range</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">LayerMapError</span><span class="p">(</span>
+                    <span class="s2">&quot;The `step` keyword may not be used in conjunction with the &quot;</span>
+                    <span class="s2">&quot;`fid_range` keyword.&quot;</span>
+                <span class="p">)</span>
+            <span class="n">beg</span><span class="p">,</span> <span class="n">num_feat</span><span class="p">,</span> <span class="n">num_saved</span> <span class="o">=</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="n">indices</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="n">step</span><span class="p">,</span> <span class="n">nfeat</span><span class="p">,</span> <span class="n">step</span><span class="p">)</span>
+            <span class="n">n_i</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">indices</span><span class="p">)</span>
+
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">end</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">indices</span><span class="p">):</span>
+                <span class="c1"># Constructing the slice to use for this step; the last slice is</span>
+                <span class="c1"># special (e.g, [100:] instead of [90:100]).</span>
+                <span class="k">if</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">==</span> <span class="n">n_i</span><span class="p">:</span>
+                    <span class="n">step_slice</span> <span class="o">=</span> <span class="nb">slice</span><span class="p">(</span><span class="n">beg</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">step_slice</span> <span class="o">=</span> <span class="nb">slice</span><span class="p">(</span><span class="n">beg</span><span class="p">,</span> <span class="n">end</span><span class="p">)</span>
+
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">num_feat</span><span class="p">,</span> <span class="n">num_saved</span> <span class="o">=</span> <span class="n">_save</span><span class="p">(</span><span class="n">step_slice</span><span class="p">,</span> <span class="n">num_feat</span><span class="p">,</span> <span class="n">num_saved</span><span class="p">)</span>
+                    <span class="n">beg</span> <span class="o">=</span> <span class="n">end</span>
+                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>  <span class="c1"># Deliberately catch everything</span>
+                    <span class="n">stream</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                        <span class="s2">&quot;</span><span class="si">%s</span><span class="se">\n</span><span class="s2">Failed to save slice: </span><span class="si">%s</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="s2">&quot;=-&quot;</span> <span class="o">*</span> <span class="mi">20</span><span class="p">,</span> <span class="n">step_slice</span><span class="p">)</span>
+                    <span class="p">)</span>
+                    <span class="k">raise</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Otherwise, just calling the previously defined _save() function.</span>
+            <span class="n">_save</span><span class="p">()</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

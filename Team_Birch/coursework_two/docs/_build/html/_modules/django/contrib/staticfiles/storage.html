@@ -1,0 +1,739 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.contrib.staticfiles.storage &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../django.html">django</a></li>
+      <li class="breadcrumb-item active">django.contrib.staticfiles.storage</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.contrib.staticfiles.storage</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">posixpath</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">urllib.parse</span><span class="w"> </span><span class="kn">import</span> <span class="n">unquote</span><span class="p">,</span> <span class="n">urldefrag</span><span class="p">,</span> <span class="n">urlsplit</span><span class="p">,</span> <span class="n">urlunsplit</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">STATICFILES_STORAGE_ALIAS</span><span class="p">,</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.staticfiles.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">check_settings</span><span class="p">,</span> <span class="n">matches_patterns</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImproperlyConfigured</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.files.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">ContentFile</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.files.storage</span><span class="w"> </span><span class="kn">import</span> <span class="n">FileSystemStorage</span><span class="p">,</span> <span class="n">storages</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.crypto</span><span class="w"> </span><span class="kn">import</span> <span class="n">md5</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">LazyObject</span>
+
+
+<div class="viewcode-block" id="StaticFilesStorage">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.StaticFilesStorage">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">StaticFilesStorage</span><span class="p">(</span><span class="n">FileSystemStorage</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Standard file system storage for static files.</span>
+
+<span class="sd">    The defaults for ``location`` and ``base_url`` are</span>
+<span class="sd">    ``STATIC_ROOT`` and ``STATIC_URL``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">location</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">base_url</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">location</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">location</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">STATIC_ROOT</span>
+        <span class="k">if</span> <span class="n">base_url</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">base_url</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">STATIC_URL</span>
+        <span class="n">check_settings</span><span class="p">(</span><span class="n">base_url</span><span class="p">)</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">location</span><span class="p">,</span> <span class="n">base_url</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="c1"># FileSystemStorage fallbacks to MEDIA_ROOT when location</span>
+        <span class="c1"># is empty, so we restore the empty value.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">location</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">base_location</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">location</span> <span class="o">=</span> <span class="kc">None</span>
+
+<div class="viewcode-block" id="StaticFilesStorage.path">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.StaticFilesStorage.path">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">location</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+                <span class="s2">&quot;You&#39;re using the staticfiles app &quot;</span>
+                <span class="s2">&quot;without having set the STATIC_ROOT &quot;</span>
+                <span class="s2">&quot;setting to a filesystem path.&quot;</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">path</span><span class="p">(</span><span class="n">name</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="HashedFilesMixin">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.HashedFilesMixin">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">HashedFilesMixin</span><span class="p">:</span>
+<div class="viewcode-block" id="HashedFilesMixin.default_template">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.HashedFilesMixin.default_template">[docs]</a>
+    <span class="n">default_template</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;url(&quot;</span><span class="si">%(url)s</span><span class="s2">&quot;)&quot;&quot;&quot;</span></div>
+
+<div class="viewcode-block" id="HashedFilesMixin.max_post_process_passes">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.HashedFilesMixin.max_post_process_passes">[docs]</a>
+    <span class="n">max_post_process_passes</span> <span class="o">=</span> <span class="mi">5</span></div>
+
+<div class="viewcode-block" id="HashedFilesMixin.support_js_module_import_aggregation">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.HashedFilesMixin.support_js_module_import_aggregation">[docs]</a>
+    <span class="n">support_js_module_import_aggregation</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+    <span class="n">_js_module_import_aggregation_patterns</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="s2">&quot;*.js&quot;</span><span class="p">,</span>
+        <span class="p">(</span>
+            <span class="p">(</span>
+                <span class="p">(</span>
+<span class="w">                    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;(?P&lt;matched&gt;import(?s:(?P&lt;import&gt;[\s\{].*?))&quot;&quot;&quot;</span>
+<span class="w">                    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;\s*from\s*[&#39;&quot;](?P&lt;url&gt;[\.\/].*?)[&quot;&#39;]\s*;)&quot;&quot;&quot;</span>
+                <span class="p">),</span>
+<span class="w">                </span><span class="sd">&quot;&quot;&quot;import%(import)s from &quot;%(url)s&quot;;&quot;&quot;&quot;</span><span class="p">,</span>
+            <span class="p">),</span>
+            <span class="p">(</span>
+                <span class="p">(</span>
+<span class="w">                    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;(?P&lt;matched&gt;export(?s:(?P&lt;exports&gt;[\s\{].*?))&quot;&quot;&quot;</span>
+<span class="w">                    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;\s*from\s*[&quot;&#39;](?P&lt;url&gt;[\.\/].*?)[&quot;&#39;]\s*;)&quot;&quot;&quot;</span>
+                <span class="p">),</span>
+<span class="w">                </span><span class="sd">&quot;&quot;&quot;export%(exports)s from &quot;%(url)s&quot;;&quot;&quot;&quot;</span><span class="p">,</span>
+            <span class="p">),</span>
+            <span class="p">(</span>
+<span class="w">                </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;(?P&lt;matched&gt;import\s*[&#39;&quot;](?P&lt;url&gt;[\.\/].*?)[&quot;&#39;]\s*;)&quot;&quot;&quot;</span><span class="p">,</span>
+<span class="w">                </span><span class="sd">&quot;&quot;&quot;import&quot;%(url)s&quot;;&quot;&quot;&quot;</span><span class="p">,</span>
+            <span class="p">),</span>
+            <span class="p">(</span>
+<span class="w">                </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;(?P&lt;matched&gt;import\([&quot;&#39;](?P&lt;url&gt;.*?)[&quot;&#39;]\))&quot;&quot;&quot;</span><span class="p">,</span>
+<span class="w">                </span><span class="sd">&quot;&quot;&quot;import(&quot;%(url)s&quot;)&quot;&quot;&quot;</span><span class="p">,</span>
+            <span class="p">),</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+<div class="viewcode-block" id="HashedFilesMixin.patterns">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.HashedFilesMixin.patterns">[docs]</a>
+    <span class="n">patterns</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="p">(</span>
+            <span class="s2">&quot;*.css&quot;</span><span class="p">,</span>
+            <span class="p">(</span>
+<span class="w">                </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;(?P&lt;matched&gt;url\([&#39;&quot;]{0,1}\s*(?P&lt;url&gt;.*?)[&quot;&#39;]{0,1}\))&quot;&quot;&quot;</span><span class="p">,</span>
+                <span class="p">(</span>
+<span class="w">                    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;(?P&lt;matched&gt;@import\s*[&quot;&#39;]\s*(?P&lt;url&gt;.*?)[&quot;&#39;])&quot;&quot;&quot;</span><span class="p">,</span>
+<span class="w">                    </span><span class="sd">&quot;&quot;&quot;@import url(&quot;%(url)s&quot;)&quot;&quot;&quot;</span><span class="p">,</span>
+                <span class="p">),</span>
+                <span class="p">(</span>
+                    <span class="p">(</span>
+                        <span class="sa">r</span><span class="s2">&quot;(?m)(?P&lt;matched&gt;)^(/\*#[ \t]&quot;</span>
+                        <span class="sa">r</span><span class="s2">&quot;(?-i:sourceMappingURL)=(?P&lt;url&gt;.*)[ \t]*\*/)$&quot;</span>
+                    <span class="p">),</span>
+                    <span class="s2">&quot;/*# sourceMappingURL=</span><span class="si">%(url)s</span><span class="s2"> */&quot;</span><span class="p">,</span>
+                <span class="p">),</span>
+            <span class="p">),</span>
+        <span class="p">),</span>
+        <span class="p">(</span>
+            <span class="s2">&quot;*.js&quot;</span><span class="p">,</span>
+            <span class="p">(</span>
+                <span class="p">(</span>
+                    <span class="sa">r</span><span class="s2">&quot;(?m)(?P&lt;matched&gt;)^(//# (?-i:sourceMappingURL)=(?P&lt;url&gt;.*))$&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;//# sourceMappingURL=</span><span class="si">%(url)s</span><span class="s2">&quot;</span><span class="p">,</span>
+                <span class="p">),</span>
+            <span class="p">),</span>
+        <span class="p">),</span>
+    <span class="p">)</span></div>
+
+<div class="viewcode-block" id="HashedFilesMixin.keep_intermediate_files">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.HashedFilesMixin.keep_intermediate_files">[docs]</a>
+    <span class="n">keep_intermediate_files</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">support_js_module_import_aggregation</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">patterns</span> <span class="o">+=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_js_module_import_aggregation_patterns</span><span class="p">,)</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_patterns</span> <span class="o">=</span> <span class="p">{}</span>
+<div class="viewcode-block" id="HashedFilesMixin.hashed_files">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.HashedFilesMixin.hashed_files">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">hashed_files</span> <span class="o">=</span> <span class="p">{}</span></div>
+
+        <span class="k">for</span> <span class="n">extension</span><span class="p">,</span> <span class="n">patterns</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">patterns</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">pattern</span> <span class="ow">in</span> <span class="n">patterns</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="p">(</span><span class="nb">tuple</span><span class="p">,</span> <span class="nb">list</span><span class="p">)):</span>
+                    <span class="n">pattern</span><span class="p">,</span> <span class="n">template</span> <span class="o">=</span> <span class="n">pattern</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">template</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">default_template</span>
+                <span class="n">compiled</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_patterns</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">extension</span><span class="p">,</span> <span class="p">[])</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">compiled</span><span class="p">,</span> <span class="n">template</span><span class="p">))</span>
+
+<div class="viewcode-block" id="HashedFilesMixin.file_hash">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.HashedFilesMixin.file_hash">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">file_hash</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a hash of the file with the given name and optional content.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">content</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="n">hasher</span> <span class="o">=</span> <span class="n">md5</span><span class="p">(</span><span class="n">usedforsecurity</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">content</span><span class="o">.</span><span class="n">chunks</span><span class="p">():</span>
+            <span class="n">hasher</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">chunk</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">hasher</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()[:</span><span class="mi">12</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="HashedFilesMixin.hashed_name">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.HashedFilesMixin.hashed_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">hashed_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="c1"># `filename` is the name of file to hash if `content` isn&#39;t given.</span>
+        <span class="c1"># `name` is the base name to construct the new hashed filename from.</span>
+        <span class="n">parsed_name</span> <span class="o">=</span> <span class="n">urlsplit</span><span class="p">(</span><span class="n">unquote</span><span class="p">(</span><span class="n">name</span><span class="p">))</span>
+        <span class="n">clean_name</span> <span class="o">=</span> <span class="n">parsed_name</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="p">(</span><span class="n">filename</span> <span class="ow">and</span> <span class="n">urlsplit</span><span class="p">(</span><span class="n">unquote</span><span class="p">(</span><span class="n">filename</span><span class="p">))</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span> <span class="ow">or</span> <span class="n">clean_name</span>
+        <span class="n">opened</span> <span class="o">=</span> <span class="n">content</span> <span class="ow">is</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">opened</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">&quot;The file &#39;</span><span class="si">%s</span><span class="s2">&#39; could not be found with </span><span class="si">%r</span><span class="s2">.&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
+                <span class="p">)</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">content</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
+                <span class="c1"># Handle directory paths and fragments</span>
+                <span class="k">return</span> <span class="n">name</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">file_hash</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">file_hash</span><span class="p">(</span><span class="n">clean_name</span><span class="p">,</span> <span class="n">content</span><span class="p">)</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">opened</span><span class="p">:</span>
+                <span class="n">content</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="n">path</span><span class="p">,</span> <span class="n">filename</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">clean_name</span><span class="p">)</span>
+        <span class="n">root</span><span class="p">,</span> <span class="n">ext</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">splitext</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+        <span class="n">file_hash</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;.</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">file_hash</span><span class="p">)</span> <span class="k">if</span> <span class="n">file_hash</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+        <span class="n">hashed_name</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s2">&quot;</span><span class="si">%s%s%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">file_hash</span><span class="p">,</span> <span class="n">ext</span><span class="p">))</span>
+        <span class="n">unparsed_name</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">parsed_name</span><span class="p">)</span>
+        <span class="n">unparsed_name</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">hashed_name</span>
+        <span class="c1"># Special casing for a @font-face hack, like url(myfont.eot?#iefix&quot;)</span>
+        <span class="c1"># http://www.fontspring.com/blog/the-new-bulletproof-font-face-syntax</span>
+        <span class="k">if</span> <span class="s2">&quot;?#&quot;</span> <span class="ow">in</span> <span class="n">name</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">unparsed_name</span><span class="p">[</span><span class="mi">3</span><span class="p">]:</span>
+            <span class="n">unparsed_name</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">+=</span> <span class="s2">&quot;?&quot;</span>
+        <span class="k">return</span> <span class="n">urlunsplit</span><span class="p">(</span><span class="n">unparsed_name</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_url</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">hashed_name_func</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">force</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">hashed_files</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the non-hashed URL in DEBUG mode.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">DEBUG</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">force</span><span class="p">:</span>
+            <span class="n">hashed_name</span><span class="p">,</span> <span class="n">fragment</span> <span class="o">=</span> <span class="n">name</span><span class="p">,</span> <span class="s2">&quot;&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">clean_name</span><span class="p">,</span> <span class="n">fragment</span> <span class="o">=</span> <span class="n">urldefrag</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">urlsplit</span><span class="p">(</span><span class="n">clean_name</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">):</span>  <span class="c1"># don&#39;t hash paths</span>
+                <span class="n">hashed_name</span> <span class="o">=</span> <span class="n">name</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">args</span> <span class="o">=</span> <span class="p">(</span><span class="n">clean_name</span><span class="p">,)</span>
+                <span class="k">if</span> <span class="n">hashed_files</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">args</span> <span class="o">+=</span> <span class="p">(</span><span class="n">hashed_files</span><span class="p">,)</span>
+                <span class="n">hashed_name</span> <span class="o">=</span> <span class="n">hashed_name_func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">)</span>
+
+        <span class="n">final_url</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">url</span><span class="p">(</span><span class="n">hashed_name</span><span class="p">)</span>
+
+        <span class="c1"># Special casing for a @font-face hack, like url(myfont.eot?#iefix&quot;)</span>
+        <span class="c1"># http://www.fontspring.com/blog/the-new-bulletproof-font-face-syntax</span>
+        <span class="n">query_fragment</span> <span class="o">=</span> <span class="s2">&quot;?#&quot;</span> <span class="ow">in</span> <span class="n">name</span>  <span class="c1"># [sic!]</span>
+        <span class="k">if</span> <span class="n">fragment</span> <span class="ow">or</span> <span class="n">query_fragment</span><span class="p">:</span>
+            <span class="n">urlparts</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">urlsplit</span><span class="p">(</span><span class="n">final_url</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">fragment</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">urlparts</span><span class="p">[</span><span class="mi">4</span><span class="p">]:</span>
+                <span class="n">urlparts</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span> <span class="o">=</span> <span class="n">fragment</span>
+            <span class="k">if</span> <span class="n">query_fragment</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">urlparts</span><span class="p">[</span><span class="mi">3</span><span class="p">]:</span>
+                <span class="n">urlparts</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">+=</span> <span class="s2">&quot;?&quot;</span>
+            <span class="n">final_url</span> <span class="o">=</span> <span class="n">urlunsplit</span><span class="p">(</span><span class="n">urlparts</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">unquote</span><span class="p">(</span><span class="n">final_url</span><span class="p">)</span>
+
+<div class="viewcode-block" id="HashedFilesMixin.url">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.HashedFilesMixin.url">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">url</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">force</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the non-hashed URL in DEBUG mode.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_url</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">stored_name</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">force</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="HashedFilesMixin.url_converter">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.HashedFilesMixin.url_converter">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">url_converter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">hashed_files</span><span class="p">,</span> <span class="n">template</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the custom URL converter for the given file name.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">template</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">template</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">default_template</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">converter</span><span class="p">(</span><span class="n">matchobj</span><span class="p">):</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            Convert the matched URL to a normalized and hashed URL.</span>
+
+<span class="sd">            This requires figuring out which files the matched URL resolves</span>
+<span class="sd">            to and calling the url() method of the storage.</span>
+<span class="sd">            &quot;&quot;&quot;</span>
+            <span class="n">matches</span> <span class="o">=</span> <span class="n">matchobj</span><span class="o">.</span><span class="n">groupdict</span><span class="p">()</span>
+            <span class="n">matched</span> <span class="o">=</span> <span class="n">matches</span><span class="p">[</span><span class="s2">&quot;matched&quot;</span><span class="p">]</span>
+            <span class="n">url</span> <span class="o">=</span> <span class="n">matches</span><span class="p">[</span><span class="s2">&quot;url&quot;</span><span class="p">]</span>
+
+            <span class="c1"># Ignore absolute/protocol-relative and data-uri URLs.</span>
+            <span class="k">if</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;^[a-z]+:&quot;</span><span class="p">,</span> <span class="n">url</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">matched</span>
+
+            <span class="c1"># Ignore absolute URLs that don&#39;t point to a static file (dynamic</span>
+            <span class="c1"># CSS / JS?). Note that STATIC_URL cannot be empty.</span>
+            <span class="k">if</span> <span class="n">url</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">url</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">STATIC_URL</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">matched</span>
+
+            <span class="c1"># Strip off the fragment so a path-like fragment won&#39;t interfere.</span>
+            <span class="n">url_path</span><span class="p">,</span> <span class="n">fragment</span> <span class="o">=</span> <span class="n">urldefrag</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+
+            <span class="c1"># Ignore URLs without a path</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">url_path</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">matched</span>
+
+            <span class="k">if</span> <span class="n">url_path</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">):</span>
+                <span class="c1"># Otherwise the condition above would have returned prematurely.</span>
+                <span class="k">assert</span> <span class="n">url_path</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">STATIC_URL</span><span class="p">)</span>
+                <span class="n">target_name</span> <span class="o">=</span> <span class="n">url_path</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">STATIC_URL</span><span class="p">)</span> <span class="p">:]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># We&#39;re using the posixpath module to mix paths and URLs conveniently.</span>
+                <span class="n">source_name</span> <span class="o">=</span> <span class="n">name</span> <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">sep</span> <span class="o">==</span> <span class="s2">&quot;/&quot;</span> <span class="k">else</span> <span class="n">name</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">sep</span><span class="p">,</span> <span class="s2">&quot;/&quot;</span><span class="p">)</span>
+                <span class="n">target_name</span> <span class="o">=</span> <span class="n">posixpath</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">posixpath</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">source_name</span><span class="p">),</span> <span class="n">url_path</span><span class="p">)</span>
+
+            <span class="c1"># Determine the hashed name of the target file with the storage backend.</span>
+            <span class="n">hashed_url</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_url</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_stored_name</span><span class="p">,</span>
+                <span class="n">unquote</span><span class="p">(</span><span class="n">target_name</span><span class="p">),</span>
+                <span class="n">force</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="n">hashed_files</span><span class="o">=</span><span class="n">hashed_files</span><span class="p">,</span>
+            <span class="p">)</span>
+
+            <span class="n">transformed_url</span> <span class="o">=</span> <span class="s2">&quot;/&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+                <span class="n">url_path</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">hashed_url</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">:]</span>
+            <span class="p">)</span>
+
+            <span class="c1"># Restore the fragment that was stripped off earlier.</span>
+            <span class="k">if</span> <span class="n">fragment</span><span class="p">:</span>
+                <span class="n">transformed_url</span> <span class="o">+=</span> <span class="p">(</span><span class="s2">&quot;?#&quot;</span> <span class="k">if</span> <span class="s2">&quot;?#&quot;</span> <span class="ow">in</span> <span class="n">url</span> <span class="k">else</span> <span class="s2">&quot;#&quot;</span><span class="p">)</span> <span class="o">+</span> <span class="n">fragment</span>
+
+            <span class="c1"># Return the hashed version to the file</span>
+            <span class="n">matches</span><span class="p">[</span><span class="s2">&quot;url&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">unquote</span><span class="p">(</span><span class="n">transformed_url</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">template</span> <span class="o">%</span> <span class="n">matches</span>
+
+        <span class="k">return</span> <span class="n">converter</span></div>
+
+
+<div class="viewcode-block" id="HashedFilesMixin.post_process">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.HashedFilesMixin.post_process">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">post_process</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">paths</span><span class="p">,</span> <span class="n">dry_run</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">options</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Post process the given dictionary of files (called from collectstatic).</span>
+
+<span class="sd">        Processing is actually two separate operations:</span>
+
+<span class="sd">        1. renaming files to include a hash of their content for cache-busting,</span>
+<span class="sd">           and copying those files to the target storage.</span>
+<span class="sd">        2. adjusting files which contain references to other files so they</span>
+<span class="sd">           refer to the cache-busting filenames.</span>
+
+<span class="sd">        If either of these are performed on a file, then that file is considered</span>
+<span class="sd">        post-processed.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># don&#39;t even dare to process the files if we&#39;re in dry run mode</span>
+        <span class="k">if</span> <span class="n">dry_run</span><span class="p">:</span>
+            <span class="k">return</span>
+
+        <span class="c1"># where to store the new paths</span>
+        <span class="n">hashed_files</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="c1"># build a list of adjustable files</span>
+        <span class="n">adjustable_paths</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">path</span> <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">paths</span> <span class="k">if</span> <span class="n">matches_patterns</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_patterns</span><span class="p">)</span>
+        <span class="p">]</span>
+
+        <span class="c1"># Adjustable files to yield at end, keyed by the original path.</span>
+        <span class="n">processed_adjustable_paths</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="c1"># Do a single pass first. Post-process all files once, yielding not</span>
+        <span class="c1"># adjustable files and exceptions, and collecting adjustable files.</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">hashed_name</span><span class="p">,</span> <span class="n">processed</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_post_process</span><span class="p">(</span>
+            <span class="n">paths</span><span class="p">,</span> <span class="n">adjustable_paths</span><span class="p">,</span> <span class="n">hashed_files</span>
+        <span class="p">):</span>
+            <span class="k">if</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">adjustable_paths</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">processed</span><span class="p">,</span> <span class="ne">Exception</span><span class="p">):</span>
+                <span class="k">yield</span> <span class="n">name</span><span class="p">,</span> <span class="n">hashed_name</span><span class="p">,</span> <span class="n">processed</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">processed_adjustable_paths</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">hashed_name</span><span class="p">,</span> <span class="n">processed</span><span class="p">)</span>
+
+        <span class="n">paths</span> <span class="o">=</span> <span class="p">{</span><span class="n">path</span><span class="p">:</span> <span class="n">paths</span><span class="p">[</span><span class="n">path</span><span class="p">]</span> <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">adjustable_paths</span><span class="p">}</span>
+        <span class="n">substitutions</span> <span class="o">=</span> <span class="kc">False</span>
+
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_post_process_passes</span><span class="p">):</span>
+            <span class="n">substitutions</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">hashed_name</span><span class="p">,</span> <span class="n">processed</span><span class="p">,</span> <span class="n">subst</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_post_process</span><span class="p">(</span>
+                <span class="n">paths</span><span class="p">,</span> <span class="n">adjustable_paths</span><span class="p">,</span> <span class="n">hashed_files</span>
+            <span class="p">):</span>
+                <span class="c1"># Overwrite since hashed_name may be newer.</span>
+                <span class="n">processed_adjustable_paths</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">hashed_name</span><span class="p">,</span> <span class="n">processed</span><span class="p">)</span>
+                <span class="n">substitutions</span> <span class="o">=</span> <span class="n">substitutions</span> <span class="ow">or</span> <span class="n">subst</span>
+
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">substitutions</span><span class="p">:</span>
+                <span class="k">break</span>
+
+        <span class="k">if</span> <span class="n">substitutions</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="s2">&quot;All&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;Max post-process passes exceeded.&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Store the processed paths</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">hashed_files</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">hashed_files</span><span class="p">)</span>
+
+        <span class="c1"># Yield adjustable files with final, hashed name.</span>
+        <span class="k">yield from</span> <span class="n">processed_adjustable_paths</span><span class="o">.</span><span class="n">values</span><span class="p">()</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_post_process</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">paths</span><span class="p">,</span> <span class="n">adjustable_paths</span><span class="p">,</span> <span class="n">hashed_files</span><span class="p">):</span>
+        <span class="c1"># Sort the files by directory level</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">path_level</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+            <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">name</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">sep</span><span class="p">))</span>
+
+        <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">paths</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">path_level</span><span class="p">,</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+            <span class="n">substitutions</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="c1"># use the original, local file, not the copied-but-unprocessed</span>
+            <span class="c1"># file, which might be somewhere far away, like S3</span>
+            <span class="n">storage</span><span class="p">,</span> <span class="n">path</span> <span class="o">=</span> <span class="n">paths</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
+            <span class="k">with</span> <span class="n">storage</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="k">as</span> <span class="n">original_file</span><span class="p">:</span>
+                <span class="n">cleaned_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">clean_name</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+                <span class="n">hash_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">hash_key</span><span class="p">(</span><span class="n">cleaned_name</span><span class="p">)</span>
+
+                <span class="c1"># generate the hash with the original content, even for</span>
+                <span class="c1"># adjustable files.</span>
+                <span class="k">if</span> <span class="n">hash_key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">hashed_files</span><span class="p">:</span>
+                    <span class="n">hashed_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">hashed_name</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">original_file</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">hashed_name</span> <span class="o">=</span> <span class="n">hashed_files</span><span class="p">[</span><span class="n">hash_key</span><span class="p">]</span>
+
+                <span class="c1"># then get the original&#39;s file content..</span>
+                <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">original_file</span><span class="p">,</span> <span class="s2">&quot;seek&quot;</span><span class="p">):</span>
+                    <span class="n">original_file</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+                <span class="n">hashed_file_exists</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">hashed_name</span><span class="p">)</span>
+                <span class="n">processed</span> <span class="o">=</span> <span class="kc">False</span>
+
+                <span class="c1"># ..to apply each replacement pattern to the content</span>
+                <span class="k">if</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">adjustable_paths</span><span class="p">:</span>
+                    <span class="n">old_hashed_name</span> <span class="o">=</span> <span class="n">hashed_name</span>
+                    <span class="n">content</span> <span class="o">=</span> <span class="n">original_file</span><span class="o">.</span><span class="n">read</span><span class="p">()</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+                    <span class="k">for</span> <span class="n">extension</span><span class="p">,</span> <span class="n">patterns</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_patterns</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                        <span class="k">if</span> <span class="n">matches_patterns</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="p">(</span><span class="n">extension</span><span class="p">,)):</span>
+                            <span class="k">for</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">template</span> <span class="ow">in</span> <span class="n">patterns</span><span class="p">:</span>
+                                <span class="n">converter</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">url_converter</span><span class="p">(</span>
+                                    <span class="n">name</span><span class="p">,</span> <span class="n">hashed_files</span><span class="p">,</span> <span class="n">template</span>
+                                <span class="p">)</span>
+                                <span class="k">try</span><span class="p">:</span>
+                                    <span class="n">content</span> <span class="o">=</span> <span class="n">pattern</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">converter</span><span class="p">,</span> <span class="n">content</span><span class="p">)</span>
+                                <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+                                    <span class="k">yield</span> <span class="n">name</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="n">exc</span><span class="p">,</span> <span class="kc">False</span>
+                    <span class="k">if</span> <span class="n">hashed_file_exists</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">hashed_name</span><span class="p">)</span>
+                    <span class="c1"># then save the processed result</span>
+                    <span class="n">content_file</span> <span class="o">=</span> <span class="n">ContentFile</span><span class="p">(</span><span class="n">content</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span>
+                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">keep_intermediate_files</span><span class="p">:</span>
+                        <span class="c1"># Save intermediate file for reference</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">_save</span><span class="p">(</span><span class="n">hashed_name</span><span class="p">,</span> <span class="n">content_file</span><span class="p">)</span>
+                    <span class="n">hashed_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">hashed_name</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">content_file</span><span class="p">)</span>
+
+                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">hashed_name</span><span class="p">):</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">hashed_name</span><span class="p">)</span>
+
+                    <span class="n">saved_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_save</span><span class="p">(</span><span class="n">hashed_name</span><span class="p">,</span> <span class="n">content_file</span><span class="p">)</span>
+                    <span class="n">hashed_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">clean_name</span><span class="p">(</span><span class="n">saved_name</span><span class="p">)</span>
+                    <span class="c1"># If the file hash stayed the same, this file didn&#39;t change</span>
+                    <span class="k">if</span> <span class="n">old_hashed_name</span> <span class="o">==</span> <span class="n">hashed_name</span><span class="p">:</span>
+                        <span class="n">substitutions</span> <span class="o">=</span> <span class="kc">False</span>
+                    <span class="n">processed</span> <span class="o">=</span> <span class="kc">True</span>
+
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">processed</span><span class="p">:</span>
+                    <span class="c1"># or handle the case in which neither processing nor</span>
+                    <span class="c1"># a change to the original file happened</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="n">hashed_file_exists</span><span class="p">:</span>
+                        <span class="n">processed</span> <span class="o">=</span> <span class="kc">True</span>
+                        <span class="n">saved_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_save</span><span class="p">(</span><span class="n">hashed_name</span><span class="p">,</span> <span class="n">original_file</span><span class="p">)</span>
+                        <span class="n">hashed_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">clean_name</span><span class="p">(</span><span class="n">saved_name</span><span class="p">)</span>
+
+                <span class="c1"># and then set the cache accordingly</span>
+                <span class="n">hashed_files</span><span class="p">[</span><span class="n">hash_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">hashed_name</span>
+
+                <span class="k">yield</span> <span class="n">name</span><span class="p">,</span> <span class="n">hashed_name</span><span class="p">,</span> <span class="n">processed</span><span class="p">,</span> <span class="n">substitutions</span>
+
+<div class="viewcode-block" id="HashedFilesMixin.clean_name">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.HashedFilesMixin.clean_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clean_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">name</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\\</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;/&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="HashedFilesMixin.hash_key">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.HashedFilesMixin.hash_key">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">hash_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">name</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_stored_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">hashed_files</span><span class="p">):</span>
+        <span class="c1"># Normalize the path to avoid multiple names for the same file like</span>
+        <span class="c1"># ../foo/bar.css and ../foo/../foo/bar.css which normalize to the same</span>
+        <span class="c1"># path.</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="n">posixpath</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="n">cleaned_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">clean_name</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="n">hash_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">hash_key</span><span class="p">(</span><span class="n">cleaned_name</span><span class="p">)</span>
+        <span class="n">cache_name</span> <span class="o">=</span> <span class="n">hashed_files</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">hash_key</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">cache_name</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">cache_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">clean_name</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">hashed_name</span><span class="p">(</span><span class="n">name</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">cache_name</span>
+
+<div class="viewcode-block" id="HashedFilesMixin.stored_name">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.HashedFilesMixin.stored_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">stored_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="n">cleaned_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">clean_name</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="n">hash_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">hash_key</span><span class="p">(</span><span class="n">cleaned_name</span><span class="p">)</span>
+        <span class="n">cache_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">hashed_files</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">hash_key</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">cache_name</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">cache_name</span>
+        <span class="c1"># No cached name found, recalculate it from the files.</span>
+        <span class="n">intermediate_name</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_post_process_passes</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="n">cache_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">clean_name</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">hashed_name</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="n">intermediate_name</span><span class="p">)</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">intermediate_name</span> <span class="o">==</span> <span class="n">cache_name</span><span class="p">:</span>
+                <span class="c1"># Store the hashed name if there was a miss.</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">hashed_files</span><span class="p">[</span><span class="n">hash_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">cache_name</span>
+                <span class="k">return</span> <span class="n">cache_name</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Move on to the next intermediate file.</span>
+                <span class="n">intermediate_name</span> <span class="o">=</span> <span class="n">cache_name</span>
+        <span class="c1"># If the cache name can&#39;t be determined after the max number of passes,</span>
+        <span class="c1"># the intermediate files on disk may be corrupt; avoid an infinite loop.</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;The name &#39;</span><span class="si">%s</span><span class="s2">&#39; could not be hashed with </span><span class="si">%r</span><span class="s2">.&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="bp">self</span><span class="p">))</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="ManifestFilesMixin">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.ManifestFilesMixin">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ManifestFilesMixin</span><span class="p">(</span><span class="n">HashedFilesMixin</span><span class="p">):</span>
+<div class="viewcode-block" id="ManifestFilesMixin.manifest_version">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.ManifestFilesMixin.manifest_version">[docs]</a>
+    <span class="n">manifest_version</span> <span class="o">=</span> <span class="s2">&quot;1.1&quot;</span>  <span class="c1"># the manifest format standard</span></div>
+
+<div class="viewcode-block" id="ManifestFilesMixin.manifest_name">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.ManifestFilesMixin.manifest_name">[docs]</a>
+    <span class="n">manifest_name</span> <span class="o">=</span> <span class="s2">&quot;staticfiles.json&quot;</span></div>
+
+<div class="viewcode-block" id="ManifestFilesMixin.manifest_strict">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.ManifestFilesMixin.manifest_strict">[docs]</a>
+    <span class="n">manifest_strict</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+<div class="viewcode-block" id="ManifestFilesMixin.keep_intermediate_files">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.ManifestFilesMixin.keep_intermediate_files">[docs]</a>
+    <span class="n">keep_intermediate_files</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="n">manifest_storage</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">manifest_storage</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">manifest_storage</span> <span class="o">=</span> <span class="bp">self</span>
+<div class="viewcode-block" id="ManifestFilesMixin.manifest_storage">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.ManifestFilesMixin.manifest_storage">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">manifest_storage</span> <span class="o">=</span> <span class="n">manifest_storage</span></div>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">hashed_files</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">manifest_hash</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">load_manifest</span><span class="p">()</span>
+
+<div class="viewcode-block" id="ManifestFilesMixin.read_manifest">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.ManifestFilesMixin.read_manifest">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">read_manifest</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">manifest_storage</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">manifest_name</span><span class="p">)</span> <span class="k">as</span> <span class="n">manifest</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">manifest</span><span class="o">.</span><span class="n">read</span><span class="p">()</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">FileNotFoundError</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="ManifestFilesMixin.load_manifest">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.ManifestFilesMixin.load_manifest">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load_manifest</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">content</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">read_manifest</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">content</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{},</span> <span class="s2">&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">stored</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">content</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">version</span> <span class="o">=</span> <span class="n">stored</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;version&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">version</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;1.0&quot;</span><span class="p">,</span> <span class="s2">&quot;1.1&quot;</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">stored</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;paths&quot;</span><span class="p">,</span> <span class="p">{}),</span> <span class="n">stored</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;hash&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;Couldn&#39;t load manifest &#39;</span><span class="si">%s</span><span class="s2">&#39; (version </span><span class="si">%s</span><span class="s2">)&quot;</span>
+            <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">manifest_name</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">manifest_version</span><span class="p">)</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ManifestFilesMixin.post_process">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.ManifestFilesMixin.post_process">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">post_process</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">hashed_files</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">yield from</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">post_process</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;dry_run&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">save_manifest</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="ManifestFilesMixin.save_manifest">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.ManifestFilesMixin.save_manifest">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">save_manifest</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">manifest_hash</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">file_hash</span><span class="p">(</span>
+            <span class="kc">None</span><span class="p">,</span> <span class="n">ContentFile</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">hashed_files</span><span class="o">.</span><span class="n">items</span><span class="p">()))</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span>
+        <span class="p">)</span>
+        <span class="n">payload</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;paths&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">hashed_files</span><span class="p">,</span>
+            <span class="s2">&quot;version&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">manifest_version</span><span class="p">,</span>
+            <span class="s2">&quot;hash&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">manifest_hash</span><span class="p">,</span>
+        <span class="p">}</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">manifest_storage</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">manifest_name</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">manifest_storage</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">manifest_name</span><span class="p">)</span>
+        <span class="n">contents</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">manifest_storage</span><span class="o">.</span><span class="n">_save</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">manifest_name</span><span class="p">,</span> <span class="n">ContentFile</span><span class="p">(</span><span class="n">contents</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="ManifestFilesMixin.stored_name">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.ManifestFilesMixin.stored_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">stored_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="n">parsed_name</span> <span class="o">=</span> <span class="n">urlsplit</span><span class="p">(</span><span class="n">unquote</span><span class="p">(</span><span class="n">name</span><span class="p">))</span>
+        <span class="n">clean_name</span> <span class="o">=</span> <span class="n">parsed_name</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="n">hash_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">hash_key</span><span class="p">(</span><span class="n">clean_name</span><span class="p">)</span>
+        <span class="n">cache_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">hashed_files</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">hash_key</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">cache_name</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">manifest_strict</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">&quot;Missing staticfiles manifest entry for &#39;</span><span class="si">%s</span><span class="s2">&#39;&quot;</span> <span class="o">%</span> <span class="n">clean_name</span>
+                <span class="p">)</span>
+            <span class="n">cache_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">clean_name</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">hashed_name</span><span class="p">(</span><span class="n">name</span><span class="p">))</span>
+        <span class="n">unparsed_name</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">parsed_name</span><span class="p">)</span>
+        <span class="n">unparsed_name</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">cache_name</span>
+        <span class="c1"># Special casing for a @font-face hack, like url(myfont.eot?#iefix&quot;)</span>
+        <span class="c1"># http://www.fontspring.com/blog/the-new-bulletproof-font-face-syntax</span>
+        <span class="k">if</span> <span class="s2">&quot;?#&quot;</span> <span class="ow">in</span> <span class="n">name</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">unparsed_name</span><span class="p">[</span><span class="mi">3</span><span class="p">]:</span>
+            <span class="n">unparsed_name</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">+=</span> <span class="s2">&quot;?&quot;</span>
+        <span class="k">return</span> <span class="n">urlunsplit</span><span class="p">(</span><span class="n">unparsed_name</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="ManifestStaticFilesStorage">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.ManifestStaticFilesStorage">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ManifestStaticFilesStorage</span><span class="p">(</span><span class="n">ManifestFilesMixin</span><span class="p">,</span> <span class="n">StaticFilesStorage</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A static file system storage backend which also saves</span>
+<span class="sd">    hashed copies of the files it saves.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">pass</span></div>
+
+
+
+<div class="viewcode-block" id="ConfiguredStorage">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.ConfiguredStorage">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ConfiguredStorage</span><span class="p">(</span><span class="n">LazyObject</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_setup</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_wrapped</span> <span class="o">=</span> <span class="n">storages</span><span class="p">[</span><span class="n">STATICFILES_STORAGE_ALIAS</span><span class="p">]</span></div>
+
+
+
+<div class="viewcode-block" id="staticfiles_storage">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/storage/index.html#django.contrib.staticfiles.storage.staticfiles_storage">[docs]</a>
+<span class="n">staticfiles_storage</span> <span class="o">=</span> <span class="n">ConfiguredStorage</span><span class="p">()</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

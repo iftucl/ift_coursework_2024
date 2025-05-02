@@ -1,0 +1,1490 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.contrib.admin.checks &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../admin.html">django.contrib.admin</a></li>
+      <li class="breadcrumb-item active">django.contrib.admin.checks</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.contrib.admin.checks</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">collections</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">itertools</span><span class="w"> </span><span class="kn">import</span> <span class="n">chain</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.apps</span><span class="w"> </span><span class="kn">import</span> <span class="n">apps</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.admin.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">NotRelationField</span><span class="p">,</span> <span class="n">flatten</span><span class="p">,</span> <span class="n">get_fields_from_path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">checks</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">FieldDoesNotExist</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">models</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.models.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">LOOKUP_SEP</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.models.expressions</span><span class="w"> </span><span class="kn">import</span> <span class="n">Combinable</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.forms.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModelForm</span><span class="p">,</span> <span class="n">BaseModelFormSet</span><span class="p">,</span> <span class="n">_get_foreign_key</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.template</span><span class="w"> </span><span class="kn">import</span> <span class="n">engines</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.template.backends.django</span><span class="w"> </span><span class="kn">import</span> <span class="n">DjangoTemplates</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.module_loading</span><span class="w"> </span><span class="kn">import</span> <span class="n">import_string</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_issubclass</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">classinfo</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    issubclass() variant that doesn&#39;t raise an exception if cls isn&#39;t a</span>
+<span class="sd">    class.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">issubclass</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">classinfo</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_contains_subclass</span><span class="p">(</span><span class="n">class_path</span><span class="p">,</span> <span class="n">candidate_paths</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return whether or not a dotted class path (or a subclass of that class) is</span>
+<span class="sd">    found in a list of candidate paths.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="bp">cls</span> <span class="o">=</span> <span class="n">import_string</span><span class="p">(</span><span class="n">class_path</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">candidate_paths</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">candidate_cls</span> <span class="o">=</span> <span class="n">import_string</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+            <span class="c1"># ImportErrors are raised elsewhere.</span>
+            <span class="k">continue</span>
+        <span class="k">if</span> <span class="n">_issubclass</span><span class="p">(</span><span class="n">candidate_cls</span><span class="p">,</span> <span class="bp">cls</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">return</span> <span class="kc">False</span>
+
+
+<div class="viewcode-block" id="check_admin_app">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/checks/index.html#django.contrib.admin.checks.check_admin_app">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">check_admin_app</span><span class="p">(</span><span class="n">app_configs</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.admin.sites</span><span class="w"> </span><span class="kn">import</span> <span class="n">all_sites</span>
+
+    <span class="n">errors</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">site</span> <span class="ow">in</span> <span class="n">all_sites</span><span class="p">:</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">site</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="n">app_configs</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">errors</span></div>
+
+
+
+<div class="viewcode-block" id="check_dependencies">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/checks/index.html#django.contrib.admin.checks.check_dependencies">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">check_dependencies</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Check that the admin&#39;s dependencies are correctly installed.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.admin.sites</span><span class="w"> </span><span class="kn">import</span> <span class="n">all_sites</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">apps</span><span class="o">.</span><span class="n">is_installed</span><span class="p">(</span><span class="s2">&quot;django.contrib.admin&quot;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[]</span>
+    <span class="n">errors</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">app_dependencies</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="p">(</span><span class="s2">&quot;django.contrib.contenttypes&quot;</span><span class="p">,</span> <span class="mi">401</span><span class="p">),</span>
+        <span class="p">(</span><span class="s2">&quot;django.contrib.auth&quot;</span><span class="p">,</span> <span class="mi">405</span><span class="p">),</span>
+        <span class="p">(</span><span class="s2">&quot;django.contrib.messages&quot;</span><span class="p">,</span> <span class="mi">406</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="k">for</span> <span class="n">app_name</span><span class="p">,</span> <span class="n">error_code</span> <span class="ow">in</span> <span class="n">app_dependencies</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">apps</span><span class="o">.</span><span class="n">is_installed</span><span class="p">(</span><span class="n">app_name</span><span class="p">):</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                    <span class="s2">&quot;&#39;</span><span class="si">%s</span><span class="s2">&#39; must be in INSTALLED_APPS in order to use the admin &quot;</span>
+                    <span class="s2">&quot;application.&quot;</span> <span class="o">%</span> <span class="n">app_name</span><span class="p">,</span>
+                    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E</span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">error_code</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+    <span class="k">for</span> <span class="n">engine</span> <span class="ow">in</span> <span class="n">engines</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">engine</span><span class="p">,</span> <span class="n">DjangoTemplates</span><span class="p">):</span>
+            <span class="n">django_templates_instance</span> <span class="o">=</span> <span class="n">engine</span><span class="o">.</span><span class="n">engine</span>
+            <span class="k">break</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">django_templates_instance</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">django_templates_instance</span><span class="p">:</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                <span class="s2">&quot;A &#39;django.template.backends.django.DjangoTemplates&#39; instance &quot;</span>
+                <span class="s2">&quot;must be configured in TEMPLATES in order to use the admin &quot;</span>
+                <span class="s2">&quot;application.&quot;</span><span class="p">,</span>
+                <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E403&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="s2">&quot;django.contrib.auth.context_processors.auth&quot;</span>
+            <span class="ow">not</span> <span class="ow">in</span> <span class="n">django_templates_instance</span><span class="o">.</span><span class="n">context_processors</span>
+            <span class="ow">and</span> <span class="n">_contains_subclass</span><span class="p">(</span>
+                <span class="s2">&quot;django.contrib.auth.backends.ModelBackend&quot;</span><span class="p">,</span>
+                <span class="n">settings</span><span class="o">.</span><span class="n">AUTHENTICATION_BACKENDS</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">):</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                    <span class="s2">&quot;&#39;django.contrib.auth.context_processors.auth&#39; must be &quot;</span>
+                    <span class="s2">&quot;enabled in DjangoTemplates (TEMPLATES) if using the default &quot;</span>
+                    <span class="s2">&quot;auth backend in order to use the admin application.&quot;</span><span class="p">,</span>
+                    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E402&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="s2">&quot;django.contrib.messages.context_processors.messages&quot;</span>
+            <span class="ow">not</span> <span class="ow">in</span> <span class="n">django_templates_instance</span><span class="o">.</span><span class="n">context_processors</span>
+        <span class="p">):</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                    <span class="s2">&quot;&#39;django.contrib.messages.context_processors.messages&#39; must &quot;</span>
+                    <span class="s2">&quot;be enabled in DjangoTemplates (TEMPLATES) in order to use &quot;</span>
+                    <span class="s2">&quot;the admin application.&quot;</span><span class="p">,</span>
+                    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E404&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+        <span class="n">sidebar_enabled</span> <span class="o">=</span> <span class="nb">any</span><span class="p">(</span><span class="n">site</span><span class="o">.</span><span class="n">enable_nav_sidebar</span> <span class="k">for</span> <span class="n">site</span> <span class="ow">in</span> <span class="n">all_sites</span><span class="p">)</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="n">sidebar_enabled</span>
+            <span class="ow">and</span> <span class="s2">&quot;django.template.context_processors.request&quot;</span>
+            <span class="ow">not</span> <span class="ow">in</span> <span class="n">django_templates_instance</span><span class="o">.</span><span class="n">context_processors</span>
+        <span class="p">):</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="n">checks</span><span class="o">.</span><span class="n">Warning</span><span class="p">(</span>
+                    <span class="s2">&quot;&#39;django.template.context_processors.request&#39; must be enabled &quot;</span>
+                    <span class="s2">&quot;in DjangoTemplates (TEMPLATES) in order to use the admin &quot;</span>
+                    <span class="s2">&quot;navigation sidebar.&quot;</span><span class="p">,</span>
+                    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.W411&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_contains_subclass</span><span class="p">(</span>
+        <span class="s2">&quot;django.contrib.auth.middleware.AuthenticationMiddleware&quot;</span><span class="p">,</span> <span class="n">settings</span><span class="o">.</span><span class="n">MIDDLEWARE</span>
+    <span class="p">):</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                <span class="s2">&quot;&#39;django.contrib.auth.middleware.AuthenticationMiddleware&#39; must &quot;</span>
+                <span class="s2">&quot;be in MIDDLEWARE in order to use the admin application.&quot;</span><span class="p">,</span>
+                <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E408&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_contains_subclass</span><span class="p">(</span>
+        <span class="s2">&quot;django.contrib.messages.middleware.MessageMiddleware&quot;</span><span class="p">,</span> <span class="n">settings</span><span class="o">.</span><span class="n">MIDDLEWARE</span>
+    <span class="p">):</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                <span class="s2">&quot;&#39;django.contrib.messages.middleware.MessageMiddleware&#39; must &quot;</span>
+                <span class="s2">&quot;be in MIDDLEWARE in order to use the admin application.&quot;</span><span class="p">,</span>
+                <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E409&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_contains_subclass</span><span class="p">(</span>
+        <span class="s2">&quot;django.contrib.sessions.middleware.SessionMiddleware&quot;</span><span class="p">,</span> <span class="n">settings</span><span class="o">.</span><span class="n">MIDDLEWARE</span>
+    <span class="p">):</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                <span class="s2">&quot;&#39;django.contrib.sessions.middleware.SessionMiddleware&#39; must &quot;</span>
+                <span class="s2">&quot;be in MIDDLEWARE in order to use the admin application.&quot;</span><span class="p">,</span>
+                <span class="n">hint</span><span class="o">=</span><span class="p">(</span>
+                    <span class="s2">&quot;Insert &quot;</span>
+                    <span class="s2">&quot;&#39;django.contrib.sessions.middleware.SessionMiddleware&#39; &quot;</span>
+                    <span class="s2">&quot;before &quot;</span>
+                    <span class="s2">&quot;&#39;django.contrib.auth.middleware.AuthenticationMiddleware&#39;.&quot;</span>
+                <span class="p">),</span>
+                <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E410&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">errors</span></div>
+
+
+
+<div class="viewcode-block" id="BaseModelAdminChecks">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/checks/index.html#django.contrib.admin.checks.BaseModelAdminChecks">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BaseModelAdminChecks</span><span class="p">:</span>
+<div class="viewcode-block" id="BaseModelAdminChecks.check">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/checks/index.html#django.contrib.admin.checks.BaseModelAdminChecks.check">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">admin_obj</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_autocomplete_fields</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_raw_id_fields</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_fields</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_fieldsets</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_exclude</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_form</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_filter_vertical</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_filter_horizontal</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_radio_fields</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_prepopulated_fields</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_view_on_site_url</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_ordering</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_readonly_fields</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+        <span class="p">]</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_autocomplete_fields</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Check that `autocomplete_fields` is a list or tuple of model fields.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">autocomplete_fields</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                <span class="s2">&quot;a list or tuple&quot;</span><span class="p">,</span>
+                <span class="n">option</span><span class="o">=</span><span class="s2">&quot;autocomplete_fields&quot;</span><span class="p">,</span>
+                <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span>
+                <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E036&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">list</span><span class="p">(</span>
+                <span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span>
+                    <span class="p">[</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">_check_autocomplete_fields_item</span><span class="p">(</span>
+                            <span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="s2">&quot;autocomplete_fields[</span><span class="si">%d</span><span class="s2">]&quot;</span> <span class="o">%</span> <span class="n">index</span>
+                        <span class="p">)</span>
+                        <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">autocomplete_fields</span><span class="p">)</span>
+                    <span class="p">]</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_autocomplete_fields_item</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">label</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Check that an item in `autocomplete_fields` is a ForeignKey or a</span>
+<span class="sd">        ManyToManyField and that the item has a related ModelAdmin with</span>
+<span class="sd">        search_fields defined.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">field</span> <span class="o">=</span> <span class="n">obj</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">get_field</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">FieldDoesNotExist</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">refer_to_missing_field</span><span class="p">(</span>
+                <span class="n">field</span><span class="o">=</span><span class="n">field_name</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="n">label</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E037&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">field</span><span class="o">.</span><span class="n">many_to_many</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">ForeignKey</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                    <span class="s2">&quot;a foreign key or a many-to-many field&quot;</span><span class="p">,</span>
+                    <span class="n">option</span><span class="o">=</span><span class="n">label</span><span class="p">,</span>
+                    <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span>
+                    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E038&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="n">related_admin</span> <span class="o">=</span> <span class="n">obj</span><span class="o">.</span><span class="n">admin_site</span><span class="o">.</span><span class="n">_registry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">model</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">related_admin</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[</span>
+                    <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                        <span class="s1">&#39;An admin for model &quot;</span><span class="si">%s</span><span class="s1">&quot; has to be registered &#39;</span>
+                        <span class="s2">&quot;to be referenced by </span><span class="si">%s</span><span class="s2">.autocomplete_fields.&quot;</span>
+                        <span class="o">%</span> <span class="p">(</span>
+                            <span class="n">field</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+                            <span class="nb">type</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+                        <span class="p">),</span>
+                        <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                        <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E039&quot;</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">]</span>
+            <span class="k">elif</span> <span class="ow">not</span> <span class="n">related_admin</span><span class="o">.</span><span class="n">search_fields</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[</span>
+                    <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                        <span class="s1">&#39;</span><span class="si">%s</span><span class="s1"> must define &quot;search_fields&quot;, because it</span><span class="se">\&#39;</span><span class="s1">s &#39;</span>
+                        <span class="s2">&quot;referenced by </span><span class="si">%s</span><span class="s2">.autocomplete_fields.&quot;</span>
+                        <span class="o">%</span> <span class="p">(</span>
+                            <span class="n">related_admin</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+                            <span class="nb">type</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+                        <span class="p">),</span>
+                        <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                        <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E040&quot;</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">]</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_raw_id_fields</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check that `raw_id_fields` only contains field names that are listed</span>
+<span class="sd">        on the model.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">raw_id_fields</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                <span class="s2">&quot;a list or tuple&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;raw_id_fields&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E001&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">list</span><span class="p">(</span>
+                <span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_check_raw_id_fields_item</span><span class="p">(</span>
+                        <span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="s2">&quot;raw_id_fields[</span><span class="si">%d</span><span class="s2">]&quot;</span> <span class="o">%</span> <span class="n">index</span>
+                    <span class="p">)</span>
+                    <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">raw_id_fields</span><span class="p">)</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_raw_id_fields_item</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">label</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check an item of `raw_id_fields`, i.e. check that field named</span>
+<span class="sd">        `field_name` exists in model `model` and is a ForeignKey or a</span>
+<span class="sd">        ManyToManyField.&quot;&quot;&quot;</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">field</span> <span class="o">=</span> <span class="n">obj</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">get_field</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">FieldDoesNotExist</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">refer_to_missing_field</span><span class="p">(</span>
+                <span class="n">field</span><span class="o">=</span><span class="n">field_name</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="n">label</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E002&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Using attname is not supported.</span>
+            <span class="k">if</span> <span class="n">field</span><span class="o">.</span><span class="n">name</span> <span class="o">!=</span> <span class="n">field_name</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">refer_to_missing_field</span><span class="p">(</span>
+                    <span class="n">field</span><span class="o">=</span><span class="n">field_name</span><span class="p">,</span>
+                    <span class="n">option</span><span class="o">=</span><span class="n">label</span><span class="p">,</span>
+                    <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span>
+                    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E002&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">field</span><span class="o">.</span><span class="n">many_to_many</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">ForeignKey</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                    <span class="s2">&quot;a foreign key or a many-to-many field&quot;</span><span class="p">,</span>
+                    <span class="n">option</span><span class="o">=</span><span class="n">label</span><span class="p">,</span>
+                    <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span>
+                    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E003&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_fields</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check that `fields` only refer to existing fields, doesn&#39;t contain</span>
+<span class="sd">        duplicates. Check if at most one of `fields` and `fieldsets` is defined.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">obj</span><span class="o">.</span><span class="n">fields</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">fields</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span><span class="s2">&quot;a list or tuple&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;fields&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E004&quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">obj</span><span class="o">.</span><span class="n">fieldsets</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[</span>
+                <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                    <span class="s2">&quot;Both &#39;fieldsets&#39; and &#39;fields&#39; are specified.&quot;</span><span class="p">,</span>
+                    <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E005&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">]</span>
+        <span class="n">fields</span> <span class="o">=</span> <span class="n">flatten</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">fields</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">fields</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">fields</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="p">[</span>
+                <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                    <span class="s2">&quot;The value of &#39;fields&#39; contains duplicate field(s).&quot;</span><span class="p">,</span>
+                    <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E006&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">]</span>
+
+        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span>
+            <span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_check_field_spec</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="s2">&quot;fields&quot;</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="n">obj</span><span class="o">.</span><span class="n">fields</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_fieldsets</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check that fieldsets is properly formatted and doesn&#39;t contain</span>
+<span class="sd">        duplicates.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">obj</span><span class="o">.</span><span class="n">fieldsets</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">fieldsets</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                <span class="s2">&quot;a list or tuple&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;fieldsets&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E007&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">seen_fields</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">return</span> <span class="nb">list</span><span class="p">(</span>
+                <span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_check_fieldsets_item</span><span class="p">(</span>
+                        <span class="n">obj</span><span class="p">,</span> <span class="n">fieldset</span><span class="p">,</span> <span class="s2">&quot;fieldsets[</span><span class="si">%d</span><span class="s2">]&quot;</span> <span class="o">%</span> <span class="n">index</span><span class="p">,</span> <span class="n">seen_fields</span>
+                    <span class="p">)</span>
+                    <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">fieldset</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">fieldsets</span><span class="p">)</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_fieldsets_item</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">fieldset</span><span class="p">,</span> <span class="n">label</span><span class="p">,</span> <span class="n">seen_fields</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check an item of `fieldsets`, i.e. check that this is a pair of a</span>
+<span class="sd">        set name and a dictionary containing &quot;fields&quot; key.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">fieldset</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span><span class="s2">&quot;a list or tuple&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="n">label</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E008&quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">fieldset</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span><span class="s2">&quot;of length 2&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="n">label</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E009&quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">fieldset</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                <span class="s2">&quot;a dictionary&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">[1]&quot;</span> <span class="o">%</span> <span class="n">label</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E010&quot;</span>
+            <span class="p">)</span>
+        <span class="k">elif</span> <span class="s2">&quot;fields&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">fieldset</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="p">[</span>
+                <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                    <span class="s2">&quot;The value of &#39;</span><span class="si">%s</span><span class="s2">[1]&#39; must contain the key &#39;fields&#39;.&quot;</span> <span class="o">%</span> <span class="n">label</span><span class="p">,</span>
+                    <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E011&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">]</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">fieldset</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="s2">&quot;fields&quot;</span><span class="p">],</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                <span class="s2">&quot;a list or tuple&quot;</span><span class="p">,</span>
+                <span class="n">option</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">[1][&#39;fields&#39;]&quot;</span> <span class="o">%</span> <span class="n">label</span><span class="p">,</span>
+                <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span>
+                <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E008&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="n">seen_fields</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">flatten</span><span class="p">(</span><span class="n">fieldset</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="s2">&quot;fields&quot;</span><span class="p">]))</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">seen_fields</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">seen_fields</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="p">[</span>
+                <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                    <span class="s2">&quot;There are duplicate field(s) in &#39;</span><span class="si">%s</span><span class="s2">[1]&#39;.&quot;</span> <span class="o">%</span> <span class="n">label</span><span class="p">,</span>
+                    <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E012&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">]</span>
+        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span>
+            <span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_check_field_spec</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">fieldset_fields</span><span class="p">,</span> <span class="s1">&#39;</span><span class="si">%s</span><span class="s1">[1][&quot;fields&quot;]&#39;</span> <span class="o">%</span> <span class="n">label</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">fieldset_fields</span> <span class="ow">in</span> <span class="n">fieldset</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="s2">&quot;fields&quot;</span><span class="p">]</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_field_spec</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">label</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;`fields` should be an item of `fields` or an item of</span>
+<span class="sd">        fieldset[1][&#39;fields&#39;] for any `fieldset` in `fieldsets`. It should be a</span>
+<span class="sd">        field name or a tuple of field names.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">fields</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+            <span class="k">return</span> <span class="nb">list</span><span class="p">(</span>
+                <span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_check_field_spec_item</span><span class="p">(</span>
+                        <span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">[</span><span class="si">%d</span><span class="s2">]&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+                    <span class="p">)</span>
+                    <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">fields</span><span class="p">)</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_check_field_spec_item</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">label</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_field_spec_item</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">label</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="n">obj</span><span class="o">.</span><span class="n">readonly_fields</span><span class="p">:</span>
+            <span class="c1"># Stuff can be put in fields that isn&#39;t actually a model field if</span>
+            <span class="c1"># it&#39;s in readonly_fields, readonly_fields will handle the</span>
+            <span class="c1"># validation of such things.</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">field</span> <span class="o">=</span> <span class="n">obj</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">get_field</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">FieldDoesNotExist</span><span class="p">:</span>
+                <span class="c1"># If we can&#39;t find a field on the model that matches, it could</span>
+                <span class="c1"># be an extra field on the form.</span>
+                <span class="k">return</span> <span class="p">[]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="p">(</span>
+                    <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">ManyToManyField</span><span class="p">)</span>
+                    <span class="ow">and</span> <span class="ow">not</span> <span class="n">field</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">through</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">auto_created</span>
+                <span class="p">):</span>
+                    <span class="k">return</span> <span class="p">[</span>
+                        <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                            <span class="s2">&quot;The value of &#39;</span><span class="si">%s</span><span class="s2">&#39; cannot include the ManyToManyField &quot;</span>
+                            <span class="s2">&quot;&#39;</span><span class="si">%s</span><span class="s2">&#39;, because that field manually specifies a &quot;</span>
+                            <span class="s2">&quot;relationship model.&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">field_name</span><span class="p">),</span>
+                            <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                            <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E013&quot;</span><span class="p">,</span>
+                        <span class="p">)</span>
+                    <span class="p">]</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_exclude</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check that exclude is a sequence without duplicates.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">obj</span><span class="o">.</span><span class="n">exclude</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>  <span class="c1"># default value is None</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">exclude</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                <span class="s2">&quot;a list or tuple&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;exclude&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E014&quot;</span>
+            <span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">exclude</span><span class="p">)</span> <span class="o">&gt;</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">exclude</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="p">[</span>
+                <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                    <span class="s2">&quot;The value of &#39;exclude&#39; contains duplicate field(s).&quot;</span><span class="p">,</span>
+                    <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E015&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_form</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check that form subclasses BaseModelForm.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">_issubclass</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">form</span><span class="p">,</span> <span class="n">BaseModelForm</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">must_inherit_from</span><span class="p">(</span>
+                <span class="n">parent</span><span class="o">=</span><span class="s2">&quot;BaseModelForm&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;form&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E016&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_filter_vertical</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check that filter_vertical is a sequence of field names.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">filter_vertical</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                <span class="s2">&quot;a list or tuple&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;filter_vertical&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E017&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">list</span><span class="p">(</span>
+                <span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_check_filter_item</span><span class="p">(</span>
+                        <span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="s2">&quot;filter_vertical[</span><span class="si">%d</span><span class="s2">]&quot;</span> <span class="o">%</span> <span class="n">index</span>
+                    <span class="p">)</span>
+                    <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">filter_vertical</span><span class="p">)</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_filter_horizontal</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check that filter_horizontal is a sequence of field names.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">filter_horizontal</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                <span class="s2">&quot;a list or tuple&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;filter_horizontal&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E018&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">list</span><span class="p">(</span>
+                <span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_check_filter_item</span><span class="p">(</span>
+                        <span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="s2">&quot;filter_horizontal[</span><span class="si">%d</span><span class="s2">]&quot;</span> <span class="o">%</span> <span class="n">index</span>
+                    <span class="p">)</span>
+                    <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">filter_horizontal</span><span class="p">)</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_filter_item</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">label</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check one item of `filter_vertical` or `filter_horizontal`, i.e.</span>
+<span class="sd">        check that given field exists and is a ManyToManyField.&quot;&quot;&quot;</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">field</span> <span class="o">=</span> <span class="n">obj</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">get_field</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">FieldDoesNotExist</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">refer_to_missing_field</span><span class="p">(</span>
+                <span class="n">field</span><span class="o">=</span><span class="n">field_name</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="n">label</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E019&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">field</span><span class="o">.</span><span class="n">many_to_many</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                    <span class="s2">&quot;a many-to-many field&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="n">label</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E020&quot;</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_radio_fields</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check that `radio_fields` is a dictionary.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">radio_fields</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                <span class="s2">&quot;a dictionary&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;radio_fields&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E021&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">list</span><span class="p">(</span>
+                <span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_check_radio_fields_key</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="s2">&quot;radio_fields&quot;</span><span class="p">)</span>
+                    <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_check_radio_fields_value</span><span class="p">(</span>
+                        <span class="n">obj</span><span class="p">,</span> <span class="n">val</span><span class="p">,</span> <span class="s1">&#39;radio_fields[&quot;</span><span class="si">%s</span><span class="s1">&quot;]&#39;</span> <span class="o">%</span> <span class="n">field_name</span>
+                    <span class="p">)</span>
+                    <span class="k">for</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">obj</span><span class="o">.</span><span class="n">radio_fields</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_radio_fields_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">label</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check that a key of `radio_fields` dictionary is name of existing</span>
+<span class="sd">        field and that the field is a ForeignKey or has `choices` defined.&quot;&quot;&quot;</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">field</span> <span class="o">=</span> <span class="n">obj</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">get_field</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">FieldDoesNotExist</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">refer_to_missing_field</span><span class="p">(</span>
+                <span class="n">field</span><span class="o">=</span><span class="n">field_name</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="n">label</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E022&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">ForeignKey</span><span class="p">)</span> <span class="ow">or</span> <span class="n">field</span><span class="o">.</span><span class="n">choices</span><span class="p">):</span>
+                <span class="k">return</span> <span class="p">[</span>
+                    <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                        <span class="s2">&quot;The value of &#39;</span><span class="si">%s</span><span class="s2">&#39; refers to &#39;</span><span class="si">%s</span><span class="s2">&#39;, which is not an &quot;</span>
+                        <span class="s2">&quot;instance of ForeignKey, and does not have a &#39;choices&#39; &quot;</span>
+                        <span class="s2">&quot;definition.&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">field_name</span><span class="p">),</span>
+                        <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                        <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E023&quot;</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_radio_fields_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">val</span><span class="p">,</span> <span class="n">label</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check type of a value of `radio_fields` dictionary.&quot;&quot;&quot;</span>
+
+        <span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.admin.options</span><span class="w"> </span><span class="kn">import</span> <span class="n">HORIZONTAL</span><span class="p">,</span> <span class="n">VERTICAL</span>
+
+        <span class="k">if</span> <span class="n">val</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="n">HORIZONTAL</span><span class="p">,</span> <span class="n">VERTICAL</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">[</span>
+                <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                    <span class="s2">&quot;The value of &#39;</span><span class="si">%s</span><span class="s2">&#39; must be either admin.HORIZONTAL or &quot;</span>
+                    <span class="s2">&quot;admin.VERTICAL.&quot;</span> <span class="o">%</span> <span class="n">label</span><span class="p">,</span>
+                    <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E024&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_view_on_site_url</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">callable</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">view_on_site</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">view_on_site</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">[</span>
+                <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                    <span class="s2">&quot;The value of &#39;view_on_site&#39; must be a callable or a boolean &quot;</span>
+                    <span class="s2">&quot;value.&quot;</span><span class="p">,</span>
+                    <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E025&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_prepopulated_fields</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check that `prepopulated_fields` is a dictionary containing allowed</span>
+<span class="sd">        field types.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">prepopulated_fields</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                <span class="s2">&quot;a dictionary&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;prepopulated_fields&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E026&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">list</span><span class="p">(</span>
+                <span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_check_prepopulated_fields_key</span><span class="p">(</span>
+                        <span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="s2">&quot;prepopulated_fields&quot;</span>
+                    <span class="p">)</span>
+                    <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_check_prepopulated_fields_value</span><span class="p">(</span>
+                        <span class="n">obj</span><span class="p">,</span> <span class="n">val</span><span class="p">,</span> <span class="s1">&#39;prepopulated_fields[&quot;</span><span class="si">%s</span><span class="s1">&quot;]&#39;</span> <span class="o">%</span> <span class="n">field_name</span>
+                    <span class="p">)</span>
+                    <span class="k">for</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">obj</span><span class="o">.</span><span class="n">prepopulated_fields</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_prepopulated_fields_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">label</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check a key of `prepopulated_fields` dictionary, i.e. check that it</span>
+<span class="sd">        is a name of existing field and the field is one of the allowed types.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">field</span> <span class="o">=</span> <span class="n">obj</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">get_field</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">FieldDoesNotExist</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">refer_to_missing_field</span><span class="p">(</span>
+                <span class="n">field</span><span class="o">=</span><span class="n">field_name</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="n">label</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E027&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span>
+                <span class="n">field</span><span class="p">,</span> <span class="p">(</span><span class="n">models</span><span class="o">.</span><span class="n">DateTimeField</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">ForeignKey</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">ManyToManyField</span><span class="p">)</span>
+            <span class="p">):</span>
+                <span class="k">return</span> <span class="p">[</span>
+                    <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                        <span class="s2">&quot;The value of &#39;</span><span class="si">%s</span><span class="s2">&#39; refers to &#39;</span><span class="si">%s</span><span class="s2">&#39;, which must not be a &quot;</span>
+                        <span class="s2">&quot;DateTimeField, a ForeignKey, a OneToOneField, or a &quot;</span>
+                        <span class="s2">&quot;ManyToManyField.&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">field_name</span><span class="p">),</span>
+                        <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                        <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E028&quot;</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_prepopulated_fields_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">val</span><span class="p">,</span> <span class="n">label</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check a value of `prepopulated_fields` dictionary, i.e. it&#39;s an</span>
+<span class="sd">        iterable of existing fields.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span><span class="s2">&quot;a list or tuple&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="n">label</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E029&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">list</span><span class="p">(</span>
+                <span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_check_prepopulated_fields_value_item</span><span class="p">(</span>
+                        <span class="n">obj</span><span class="p">,</span> <span class="n">subfield_name</span><span class="p">,</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">[</span><span class="si">%r</span><span class="s2">]&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+                    <span class="p">)</span>
+                    <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">subfield_name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_prepopulated_fields_value_item</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">label</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;For `prepopulated_fields` equal to {&quot;slug&quot;: (&quot;title&quot;,)},</span>
+<span class="sd">        `field_name` is &quot;title&quot;.&quot;&quot;&quot;</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">obj</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">get_field</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">FieldDoesNotExist</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">refer_to_missing_field</span><span class="p">(</span>
+                <span class="n">field</span><span class="o">=</span><span class="n">field_name</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="n">label</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E030&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_ordering</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check that ordering refers to existing fields or is random.&quot;&quot;&quot;</span>
+
+        <span class="c1"># ordering = None</span>
+        <span class="k">if</span> <span class="n">obj</span><span class="o">.</span><span class="n">ordering</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>  <span class="c1"># The default value is None</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">ordering</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                <span class="s2">&quot;a list or tuple&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;ordering&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E031&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">list</span><span class="p">(</span>
+                <span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_check_ordering_item</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="s2">&quot;ordering[</span><span class="si">%d</span><span class="s2">]&quot;</span> <span class="o">%</span> <span class="n">index</span><span class="p">)</span>
+                    <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">ordering</span><span class="p">)</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_ordering_item</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">label</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check that `ordering` refers to existing fields.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field_name</span><span class="p">,</span> <span class="p">(</span><span class="n">Combinable</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">OrderBy</span><span class="p">)):</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field_name</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">OrderBy</span><span class="p">):</span>
+                <span class="n">field_name</span> <span class="o">=</span> <span class="n">field_name</span><span class="o">.</span><span class="n">asc</span><span class="p">()</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field_name</span><span class="o">.</span><span class="n">expression</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">F</span><span class="p">):</span>
+                <span class="n">field_name</span> <span class="o">=</span> <span class="n">field_name</span><span class="o">.</span><span class="n">expression</span><span class="o">.</span><span class="n">name</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="n">field_name</span> <span class="o">==</span> <span class="s2">&quot;?&quot;</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">ordering</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[</span>
+                <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                    <span class="s2">&quot;The value of &#39;ordering&#39; has the random ordering marker &#39;?&#39;, &quot;</span>
+                    <span class="s2">&quot;but contains other fields as well.&quot;</span><span class="p">,</span>
+                    <span class="n">hint</span><span class="o">=</span><span class="s1">&#39;Either remove the &quot;?&quot;, or remove the other fields.&#39;</span><span class="p">,</span>
+                    <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E032&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">]</span>
+        <span class="k">elif</span> <span class="n">field_name</span> <span class="o">==</span> <span class="s2">&quot;?&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">elif</span> <span class="n">LOOKUP_SEP</span> <span class="ow">in</span> <span class="n">field_name</span><span class="p">:</span>
+            <span class="c1"># Skip ordering in the format field1__field2 (FIXME: checking</span>
+            <span class="c1"># this format would be nice, but it&#39;s a little fiddly).</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">field_name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">):</span>
+                <span class="n">field_name</span> <span class="o">=</span> <span class="n">field_name</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+            <span class="k">if</span> <span class="n">field_name</span> <span class="o">==</span> <span class="s2">&quot;pk&quot;</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[]</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">obj</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">get_field</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">FieldDoesNotExist</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">refer_to_missing_field</span><span class="p">(</span>
+                    <span class="n">field</span><span class="o">=</span><span class="n">field_name</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="n">label</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E033&quot;</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_readonly_fields</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check that readonly_fields refers to proper attribute or field.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">obj</span><span class="o">.</span><span class="n">readonly_fields</span> <span class="o">==</span> <span class="p">():</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">readonly_fields</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                <span class="s2">&quot;a list or tuple&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;readonly_fields&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E034&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">list</span><span class="p">(</span>
+                <span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_check_readonly_fields_item</span><span class="p">(</span>
+                        <span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="s2">&quot;readonly_fields[</span><span class="si">%d</span><span class="s2">]&quot;</span> <span class="o">%</span> <span class="n">index</span>
+                    <span class="p">)</span>
+                    <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">readonly_fields</span><span class="p">)</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_readonly_fields_item</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">label</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">callable</span><span class="p">(</span><span class="n">field_name</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">elif</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">elif</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="n">field_name</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">obj</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">get_field</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">FieldDoesNotExist</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[</span>
+                    <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                        <span class="s2">&quot;The value of &#39;</span><span class="si">%s</span><span class="s2">&#39; is not a callable, an attribute of &quot;</span>
+                        <span class="s2">&quot;&#39;</span><span class="si">%s</span><span class="s2">&#39;, or an attribute of &#39;</span><span class="si">%s</span><span class="s2">&#39;.&quot;</span>
+                        <span class="o">%</span> <span class="p">(</span>
+                            <span class="n">label</span><span class="p">,</span>
+                            <span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+                            <span class="n">obj</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">label</span><span class="p">,</span>
+                        <span class="p">),</span>
+                        <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                        <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E035&quot;</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[]</span></div>
+
+
+
+<div class="viewcode-block" id="ModelAdminChecks">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/checks/index.html#django.contrib.admin.checks.ModelAdminChecks">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ModelAdminChecks</span><span class="p">(</span><span class="n">BaseModelAdminChecks</span><span class="p">):</span>
+<div class="viewcode-block" id="ModelAdminChecks.check">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/checks/index.html#django.contrib.admin.checks.ModelAdminChecks.check">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">admin_obj</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span>
+            <span class="o">*</span><span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_save_as</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_save_on_top</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_inlines</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_list_display</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_list_display_links</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_list_filter</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_list_select_related</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_list_per_page</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_list_max_show_all</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_list_editable</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_search_fields</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_date_hierarchy</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_action_permission_methods</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_actions_uniqueness</span><span class="p">(</span><span class="n">admin_obj</span><span class="p">),</span>
+        <span class="p">]</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_save_as</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check save_as is a boolean.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">save_as</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span><span class="s2">&quot;a boolean&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;save_as&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E101&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_save_on_top</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check save_on_top is a boolean.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">save_on_top</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span><span class="s2">&quot;a boolean&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;save_on_top&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E102&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_inlines</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check all inline model admin classes.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">inlines</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                <span class="s2">&quot;a list or tuple&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;inlines&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E103&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">list</span><span class="p">(</span>
+                <span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_check_inlines_item</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">item</span><span class="p">,</span> <span class="s2">&quot;inlines[</span><span class="si">%d</span><span class="s2">]&quot;</span> <span class="o">%</span> <span class="n">index</span><span class="p">)</span>
+                    <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">item</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">inlines</span><span class="p">)</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_inlines_item</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">inline</span><span class="p">,</span> <span class="n">label</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check one inline model admin.&quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">inline_label</span> <span class="o">=</span> <span class="n">inline</span><span class="o">.</span><span class="vm">__module__</span> <span class="o">+</span> <span class="s2">&quot;.&quot;</span> <span class="o">+</span> <span class="n">inline</span><span class="o">.</span><span class="vm">__name__</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[</span>
+                <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                    <span class="s2">&quot;&#39;</span><span class="si">%s</span><span class="s2">&#39; must inherit from &#39;InlineModelAdmin&#39;.&quot;</span> <span class="o">%</span> <span class="n">obj</span><span class="p">,</span>
+                    <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E104&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">]</span>
+
+        <span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.admin.options</span><span class="w"> </span><span class="kn">import</span> <span class="n">InlineModelAdmin</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">_issubclass</span><span class="p">(</span><span class="n">inline</span><span class="p">,</span> <span class="n">InlineModelAdmin</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">[</span>
+                <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                    <span class="s2">&quot;&#39;</span><span class="si">%s</span><span class="s2">&#39; must inherit from &#39;InlineModelAdmin&#39;.&quot;</span> <span class="o">%</span> <span class="n">inline_label</span><span class="p">,</span>
+                    <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E104&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">]</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="n">inline</span><span class="o">.</span><span class="n">model</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[</span>
+                <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                    <span class="s2">&quot;&#39;</span><span class="si">%s</span><span class="s2">&#39; must have a &#39;model&#39; attribute.&quot;</span> <span class="o">%</span> <span class="n">inline_label</span><span class="p">,</span>
+                    <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E105&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">]</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="n">_issubclass</span><span class="p">(</span><span class="n">inline</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">Model</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                <span class="s2">&quot;a Model&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">.model&quot;</span> <span class="o">%</span> <span class="n">inline_label</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E106&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">inline</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="n">obj</span><span class="o">.</span><span class="n">admin_site</span><span class="p">)</span><span class="o">.</span><span class="n">check</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_list_display</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check that list_display only contains fields or usable attributes.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">list_display</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                <span class="s2">&quot;a list or tuple&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;list_display&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E107&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">list</span><span class="p">(</span>
+                <span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_check_list_display_item</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">item</span><span class="p">,</span> <span class="s2">&quot;list_display[</span><span class="si">%d</span><span class="s2">]&quot;</span> <span class="o">%</span> <span class="n">index</span><span class="p">)</span>
+                    <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">item</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">list_display</span><span class="p">)</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_list_display_item</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">item</span><span class="p">,</span> <span class="n">label</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">callable</span><span class="p">(</span><span class="n">item</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">elif</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">item</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">field</span> <span class="o">=</span> <span class="n">obj</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">get_field</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">FieldDoesNotExist</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">field</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="n">item</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[</span>
+                    <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                        <span class="s2">&quot;The value of &#39;</span><span class="si">%s</span><span class="s2">&#39; refers to &#39;</span><span class="si">%s</span><span class="s2">&#39;, which is not a &quot;</span>
+                        <span class="s2">&quot;callable, an attribute of &#39;</span><span class="si">%s</span><span class="s2">&#39;, or an attribute or &quot;</span>
+                        <span class="s2">&quot;method on &#39;</span><span class="si">%s</span><span class="s2">&#39;.&quot;</span>
+                        <span class="o">%</span> <span class="p">(</span>
+                            <span class="n">label</span><span class="p">,</span>
+                            <span class="n">item</span><span class="p">,</span>
+                            <span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+                            <span class="n">obj</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">label</span><span class="p">,</span>
+                        <span class="p">),</span>
+                        <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                        <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E108&quot;</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">]</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">ManyToManyField</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">[</span>
+                <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                    <span class="s2">&quot;The value of &#39;</span><span class="si">%s</span><span class="s2">&#39; must not be a ManyToManyField.&quot;</span> <span class="o">%</span> <span class="n">label</span><span class="p">,</span>
+                    <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E109&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">]</span>
+        <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_list_display_links</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check that list_display_links is a unique subset of list_display.&quot;&quot;&quot;</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.admin.options</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelAdmin</span>
+
+        <span class="k">if</span> <span class="n">obj</span><span class="o">.</span><span class="n">list_display_links</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">list_display_links</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                <span class="s2">&quot;a list, a tuple, or None&quot;</span><span class="p">,</span>
+                <span class="n">option</span><span class="o">=</span><span class="s2">&quot;list_display_links&quot;</span><span class="p">,</span>
+                <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span>
+                <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E110&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="c1"># Check only if ModelAdmin.get_list_display() isn&#39;t overridden.</span>
+        <span class="k">elif</span> <span class="n">obj</span><span class="o">.</span><span class="n">get_list_display</span><span class="o">.</span><span class="vm">__func__</span> <span class="ow">is</span> <span class="n">ModelAdmin</span><span class="o">.</span><span class="n">get_list_display</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">list</span><span class="p">(</span>
+                <span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_check_list_display_links_item</span><span class="p">(</span>
+                        <span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="s2">&quot;list_display_links[</span><span class="si">%d</span><span class="s2">]&quot;</span> <span class="o">%</span> <span class="n">index</span>
+                    <span class="p">)</span>
+                    <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">list_display_links</span><span class="p">)</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_list_display_links_item</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">label</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">field_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">obj</span><span class="o">.</span><span class="n">list_display</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[</span>
+                <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                    <span class="s2">&quot;The value of &#39;</span><span class="si">%s</span><span class="s2">&#39; refers to &#39;</span><span class="si">%s</span><span class="s2">&#39;, which is not defined in &quot;</span>
+                    <span class="s2">&quot;&#39;list_display&#39;.&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">field_name</span><span class="p">),</span>
+                    <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E111&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_list_filter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">list_filter</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                <span class="s2">&quot;a list or tuple&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;list_filter&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E112&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">list</span><span class="p">(</span>
+                <span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_check_list_filter_item</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">item</span><span class="p">,</span> <span class="s2">&quot;list_filter[</span><span class="si">%d</span><span class="s2">]&quot;</span> <span class="o">%</span> <span class="n">index</span><span class="p">)</span>
+                    <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">item</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">list_filter</span><span class="p">)</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_list_filter_item</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">item</span><span class="p">,</span> <span class="n">label</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Check one item of `list_filter`, i.e. check if it is one of three options:</span>
+<span class="sd">        1. &#39;field&#39; -- a basic field filter, possibly w/ relationships (e.g.</span>
+<span class="sd">           &#39;field__rel&#39;)</span>
+<span class="sd">        2. (&#39;field&#39;, SomeFieldListFilter) - a field-based list filter class</span>
+<span class="sd">        3. SomeListFilter - a non-field list filter class</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.admin</span><span class="w"> </span><span class="kn">import</span> <span class="n">FieldListFilter</span><span class="p">,</span> <span class="n">ListFilter</span>
+
+        <span class="k">if</span> <span class="nb">callable</span><span class="p">(</span><span class="n">item</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">Field</span><span class="p">):</span>
+            <span class="c1"># If item is option 3, it should be a ListFilter...</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">_issubclass</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="n">ListFilter</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">must_inherit_from</span><span class="p">(</span>
+                    <span class="n">parent</span><span class="o">=</span><span class="s2">&quot;ListFilter&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="n">label</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E113&quot;</span>
+                <span class="p">)</span>
+            <span class="c1"># ...  but not a FieldListFilter.</span>
+            <span class="k">elif</span> <span class="nb">issubclass</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="n">FieldListFilter</span><span class="p">):</span>
+                <span class="k">return</span> <span class="p">[</span>
+                    <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                        <span class="s2">&quot;The value of &#39;</span><span class="si">%s</span><span class="s2">&#39; must not inherit from &#39;FieldListFilter&#39;.&quot;</span>
+                        <span class="o">%</span> <span class="n">label</span><span class="p">,</span>
+                        <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                        <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E114&quot;</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="p">(</span><span class="nb">tuple</span><span class="p">,</span> <span class="nb">list</span><span class="p">)):</span>
+            <span class="c1"># item is option #2</span>
+            <span class="n">field</span><span class="p">,</span> <span class="n">list_filter_class</span> <span class="o">=</span> <span class="n">item</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">_issubclass</span><span class="p">(</span><span class="n">list_filter_class</span><span class="p">,</span> <span class="n">FieldListFilter</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">must_inherit_from</span><span class="p">(</span>
+                    <span class="n">parent</span><span class="o">=</span><span class="s2">&quot;FieldListFilter&quot;</span><span class="p">,</span>
+                    <span class="n">option</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">[1]&quot;</span> <span class="o">%</span> <span class="n">label</span><span class="p">,</span>
+                    <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span>
+                    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E115&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># item is option #1</span>
+            <span class="n">field</span> <span class="o">=</span> <span class="n">item</span>
+
+            <span class="c1"># Validate the field string</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">get_fields_from_path</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="n">field</span><span class="p">)</span>
+            <span class="k">except</span> <span class="p">(</span><span class="n">NotRelationField</span><span class="p">,</span> <span class="n">FieldDoesNotExist</span><span class="p">):</span>
+                <span class="k">return</span> <span class="p">[</span>
+                    <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                        <span class="s2">&quot;The value of &#39;</span><span class="si">%s</span><span class="s2">&#39; refers to &#39;</span><span class="si">%s</span><span class="s2">&#39;, which does not refer to a &quot;</span>
+                        <span class="s2">&quot;Field.&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">field</span><span class="p">),</span>
+                        <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                        <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E116&quot;</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_list_select_related</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check that list_select_related is a boolean, a list or a tuple.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">list_select_related</span><span class="p">,</span> <span class="p">(</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                <span class="s2">&quot;a boolean, tuple or list&quot;</span><span class="p">,</span>
+                <span class="n">option</span><span class="o">=</span><span class="s2">&quot;list_select_related&quot;</span><span class="p">,</span>
+                <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span>
+                <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E117&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_list_per_page</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check that list_per_page is an integer.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">list_per_page</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                <span class="s2">&quot;an integer&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;list_per_page&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E118&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_list_max_show_all</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check that list_max_show_all is an integer.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">list_max_show_all</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                <span class="s2">&quot;an integer&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;list_max_show_all&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E119&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_list_editable</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check that list_editable is a sequence of editable fields from</span>
+<span class="sd">        list_display without first element.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">list_editable</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                <span class="s2">&quot;a list or tuple&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;list_editable&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E120&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">list</span><span class="p">(</span>
+                <span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_check_list_editable_item</span><span class="p">(</span>
+                        <span class="n">obj</span><span class="p">,</span> <span class="n">item</span><span class="p">,</span> <span class="s2">&quot;list_editable[</span><span class="si">%d</span><span class="s2">]&quot;</span> <span class="o">%</span> <span class="n">index</span>
+                    <span class="p">)</span>
+                    <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">item</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">list_editable</span><span class="p">)</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_list_editable_item</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">label</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">field</span> <span class="o">=</span> <span class="n">obj</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">get_field</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">FieldDoesNotExist</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">refer_to_missing_field</span><span class="p">(</span>
+                <span class="n">field</span><span class="o">=</span><span class="n">field_name</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="n">label</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E121&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">field_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">obj</span><span class="o">.</span><span class="n">list_display</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[</span>
+                    <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                        <span class="s2">&quot;The value of &#39;</span><span class="si">%s</span><span class="s2">&#39; refers to &#39;</span><span class="si">%s</span><span class="s2">&#39;, which is not &quot;</span>
+                        <span class="s2">&quot;contained in &#39;list_display&#39;.&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">field_name</span><span class="p">),</span>
+                        <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                        <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E122&quot;</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">]</span>
+            <span class="k">elif</span> <span class="n">obj</span><span class="o">.</span><span class="n">list_display_links</span> <span class="ow">and</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="n">obj</span><span class="o">.</span><span class="n">list_display_links</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[</span>
+                    <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                        <span class="s2">&quot;The value of &#39;</span><span class="si">%s</span><span class="s2">&#39; cannot be in both &#39;list_editable&#39; and &quot;</span>
+                        <span class="s2">&quot;&#39;list_display_links&#39;.&quot;</span> <span class="o">%</span> <span class="n">field_name</span><span class="p">,</span>
+                        <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                        <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E123&quot;</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">]</span>
+            <span class="c1"># If list_display[0] is in list_editable, check that</span>
+            <span class="c1"># list_display_links is set. See #22792 and #26229 for use cases.</span>
+            <span class="k">elif</span> <span class="p">(</span>
+                <span class="n">obj</span><span class="o">.</span><span class="n">list_display</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">field_name</span>
+                <span class="ow">and</span> <span class="ow">not</span> <span class="n">obj</span><span class="o">.</span><span class="n">list_display_links</span>
+                <span class="ow">and</span> <span class="n">obj</span><span class="o">.</span><span class="n">list_display_links</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="p">):</span>
+                <span class="k">return</span> <span class="p">[</span>
+                    <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                        <span class="s2">&quot;The value of &#39;</span><span class="si">%s</span><span class="s2">&#39; refers to the first field in &#39;list_display&#39; &quot;</span>
+                        <span class="s2">&quot;(&#39;</span><span class="si">%s</span><span class="s2">&#39;), which cannot be used unless &#39;list_display_links&#39; is &quot;</span>
+                        <span class="s2">&quot;set.&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">obj</span><span class="o">.</span><span class="n">list_display</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span>
+                        <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                        <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E124&quot;</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">]</span>
+            <span class="k">elif</span> <span class="ow">not</span> <span class="n">field</span><span class="o">.</span><span class="n">editable</span> <span class="ow">or</span> <span class="n">field</span><span class="o">.</span><span class="n">primary_key</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[</span>
+                    <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                        <span class="s2">&quot;The value of &#39;</span><span class="si">%s</span><span class="s2">&#39; refers to &#39;</span><span class="si">%s</span><span class="s2">&#39;, which is not editable &quot;</span>
+                        <span class="s2">&quot;through the admin.&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">field_name</span><span class="p">),</span>
+                        <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                        <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E125&quot;</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_search_fields</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check search_fields is a sequence.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">search_fields</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                <span class="s2">&quot;a list or tuple&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;search_fields&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E126&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_date_hierarchy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check that date_hierarchy refers to DateField or DateTimeField.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">obj</span><span class="o">.</span><span class="n">date_hierarchy</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">field</span> <span class="o">=</span> <span class="n">get_fields_from_path</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="n">obj</span><span class="o">.</span><span class="n">date_hierarchy</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+            <span class="k">except</span> <span class="p">(</span><span class="n">NotRelationField</span><span class="p">,</span> <span class="n">FieldDoesNotExist</span><span class="p">):</span>
+                <span class="k">return</span> <span class="p">[</span>
+                    <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                        <span class="s2">&quot;The value of &#39;date_hierarchy&#39; refers to &#39;</span><span class="si">%s</span><span class="s2">&#39;, which &quot;</span>
+                        <span class="s2">&quot;does not refer to a Field.&quot;</span> <span class="o">%</span> <span class="n">obj</span><span class="o">.</span><span class="n">date_hierarchy</span><span class="p">,</span>
+                        <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                        <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E127&quot;</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="p">(</span><span class="n">models</span><span class="o">.</span><span class="n">DateField</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">DateTimeField</span><span class="p">)):</span>
+                    <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span>
+                        <span class="s2">&quot;a DateField or DateTimeField&quot;</span><span class="p">,</span>
+                        <span class="n">option</span><span class="o">=</span><span class="s2">&quot;date_hierarchy&quot;</span><span class="p">,</span>
+                        <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span>
+                        <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E128&quot;</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_action_permission_methods</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Actions with an allowed_permission attribute require the ModelAdmin to</span>
+<span class="sd">        implement a has_&lt;perm&gt;_permission() method for each permission.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">actions</span> <span class="o">=</span> <span class="n">obj</span><span class="o">.</span><span class="n">_get_base_actions</span><span class="p">()</span>
+        <span class="n">errors</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">func</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">actions</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="s2">&quot;allowed_permissions&quot;</span><span class="p">):</span>
+                <span class="k">continue</span>
+            <span class="k">for</span> <span class="n">permission</span> <span class="ow">in</span> <span class="n">func</span><span class="o">.</span><span class="n">allowed_permissions</span><span class="p">:</span>
+                <span class="n">method_name</span> <span class="o">=</span> <span class="s2">&quot;has_</span><span class="si">%s</span><span class="s2">_permission&quot;</span> <span class="o">%</span> <span class="n">permission</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">method_name</span><span class="p">):</span>
+                    <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                        <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                            <span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> must define a </span><span class="si">%s</span><span class="s2">() method for the </span><span class="si">%s</span><span class="s2"> action.&quot;</span>
+                            <span class="o">%</span> <span class="p">(</span>
+                                <span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+                                <span class="n">method_name</span><span class="p">,</span>
+                                <span class="n">func</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+                            <span class="p">),</span>
+                            <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                            <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E129&quot;</span><span class="p">,</span>
+                        <span class="p">)</span>
+                    <span class="p">)</span>
+        <span class="k">return</span> <span class="n">errors</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_actions_uniqueness</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check that every action has a unique __name__.&quot;&quot;&quot;</span>
+        <span class="n">errors</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">names</span> <span class="o">=</span> <span class="n">collections</span><span class="o">.</span><span class="n">Counter</span><span class="p">(</span><span class="n">name</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">obj</span><span class="o">.</span><span class="n">_get_base_actions</span><span class="p">())</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">count</span> <span class="ow">in</span> <span class="n">names</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">count</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                        <span class="s2">&quot;__name__ attributes of actions defined in </span><span class="si">%s</span><span class="s2"> must be &quot;</span>
+                        <span class="s2">&quot;unique. Name </span><span class="si">%r</span><span class="s2"> is not unique.&quot;</span>
+                        <span class="o">%</span> <span class="p">(</span>
+                            <span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+                            <span class="n">name</span><span class="p">,</span>
+                        <span class="p">),</span>
+                        <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                        <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E130&quot;</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+        <span class="k">return</span> <span class="n">errors</span></div>
+
+
+
+<div class="viewcode-block" id="InlineModelAdminChecks">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/checks/index.html#django.contrib.admin.checks.InlineModelAdminChecks">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">InlineModelAdminChecks</span><span class="p">(</span><span class="n">BaseModelAdminChecks</span><span class="p">):</span>
+<div class="viewcode-block" id="InlineModelAdminChecks.check">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/checks/index.html#django.contrib.admin.checks.InlineModelAdminChecks.check">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inline_obj</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">parent_model</span> <span class="o">=</span> <span class="n">inline_obj</span><span class="o">.</span><span class="n">parent_model</span>
+        <span class="k">return</span> <span class="p">[</span>
+            <span class="o">*</span><span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="n">inline_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_relation</span><span class="p">(</span><span class="n">inline_obj</span><span class="p">,</span> <span class="n">parent_model</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_exclude_of_parent_model</span><span class="p">(</span><span class="n">inline_obj</span><span class="p">,</span> <span class="n">parent_model</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_extra</span><span class="p">(</span><span class="n">inline_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_max_num</span><span class="p">(</span><span class="n">inline_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_min_num</span><span class="p">(</span><span class="n">inline_obj</span><span class="p">),</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_check_formset</span><span class="p">(</span><span class="n">inline_obj</span><span class="p">),</span>
+        <span class="p">]</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_exclude_of_parent_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">parent_model</span><span class="p">):</span>
+        <span class="c1"># Do not perform more specific checks if the base checks result in an</span>
+        <span class="c1"># error.</span>
+        <span class="n">errors</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">_check_exclude</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">errors</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+        <span class="c1"># Skip if `fk_name` is invalid.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_check_relation</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">parent_model</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+        <span class="k">if</span> <span class="n">obj</span><span class="o">.</span><span class="n">exclude</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+        <span class="n">fk</span> <span class="o">=</span> <span class="n">_get_foreign_key</span><span class="p">(</span><span class="n">parent_model</span><span class="p">,</span> <span class="n">obj</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="n">fk_name</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="n">fk_name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">fk</span><span class="o">.</span><span class="n">name</span> <span class="ow">in</span> <span class="n">obj</span><span class="o">.</span><span class="n">exclude</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[</span>
+                <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                    <span class="s2">&quot;Cannot exclude the field &#39;</span><span class="si">%s</span><span class="s2">&#39;, because it is the foreign key &quot;</span>
+                    <span class="s2">&quot;to the parent model &#39;</span><span class="si">%s</span><span class="s2">&#39;.&quot;</span>
+                    <span class="o">%</span> <span class="p">(</span>
+                        <span class="n">fk</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+                        <span class="n">parent_model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">label</span><span class="p">,</span>
+                    <span class="p">),</span>
+                    <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+                    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E201&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_relation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">parent_model</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">_get_foreign_key</span><span class="p">(</span><span class="n">parent_model</span><span class="p">,</span> <span class="n">obj</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="n">fk_name</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="n">fk_name</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[</span><span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E202&quot;</span><span class="p">)]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_extra</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check that extra is an integer.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">extra</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span><span class="s2">&quot;an integer&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;extra&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E203&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_max_num</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check that max_num is an integer.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">obj</span><span class="o">.</span><span class="n">max_num</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">max_num</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span><span class="s2">&quot;an integer&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;max_num&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E204&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_min_num</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check that min_num is an integer.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">obj</span><span class="o">.</span><span class="n">min_num</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">min_num</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">must_be</span><span class="p">(</span><span class="s2">&quot;an integer&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;min_num&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E205&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_formset</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check formset is a subclass of BaseModelFormSet.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">_issubclass</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">formset</span><span class="p">,</span> <span class="n">BaseModelFormSet</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">must_inherit_from</span><span class="p">(</span>
+                <span class="n">parent</span><span class="o">=</span><span class="s2">&quot;BaseModelFormSet&quot;</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s2">&quot;formset&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;admin.E206&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span></div>
+
+
+
+<div class="viewcode-block" id="must_be">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/checks/index.html#django.contrib.admin.checks.must_be">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">must_be</span><span class="p">(</span><span class="nb">type</span><span class="p">,</span> <span class="n">option</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">[</span>
+        <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+            <span class="s2">&quot;The value of &#39;</span><span class="si">%s</span><span class="s2">&#39; must be </span><span class="si">%s</span><span class="s2">.&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">option</span><span class="p">,</span> <span class="nb">type</span><span class="p">),</span>
+            <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+            <span class="nb">id</span><span class="o">=</span><span class="nb">id</span><span class="p">,</span>
+        <span class="p">),</span>
+    <span class="p">]</span></div>
+
+
+
+<div class="viewcode-block" id="must_inherit_from">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/checks/index.html#django.contrib.admin.checks.must_inherit_from">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">must_inherit_from</span><span class="p">(</span><span class="n">parent</span><span class="p">,</span> <span class="n">option</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">[</span>
+        <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+            <span class="s2">&quot;The value of &#39;</span><span class="si">%s</span><span class="s2">&#39; must inherit from &#39;</span><span class="si">%s</span><span class="s2">&#39;.&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">option</span><span class="p">,</span> <span class="n">parent</span><span class="p">),</span>
+            <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+            <span class="nb">id</span><span class="o">=</span><span class="nb">id</span><span class="p">,</span>
+        <span class="p">),</span>
+    <span class="p">]</span></div>
+
+
+
+<div class="viewcode-block" id="refer_to_missing_field">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/checks/index.html#django.contrib.admin.checks.refer_to_missing_field">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">refer_to_missing_field</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">option</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="nb">id</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">[</span>
+        <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+            <span class="s2">&quot;The value of &#39;</span><span class="si">%s</span><span class="s2">&#39; refers to &#39;</span><span class="si">%s</span><span class="s2">&#39;, which is not a field of &#39;</span><span class="si">%s</span><span class="s2">&#39;.&quot;</span>
+            <span class="o">%</span> <span class="p">(</span><span class="n">option</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">obj</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">label</span><span class="p">),</span>
+            <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span>
+            <span class="nb">id</span><span class="o">=</span><span class="nb">id</span><span class="p">,</span>
+        <span class="p">),</span>
+    <span class="p">]</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

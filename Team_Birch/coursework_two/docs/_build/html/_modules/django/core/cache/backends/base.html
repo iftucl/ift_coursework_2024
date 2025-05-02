@@ -1,0 +1,656 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.core.cache.backends.base &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../../cache.html">django.core.cache</a></li>
+      <li class="breadcrumb-item active">django.core.cache.backends.base</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.core.cache.backends.base</h1><div class="highlight"><pre>
+<span></span><span class="s2">&quot;Base Cache class.&quot;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">asgiref.sync</span><span class="w"> </span><span class="kn">import</span> <span class="n">sync_to_async</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImproperlyConfigured</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.module_loading</span><span class="w"> </span><span class="kn">import</span> <span class="n">import_string</span>
+
+
+<div class="viewcode-block" id="InvalidCacheBackendError">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.InvalidCacheBackendError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">InvalidCacheBackendError</span><span class="p">(</span><span class="n">ImproperlyConfigured</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+
+
+<div class="viewcode-block" id="CacheKeyWarning">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.CacheKeyWarning">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">CacheKeyWarning</span><span class="p">(</span><span class="ne">RuntimeWarning</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+
+
+<div class="viewcode-block" id="InvalidCacheKey">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.InvalidCacheKey">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">InvalidCacheKey</span><span class="p">(</span><span class="ne">ValueError</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+
+
+<span class="c1"># Stub class to ensure not passing in a `timeout` argument results in</span>
+<span class="c1"># the default timeout</span>
+<div class="viewcode-block" id="DEFAULT_TIMEOUT">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.DEFAULT_TIMEOUT">[docs]</a>
+<span class="n">DEFAULT_TIMEOUT</span> <span class="o">=</span> <span class="nb">object</span><span class="p">()</span></div>
+
+
+<span class="c1"># Memcached does not accept keys longer than this.</span>
+<div class="viewcode-block" id="MEMCACHE_MAX_KEY_LENGTH">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.MEMCACHE_MAX_KEY_LENGTH">[docs]</a>
+<span class="n">MEMCACHE_MAX_KEY_LENGTH</span> <span class="o">=</span> <span class="mi">250</span></div>
+
+
+
+<div class="viewcode-block" id="default_key_func">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.default_key_func">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">default_key_func</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">key_prefix</span><span class="p">,</span> <span class="n">version</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Default function to generate keys.</span>
+
+<span class="sd">    Construct the key used by all other methods. By default, prepend</span>
+<span class="sd">    the `key_prefix`. KEY_FUNCTION can be used to specify an alternate</span>
+<span class="sd">    function with custom key making behavior.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">:</span><span class="si">%s</span><span class="s2">:</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">key_prefix</span><span class="p">,</span> <span class="n">version</span><span class="p">,</span> <span class="n">key</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="get_key_func">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.get_key_func">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_key_func</span><span class="p">(</span><span class="n">key_func</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Function to decide which key function to use.</span>
+
+<span class="sd">    Default to ``default_key_func``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">key_func</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">callable</span><span class="p">(</span><span class="n">key_func</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">key_func</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">import_string</span><span class="p">(</span><span class="n">key_func</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">default_key_func</span></div>
+
+
+
+<div class="viewcode-block" id="BaseCache">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BaseCache</span><span class="p">:</span>
+    <span class="n">_missing_key</span> <span class="o">=</span> <span class="nb">object</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="n">timeout</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;timeout&quot;</span><span class="p">,</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;TIMEOUT&quot;</span><span class="p">,</span> <span class="mi">300</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">timeout</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">timeout</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">timeout</span><span class="p">)</span>
+            <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
+                <span class="n">timeout</span> <span class="o">=</span> <span class="mi">300</span>
+<div class="viewcode-block" id="BaseCache.default_timeout">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.default_timeout">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">default_timeout</span> <span class="o">=</span> <span class="n">timeout</span></div>
+
+
+        <span class="n">options</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;OPTIONS&quot;</span><span class="p">,</span> <span class="p">{})</span>
+        <span class="n">max_entries</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;max_entries&quot;</span><span class="p">,</span> <span class="n">options</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;MAX_ENTRIES&quot;</span><span class="p">,</span> <span class="mi">300</span><span class="p">))</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_max_entries</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">max_entries</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_max_entries</span> <span class="o">=</span> <span class="mi">300</span>
+
+        <span class="n">cull_frequency</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;cull_frequency&quot;</span><span class="p">,</span> <span class="n">options</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;CULL_FREQUENCY&quot;</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_cull_frequency</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">cull_frequency</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_cull_frequency</span> <span class="o">=</span> <span class="mi">3</span>
+
+<div class="viewcode-block" id="BaseCache.key_prefix">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.key_prefix">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">key_prefix</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;KEY_PREFIX&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="BaseCache.version">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.version">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">version</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;VERSION&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="BaseCache.key_func">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.key_func">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">key_func</span> <span class="o">=</span> <span class="n">get_key_func</span><span class="p">(</span><span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;KEY_FUNCTION&quot;</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.get_backend_timeout">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.get_backend_timeout">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_backend_timeout</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">DEFAULT_TIMEOUT</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the timeout value usable by this backend based upon the provided</span>
+<span class="sd">        timeout.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">timeout</span> <span class="o">==</span> <span class="n">DEFAULT_TIMEOUT</span><span class="p">:</span>
+            <span class="n">timeout</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">default_timeout</span>
+        <span class="k">elif</span> <span class="n">timeout</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="c1"># ticket 21147 - avoid time.time() related precision issues</span>
+            <span class="n">timeout</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+        <span class="k">return</span> <span class="kc">None</span> <span class="k">if</span> <span class="n">timeout</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">+</span> <span class="n">timeout</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.make_key">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.make_key">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">make_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Construct the key used by all other methods. By default, use the</span>
+<span class="sd">        key_func to generate a key (which, by default, prepends the</span>
+<span class="sd">        `key_prefix&#39; and &#39;version&#39;). A different key function can be provided</span>
+<span class="sd">        at the time of cache construction; alternatively, you can subclass the</span>
+<span class="sd">        cache backend to provide custom key making behavior.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">version</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">version</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">version</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">key_func</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">key_prefix</span><span class="p">,</span> <span class="n">version</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.validate_key">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.validate_key">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">validate_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Warn about keys that would not be portable to the memcached</span>
+<span class="sd">        backend. This encourages (but does not force) writing backend-portable</span>
+<span class="sd">        cache code.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">warning</span> <span class="ow">in</span> <span class="n">memcache_key_warnings</span><span class="p">(</span><span class="n">key</span><span class="p">):</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">warning</span><span class="p">,</span> <span class="n">CacheKeyWarning</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.make_and_validate_key">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.make_and_validate_key">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">make_and_validate_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Helper to make and validate keys.&quot;&quot;&quot;</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_key</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">validate_key</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">key</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.add">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.add">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">DEFAULT_TIMEOUT</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Set a value in the cache if the key does not already exist. If</span>
+<span class="sd">        timeout is given, use that timeout for the key; otherwise use the</span>
+<span class="sd">        default cache timeout.</span>
+
+<span class="sd">        Return True if the value was stored, False otherwise.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of BaseCache must provide an add() method&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.aadd">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.aadd">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">aadd</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">DEFAULT_TIMEOUT</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">return</span> <span class="k">await</span> <span class="n">sync_to_async</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">add</span><span class="p">,</span> <span class="n">thread_sensitive</span><span class="o">=</span><span class="kc">True</span><span class="p">)(</span>
+            <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">timeout</span><span class="p">,</span> <span class="n">version</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.get">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.get">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Fetch a given key from the cache. If the key does not exist, return</span>
+<span class="sd">        default, which itself defaults to None.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;subclasses of BaseCache must provide a get() method&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.aget">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.aget">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">aget</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">return</span> <span class="k">await</span> <span class="n">sync_to_async</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get</span><span class="p">,</span> <span class="n">thread_sensitive</span><span class="o">=</span><span class="kc">True</span><span class="p">)(</span>
+            <span class="n">key</span><span class="p">,</span> <span class="n">default</span><span class="p">,</span> <span class="n">version</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.set">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.set">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">DEFAULT_TIMEOUT</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Set a value in the cache. If timeout is given, use that timeout for the</span>
+<span class="sd">        key; otherwise use the default cache timeout.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;subclasses of BaseCache must provide a set() method&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.aset">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.aset">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">aset</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">DEFAULT_TIMEOUT</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">return</span> <span class="k">await</span> <span class="n">sync_to_async</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">set</span><span class="p">,</span> <span class="n">thread_sensitive</span><span class="o">=</span><span class="kc">True</span><span class="p">)(</span>
+            <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">timeout</span><span class="p">,</span> <span class="n">version</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.touch">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.touch">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">touch</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">DEFAULT_TIMEOUT</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Update the key&#39;s expiry time using timeout. Return True if successful</span>
+<span class="sd">        or False if the key does not exist.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of BaseCache must provide a touch() method&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.atouch">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.atouch">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">atouch</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">DEFAULT_TIMEOUT</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">return</span> <span class="k">await</span> <span class="n">sync_to_async</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">touch</span><span class="p">,</span> <span class="n">thread_sensitive</span><span class="o">=</span><span class="kc">True</span><span class="p">)(</span>
+            <span class="n">key</span><span class="p">,</span> <span class="n">timeout</span><span class="p">,</span> <span class="n">version</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.delete">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.delete">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">delete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Delete a key from the cache and return whether it succeeded, failing</span>
+<span class="sd">        silently.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of BaseCache must provide a delete() method&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.adelete">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.adelete">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">adelete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">return</span> <span class="k">await</span> <span class="n">sync_to_async</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">delete</span><span class="p">,</span> <span class="n">thread_sensitive</span><span class="o">=</span><span class="kc">True</span><span class="p">)(</span><span class="n">key</span><span class="p">,</span> <span class="n">version</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.get_many">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.get_many">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_many</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">keys</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Fetch a bunch of keys from the cache. For certain backends (memcached,</span>
+<span class="sd">        pgsql) this can be *much* faster when fetching multiple values.</span>
+
+<span class="sd">        Return a dict mapping each key in keys to its value. If the given</span>
+<span class="sd">        key is missing, it will be missing from the response dict.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">:</span>
+            <span class="n">val</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_missing_key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">val</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_missing_key</span><span class="p">:</span>
+                <span class="n">d</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">val</span>
+        <span class="k">return</span> <span class="n">d</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.aget_many">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.aget_many">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">aget_many</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">keys</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;See get_many().&quot;&quot;&quot;</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">:</span>
+            <span class="n">val</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">aget</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_missing_key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">val</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_missing_key</span><span class="p">:</span>
+                <span class="n">d</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">val</span>
+        <span class="k">return</span> <span class="n">d</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.get_or_set">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.get_or_set">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_or_set</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">default</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">DEFAULT_TIMEOUT</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Fetch a given key from the cache. If the key does not exist,</span>
+<span class="sd">        add the key and set it to the default value. The default value can</span>
+<span class="sd">        also be any callable. If timeout is given, use that timeout for the</span>
+<span class="sd">        key; otherwise use the default cache timeout.</span>
+
+<span class="sd">        Return the value of the key stored or retrieved.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">val</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_missing_key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">val</span> <span class="ow">is</span> <span class="bp">self</span><span class="o">.</span><span class="n">_missing_key</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">callable</span><span class="p">(</span><span class="n">default</span><span class="p">):</span>
+                <span class="n">default</span> <span class="o">=</span> <span class="n">default</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">default</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+            <span class="c1"># Fetch the value again to avoid a race condition if another caller</span>
+            <span class="c1"># added a value between the first get() and the add() above.</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">default</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">val</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.aget_or_set">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.aget_or_set">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">aget_or_set</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">default</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">DEFAULT_TIMEOUT</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;See get_or_set().&quot;&quot;&quot;</span>
+        <span class="n">val</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">aget</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_missing_key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">val</span> <span class="ow">is</span> <span class="bp">self</span><span class="o">.</span><span class="n">_missing_key</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">callable</span><span class="p">(</span><span class="n">default</span><span class="p">):</span>
+                <span class="n">default</span> <span class="o">=</span> <span class="n">default</span><span class="p">()</span>
+            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">aadd</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">default</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+            <span class="c1"># Fetch the value again to avoid a race condition if another caller</span>
+            <span class="c1"># added a value between the first aget() and the aadd() above.</span>
+            <span class="k">return</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">aget</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">default</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">val</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.has_key">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.has_key">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">has_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return True if the key is in the cache and has not expired.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_missing_key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_missing_key</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.ahas_key">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.ahas_key">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">ahas_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">aget</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_missing_key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+            <span class="ow">is</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_missing_key</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.incr">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.incr">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">incr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">delta</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Add delta to value in the cache. If the key does not exist, raise a</span>
+<span class="sd">        ValueError exception.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_missing_key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="bp">self</span><span class="o">.</span><span class="n">_missing_key</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Key &#39;</span><span class="si">%s</span><span class="s2">&#39; not found&quot;</span> <span class="o">%</span> <span class="n">key</span><span class="p">)</span>
+        <span class="n">new_value</span> <span class="o">=</span> <span class="n">value</span> <span class="o">+</span> <span class="n">delta</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">new_value</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">new_value</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.aincr">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.aincr">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">aincr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">delta</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;See incr().&quot;&quot;&quot;</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">aget</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_missing_key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="bp">self</span><span class="o">.</span><span class="n">_missing_key</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Key &#39;</span><span class="si">%s</span><span class="s2">&#39; not found&quot;</span> <span class="o">%</span> <span class="n">key</span><span class="p">)</span>
+        <span class="n">new_value</span> <span class="o">=</span> <span class="n">value</span> <span class="o">+</span> <span class="n">delta</span>
+        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">aset</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">new_value</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">new_value</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.decr">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.decr">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">decr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">delta</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Subtract delta from value in the cache. If the key does not exist, raise</span>
+<span class="sd">        a ValueError exception.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">incr</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="o">-</span><span class="n">delta</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.adecr">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.adecr">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">adecr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">delta</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">return</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">aincr</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="o">-</span><span class="n">delta</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__contains__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return True if the key is in the cache and has not expired.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># This is a separate method, rather than just a copy of has_key(),</span>
+        <span class="c1"># so that it always has the same functionality as has_key(), even</span>
+        <span class="c1"># if a subclass overrides it.</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_key</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+
+<div class="viewcode-block" id="BaseCache.set_many">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.set_many">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_many</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">DEFAULT_TIMEOUT</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Set a bunch of values in the cache at once from a dict of key/value</span>
+<span class="sd">        pairs.  For certain backends (memcached), this is much more efficient</span>
+<span class="sd">        than calling set() multiple times.</span>
+
+<span class="sd">        If timeout is given, use that timeout for the key; otherwise use the</span>
+<span class="sd">        default cache timeout.</span>
+
+<span class="sd">        On backends that support it, return a list of keys that failed</span>
+<span class="sd">        insertion, or an empty list if all keys were inserted successfully.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[]</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.aset_many">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.aset_many">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">aset_many</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">DEFAULT_TIMEOUT</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">aset</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[]</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.delete_many">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.delete_many">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">delete_many</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">keys</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Delete a bunch of values in the cache at once. For certain backends</span>
+<span class="sd">        (memcached), this is much more efficient than calling delete() multiple</span>
+<span class="sd">        times.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.adelete_many">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.adelete_many">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">adelete_many</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">keys</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">:</span>
+            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">adelete</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.clear">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.clear">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clear</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Remove *all* values from the cache at once.&quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of BaseCache must provide a clear() method&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.aclear">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.aclear">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">aclear</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="k">await</span> <span class="n">sync_to_async</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">clear</span><span class="p">,</span> <span class="n">thread_sensitive</span><span class="o">=</span><span class="kc">True</span><span class="p">)()</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.incr_version">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.incr_version">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">incr_version</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">delta</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Add delta to the cache version for the supplied key. Return the new</span>
+<span class="sd">        version.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">version</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">version</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">version</span>
+
+        <span class="n">value</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_missing_key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="bp">self</span><span class="o">.</span><span class="n">_missing_key</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Key &#39;</span><span class="si">%s</span><span class="s2">&#39; not found&quot;</span> <span class="o">%</span> <span class="n">key</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span> <span class="o">+</span> <span class="n">delta</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">version</span> <span class="o">+</span> <span class="n">delta</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.aincr_version">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.aincr_version">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">aincr_version</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">delta</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;See incr_version().&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">version</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">version</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">version</span>
+
+        <span class="n">value</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">aget</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_missing_key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="bp">self</span><span class="o">.</span><span class="n">_missing_key</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Key &#39;</span><span class="si">%s</span><span class="s2">&#39; not found&quot;</span> <span class="o">%</span> <span class="n">key</span><span class="p">)</span>
+
+        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">aset</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span> <span class="o">+</span> <span class="n">delta</span><span class="p">)</span>
+        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">adelete</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">version</span> <span class="o">+</span> <span class="n">delta</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.decr_version">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.decr_version">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">decr_version</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">delta</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Subtract delta from the cache version for the supplied key. Return the</span>
+<span class="sd">        new version.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">incr_version</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="o">-</span><span class="n">delta</span><span class="p">,</span> <span class="n">version</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.adecr_version">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.adecr_version">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">adecr_version</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">delta</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">return</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">aincr_version</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="o">-</span><span class="n">delta</span><span class="p">,</span> <span class="n">version</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.close">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.close">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Close the cache connection&quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="BaseCache.aclose">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.BaseCache.aclose">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">aclose</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">pass</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="memcache_key_warnings">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/base/index.html#django.core.cache.backends.base.memcache_key_warnings">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">memcache_key_warnings</span><span class="p">(</span><span class="n">key</span><span class="p">):</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">key</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">MEMCACHE_MAX_KEY_LENGTH</span><span class="p">:</span>
+        <span class="k">yield</span> <span class="p">(</span>
+            <span class="s2">&quot;Cache key will cause errors if used with memcached: </span><span class="si">%r</span><span class="s2"> &quot;</span>
+            <span class="s2">&quot;(longer than </span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">MEMCACHE_MAX_KEY_LENGTH</span><span class="p">)</span>
+        <span class="p">)</span>
+    <span class="k">for</span> <span class="n">char</span> <span class="ow">in</span> <span class="n">key</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">ord</span><span class="p">(</span><span class="n">char</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">33</span> <span class="ow">or</span> <span class="nb">ord</span><span class="p">(</span><span class="n">char</span><span class="p">)</span> <span class="o">==</span> <span class="mi">127</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="p">(</span>
+                <span class="s2">&quot;Cache key contains characters that will cause errors if &quot;</span>
+                <span class="s2">&quot;used with memcached: </span><span class="si">%r</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">key</span>
+            <span class="p">)</span>
+            <span class="k">break</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

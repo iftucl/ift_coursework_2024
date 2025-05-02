@@ -1,0 +1,742 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.db.backends.sqlite3.schema &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../../../db.html">django.db</a></li>
+      <li class="breadcrumb-item active">django.db.backends.sqlite3.schema</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.db.backends.sqlite3.schema</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">copy</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">decimal</span><span class="w"> </span><span class="kn">import</span> <span class="n">Decimal</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.apps.registry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Apps</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">NotSupportedError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.base.schema</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseDatabaseSchemaEditor</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.ddl_references</span><span class="w"> </span><span class="kn">import</span> <span class="n">Statement</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">strip_quotes</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">UniqueConstraint</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.transaction</span><span class="w"> </span><span class="kn">import</span> <span class="n">atomic</span>
+
+
+<div class="viewcode-block" id="DatabaseSchemaEditor">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/schema/index.html#django.db.backends.sqlite3.schema.DatabaseSchemaEditor">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DatabaseSchemaEditor</span><span class="p">(</span><span class="n">BaseDatabaseSchemaEditor</span><span class="p">):</span>
+<div class="viewcode-block" id="DatabaseSchemaEditor.sql_delete_table">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/schema/index.html#django.db.backends.sqlite3.schema.DatabaseSchemaEditor.sql_delete_table">[docs]</a>
+    <span class="n">sql_delete_table</span> <span class="o">=</span> <span class="s2">&quot;DROP TABLE </span><span class="si">%(table)s</span><span class="s2">&quot;</span></div>
+
+<div class="viewcode-block" id="DatabaseSchemaEditor.sql_create_fk">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/schema/index.html#django.db.backends.sqlite3.schema.DatabaseSchemaEditor.sql_create_fk">[docs]</a>
+    <span class="n">sql_create_fk</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="DatabaseSchemaEditor.sql_create_inline_fk">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/schema/index.html#django.db.backends.sqlite3.schema.DatabaseSchemaEditor.sql_create_inline_fk">[docs]</a>
+    <span class="n">sql_create_inline_fk</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="s2">&quot;REFERENCES </span><span class="si">%(to_table)s</span><span class="s2"> (</span><span class="si">%(to_column)s</span><span class="s2">) DEFERRABLE INITIALLY DEFERRED&quot;</span>
+    <span class="p">)</span></div>
+
+<div class="viewcode-block" id="DatabaseSchemaEditor.sql_create_column_inline_fk">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/schema/index.html#django.db.backends.sqlite3.schema.DatabaseSchemaEditor.sql_create_column_inline_fk">[docs]</a>
+    <span class="n">sql_create_column_inline_fk</span> <span class="o">=</span> <span class="n">sql_create_inline_fk</span></div>
+
+<div class="viewcode-block" id="DatabaseSchemaEditor.sql_delete_column">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/schema/index.html#django.db.backends.sqlite3.schema.DatabaseSchemaEditor.sql_delete_column">[docs]</a>
+    <span class="n">sql_delete_column</span> <span class="o">=</span> <span class="s2">&quot;ALTER TABLE </span><span class="si">%(table)s</span><span class="s2"> DROP COLUMN </span><span class="si">%(column)s</span><span class="s2">&quot;</span></div>
+
+<div class="viewcode-block" id="DatabaseSchemaEditor.sql_create_unique">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/schema/index.html#django.db.backends.sqlite3.schema.DatabaseSchemaEditor.sql_create_unique">[docs]</a>
+    <span class="n">sql_create_unique</span> <span class="o">=</span> <span class="s2">&quot;CREATE UNIQUE INDEX </span><span class="si">%(name)s</span><span class="s2"> ON </span><span class="si">%(table)s</span><span class="s2"> (</span><span class="si">%(columns)s</span><span class="s2">)&quot;</span></div>
+
+<div class="viewcode-block" id="DatabaseSchemaEditor.sql_delete_unique">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/schema/index.html#django.db.backends.sqlite3.schema.DatabaseSchemaEditor.sql_delete_unique">[docs]</a>
+    <span class="n">sql_delete_unique</span> <span class="o">=</span> <span class="s2">&quot;DROP INDEX </span><span class="si">%(name)s</span><span class="s2">&quot;</span></div>
+
+<div class="viewcode-block" id="DatabaseSchemaEditor.sql_alter_table_comment">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/schema/index.html#django.db.backends.sqlite3.schema.DatabaseSchemaEditor.sql_alter_table_comment">[docs]</a>
+    <span class="n">sql_alter_table_comment</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="DatabaseSchemaEditor.sql_alter_column_comment">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/schema/index.html#django.db.backends.sqlite3.schema.DatabaseSchemaEditor.sql_alter_column_comment">[docs]</a>
+    <span class="n">sql_alter_column_comment</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Some SQLite schema alterations need foreign key constraints to be</span>
+        <span class="c1"># disabled. Enforce it here for the duration of the schema edition.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">disable_constraint_checking</span><span class="p">():</span>
+            <span class="k">raise</span> <span class="n">NotSupportedError</span><span class="p">(</span>
+                <span class="s2">&quot;SQLite schema editor cannot be used while foreign key &quot;</span>
+                <span class="s2">&quot;constraint checks are enabled. Make sure to disable them &quot;</span>
+                <span class="s2">&quot;before entering a transaction.atomic() context because &quot;</span>
+                <span class="s2">&quot;SQLite does not support disabling them in the middle of &quot;</span>
+                <span class="s2">&quot;a multi-statement transaction.&quot;</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__enter__</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__exit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exc_type</span><span class="p">,</span> <span class="n">exc_value</span><span class="p">,</span> <span class="n">traceback</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">check_constraints</span><span class="p">()</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__exit__</span><span class="p">(</span><span class="n">exc_type</span><span class="p">,</span> <span class="n">exc_value</span><span class="p">,</span> <span class="n">traceback</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">enable_constraint_checking</span><span class="p">()</span>
+
+<div class="viewcode-block" id="DatabaseSchemaEditor.quote_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/schema/index.html#django.db.backends.sqlite3.schema.DatabaseSchemaEditor.quote_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">quote_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="c1"># The backend &quot;mostly works&quot; without this function and there are use</span>
+        <span class="c1"># cases for compiling Python without the sqlite3 libraries (e.g.</span>
+        <span class="c1"># security hardening).</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="kn">import</span><span class="w"> </span><span class="nn">sqlite3</span>
+
+            <span class="n">value</span> <span class="o">=</span> <span class="n">sqlite3</span><span class="o">.</span><span class="n">adapt</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="k">except</span> <span class="n">sqlite3</span><span class="o">.</span><span class="n">ProgrammingError</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="c1"># Manual emulation of SQLite parameter quoting</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
+            <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="p">(</span><span class="n">Decimal</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">int</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s2">&quot;&#39;</span><span class="si">%s</span><span class="s2">&#39;&quot;</span> <span class="o">%</span> <span class="n">value</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;&#39;&quot;</span><span class="p">,</span> <span class="s2">&quot;&#39;&#39;&quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;NULL&quot;</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="p">(</span><span class="nb">bytes</span><span class="p">,</span> <span class="nb">bytearray</span><span class="p">,</span> <span class="nb">memoryview</span><span class="p">)):</span>
+            <span class="c1"># Bytes are only allowed for BLOB fields, encoded as string</span>
+            <span class="c1"># literals containing hexadecimal data and preceded by a single &quot;X&quot;</span>
+            <span class="c1"># character.</span>
+            <span class="k">return</span> <span class="s2">&quot;X&#39;</span><span class="si">%s</span><span class="s2">&#39;&quot;</span> <span class="o">%</span> <span class="n">value</span><span class="o">.</span><span class="n">hex</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;Cannot quote parameter value </span><span class="si">%r</span><span class="s2"> of type </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="n">value</span><span class="p">))</span>
+            <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseSchemaEditor.prepare_default">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/schema/index.html#django.db.backends.sqlite3.schema.DatabaseSchemaEditor.prepare_default">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">prepare_default</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">quote_value</span><span class="p">(</span><span class="n">value</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_is_referenced_by_fk_constraint</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">table_name</span><span class="p">,</span> <span class="n">column_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ignore_self</span><span class="o">=</span><span class="kc">False</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return whether or not the provided table name is referenced by another</span>
+<span class="sd">        one. If `column_name` is specified, only references pointing to that</span>
+<span class="sd">        column are considered. If `ignore_self` is True, self-referential</span>
+<span class="sd">        constraints are ignored.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">other_table</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">introspection</span><span class="o">.</span><span class="n">get_table_list</span><span class="p">(</span><span class="n">cursor</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">ignore_self</span> <span class="ow">and</span> <span class="n">other_table</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="n">table_name</span><span class="p">:</span>
+                    <span class="k">continue</span>
+                <span class="n">relations</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">introspection</span><span class="o">.</span><span class="n">get_relations</span><span class="p">(</span>
+                    <span class="n">cursor</span><span class="p">,</span> <span class="n">other_table</span><span class="o">.</span><span class="n">name</span>
+                <span class="p">)</span>
+                <span class="k">for</span> <span class="n">constraint_column</span><span class="p">,</span> <span class="n">constraint_table</span> <span class="ow">in</span> <span class="n">relations</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+                    <span class="k">if</span> <span class="n">constraint_table</span> <span class="o">==</span> <span class="n">table_name</span> <span class="ow">and</span> <span class="p">(</span>
+                        <span class="n">column_name</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">constraint_column</span> <span class="o">==</span> <span class="n">column_name</span>
+                    <span class="p">):</span>
+                        <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+<div class="viewcode-block" id="DatabaseSchemaEditor.alter_db_table">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/schema/index.html#django.db.backends.sqlite3.schema.DatabaseSchemaEditor.alter_db_table">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">alter_db_table</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">old_db_table</span><span class="p">,</span> <span class="n">new_db_table</span><span class="p">,</span> <span class="n">disable_constraints</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">):</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">supports_atomic_references_rename</span>
+            <span class="ow">and</span> <span class="n">disable_constraints</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_referenced_by_fk_constraint</span><span class="p">(</span><span class="n">old_db_table</span><span class="p">)</span>
+        <span class="p">):</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">in_atomic_block</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">NotSupportedError</span><span class="p">(</span>
+                    <span class="p">(</span>
+                        <span class="s2">&quot;Renaming the </span><span class="si">%r</span><span class="s2"> table while in a transaction is not &quot;</span>
+                        <span class="s2">&quot;supported on SQLite &lt; 3.26 because it would break referential &quot;</span>
+                        <span class="s2">&quot;integrity. Try adding `atomic = False` to the Migration class.&quot;</span>
+                    <span class="p">)</span>
+                    <span class="o">%</span> <span class="n">old_db_table</span>
+                <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">enable_constraint_checking</span><span class="p">()</span>
+            <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">alter_db_table</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">old_db_table</span><span class="p">,</span> <span class="n">new_db_table</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">disable_constraint_checking</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">alter_db_table</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">old_db_table</span><span class="p">,</span> <span class="n">new_db_table</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseSchemaEditor.alter_field">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/schema/index.html#django.db.backends.sqlite3.schema.DatabaseSchemaEditor.alter_field">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">alter_field</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">old_field</span><span class="p">,</span> <span class="n">new_field</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_field_should_be_altered</span><span class="p">(</span><span class="n">old_field</span><span class="p">,</span> <span class="n">new_field</span><span class="p">):</span>
+            <span class="k">return</span>
+        <span class="n">old_field_name</span> <span class="o">=</span> <span class="n">old_field</span><span class="o">.</span><span class="n">name</span>
+        <span class="n">table_name</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">old_column_name</span> <span class="o">=</span> <span class="n">old_field</span><span class="o">.</span><span class="n">get_attname_column</span><span class="p">()</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="n">new_field</span><span class="o">.</span><span class="n">name</span> <span class="o">!=</span> <span class="n">old_field_name</span>
+            <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">supports_atomic_references_rename</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_referenced_by_fk_constraint</span><span class="p">(</span>
+                <span class="n">table_name</span><span class="p">,</span> <span class="n">old_column_name</span><span class="p">,</span> <span class="n">ignore_self</span><span class="o">=</span><span class="kc">True</span>
+            <span class="p">)</span>
+        <span class="p">):</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">in_atomic_block</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">NotSupportedError</span><span class="p">(</span>
+                    <span class="p">(</span>
+                        <span class="s2">&quot;Renaming the </span><span class="si">%r</span><span class="s2">.</span><span class="si">%r</span><span class="s2"> column while in a transaction is not &quot;</span>
+                        <span class="s2">&quot;supported on SQLite &lt; 3.26 because it would break referential &quot;</span>
+                        <span class="s2">&quot;integrity. Try adding `atomic = False` to the Migration class.&quot;</span>
+                    <span class="p">)</span>
+                    <span class="o">%</span> <span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span><span class="p">,</span> <span class="n">old_field_name</span><span class="p">)</span>
+                <span class="p">)</span>
+            <span class="k">with</span> <span class="n">atomic</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">alias</span><span class="p">):</span>
+                <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">alter_field</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">old_field</span><span class="p">,</span> <span class="n">new_field</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="n">strict</span><span class="p">)</span>
+                <span class="c1"># Follow SQLite&#39;s documented procedure for performing changes</span>
+                <span class="c1"># that don&#39;t affect the on-disk content.</span>
+                <span class="c1"># https://sqlite.org/lang_altertable.html#otheralter</span>
+                <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+                    <span class="n">schema_version</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;PRAGMA schema_version&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span>
+                        <span class="mi">0</span>
+                    <span class="p">]</span>
+                    <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;PRAGMA writable_schema = 1&quot;</span><span class="p">)</span>
+                    <span class="n">references_template</span> <span class="o">=</span> <span class="s1">&#39; REFERENCES &quot;</span><span class="si">%s</span><span class="s1">&quot; (&quot;</span><span class="si">%%</span><span class="s1">s&quot;) &#39;</span> <span class="o">%</span> <span class="n">table_name</span>
+                    <span class="n">new_column_name</span> <span class="o">=</span> <span class="n">new_field</span><span class="o">.</span><span class="n">get_attname_column</span><span class="p">()[</span><span class="mi">1</span><span class="p">]</span>
+                    <span class="n">search</span> <span class="o">=</span> <span class="n">references_template</span> <span class="o">%</span> <span class="n">old_column_name</span>
+                    <span class="n">replacement</span> <span class="o">=</span> <span class="n">references_template</span> <span class="o">%</span> <span class="n">new_column_name</span>
+                    <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+                        <span class="s2">&quot;UPDATE sqlite_master SET sql = replace(sql, </span><span class="si">%s</span><span class="s2">, </span><span class="si">%s</span><span class="s2">)&quot;</span><span class="p">,</span>
+                        <span class="p">(</span><span class="n">search</span><span class="p">,</span> <span class="n">replacement</span><span class="p">),</span>
+                    <span class="p">)</span>
+                    <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;PRAGMA schema_version = </span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">schema_version</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+                    <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;PRAGMA writable_schema = 0&quot;</span><span class="p">)</span>
+                    <span class="c1"># The integrity check will raise an exception and rollback</span>
+                    <span class="c1"># the transaction if the sqlite_master updates corrupt the</span>
+                    <span class="c1"># database.</span>
+                    <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;PRAGMA integrity_check&quot;</span><span class="p">)</span>
+            <span class="c1"># Perform a VACUUM to refresh the database representation from</span>
+            <span class="c1"># the sqlite_master table.</span>
+            <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+                <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;VACUUM&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">alter_field</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">old_field</span><span class="p">,</span> <span class="n">new_field</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="n">strict</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_remake_table</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">create_field</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">delete_field</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">alter_fields</span><span class="o">=</span><span class="kc">None</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Shortcut to transform a model from old_model into new_model</span>
+
+<span class="sd">        This follows the correct procedure to perform non-rename or column</span>
+<span class="sd">        addition operations based on SQLite&#39;s documentation</span>
+
+<span class="sd">        https://www.sqlite.org/lang_altertable.html#caution</span>
+
+<span class="sd">        The essential steps are:</span>
+<span class="sd">          1. Create a table with the updated definition called &quot;new__app_model&quot;</span>
+<span class="sd">          2. Copy the data from the existing &quot;app_model&quot; table to the new table</span>
+<span class="sd">          3. Drop the &quot;app_model&quot; table</span>
+<span class="sd">          4. Rename the &quot;new__app_model&quot; table to &quot;app_model&quot;</span>
+<span class="sd">          5. Restore any index of the previous &quot;app_model&quot; table.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># Self-referential fields must be recreated rather than copied from</span>
+        <span class="c1"># the old model to ensure their remote_field.field_name doesn&#39;t refer</span>
+        <span class="c1"># to an altered field.</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">is_self_referential</span><span class="p">(</span><span class="n">f</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">f</span><span class="o">.</span><span class="n">is_relation</span> <span class="ow">and</span> <span class="n">f</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">model</span> <span class="ow">is</span> <span class="n">model</span>
+
+        <span class="c1"># Work out the new fields dict / mapping</span>
+        <span class="n">body</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="p">:</span> <span class="n">f</span><span class="o">.</span><span class="n">clone</span><span class="p">()</span> <span class="k">if</span> <span class="n">is_self_referential</span><span class="p">(</span><span class="n">f</span><span class="p">)</span> <span class="k">else</span> <span class="n">f</span>
+            <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">local_concrete_fields</span>
+        <span class="p">}</span>
+        <span class="c1"># Since mapping might mix column names and default values,</span>
+        <span class="c1"># its values must be already quoted.</span>
+        <span class="n">mapping</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">column</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">column</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">local_concrete_fields</span>
+        <span class="p">}</span>
+        <span class="c1"># This maps field names (not columns) for things like unique_together</span>
+        <span class="n">rename_mapping</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="c1"># If any of the new or altered fields is introducing a new PK,</span>
+        <span class="c1"># remove the old one</span>
+        <span class="n">restore_pk_field</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">alter_fields</span> <span class="o">=</span> <span class="n">alter_fields</span> <span class="ow">or</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">create_field</span><span class="p">,</span> <span class="s2">&quot;primary_key&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">any</span><span class="p">(</span>
+            <span class="nb">getattr</span><span class="p">(</span><span class="n">new_field</span><span class="p">,</span> <span class="s2">&quot;primary_key&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">new_field</span> <span class="ow">in</span> <span class="n">alter_fields</span>
+        <span class="p">):</span>
+            <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">field</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">body</span><span class="o">.</span><span class="n">items</span><span class="p">()):</span>
+                <span class="k">if</span> <span class="n">field</span><span class="o">.</span><span class="n">primary_key</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span>
+                    <span class="c1"># Do not remove the old primary key when an altered field</span>
+                    <span class="c1"># that introduces a primary key is the same field.</span>
+                    <span class="n">name</span> <span class="o">==</span> <span class="n">new_field</span><span class="o">.</span><span class="n">name</span>
+                    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">new_field</span> <span class="ow">in</span> <span class="n">alter_fields</span>
+                <span class="p">):</span>
+                    <span class="n">field</span><span class="o">.</span><span class="n">primary_key</span> <span class="o">=</span> <span class="kc">False</span>
+                    <span class="n">restore_pk_field</span> <span class="o">=</span> <span class="n">field</span>
+                    <span class="k">if</span> <span class="n">field</span><span class="o">.</span><span class="n">auto_created</span><span class="p">:</span>
+                        <span class="k">del</span> <span class="n">body</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
+                        <span class="k">del</span> <span class="n">mapping</span><span class="p">[</span><span class="n">field</span><span class="o">.</span><span class="n">column</span><span class="p">]</span>
+        <span class="c1"># Add in any created fields</span>
+        <span class="k">if</span> <span class="n">create_field</span><span class="p">:</span>
+            <span class="n">body</span><span class="p">[</span><span class="n">create_field</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">create_field</span>
+            <span class="c1"># Choose a default and insert it into the copy map</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">create_field</span><span class="o">.</span><span class="n">many_to_many</span> <span class="ow">and</span> <span class="n">create_field</span><span class="o">.</span><span class="n">concrete</span><span class="p">:</span>
+                <span class="n">mapping</span><span class="p">[</span><span class="n">create_field</span><span class="o">.</span><span class="n">column</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">prepare_default</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">effective_default</span><span class="p">(</span><span class="n">create_field</span><span class="p">),</span>
+                <span class="p">)</span>
+        <span class="c1"># Add in any altered fields</span>
+        <span class="k">for</span> <span class="n">alter_field</span> <span class="ow">in</span> <span class="n">alter_fields</span><span class="p">:</span>
+            <span class="n">old_field</span><span class="p">,</span> <span class="n">new_field</span> <span class="o">=</span> <span class="n">alter_field</span>
+            <span class="n">body</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">old_field</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="n">mapping</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">old_field</span><span class="o">.</span><span class="n">column</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="n">body</span><span class="p">[</span><span class="n">new_field</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_field</span>
+            <span class="k">if</span> <span class="n">old_field</span><span class="o">.</span><span class="n">null</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">new_field</span><span class="o">.</span><span class="n">null</span><span class="p">:</span>
+                <span class="n">case_sql</span> <span class="o">=</span> <span class="s2">&quot;coalesce(</span><span class="si">%(col)s</span><span class="s2">, </span><span class="si">%(default)s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="p">{</span>
+                    <span class="s2">&quot;col&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">old_field</span><span class="o">.</span><span class="n">column</span><span class="p">),</span>
+                    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">prepare_default</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">effective_default</span><span class="p">(</span><span class="n">new_field</span><span class="p">)),</span>
+                <span class="p">}</span>
+                <span class="n">mapping</span><span class="p">[</span><span class="n">new_field</span><span class="o">.</span><span class="n">column</span><span class="p">]</span> <span class="o">=</span> <span class="n">case_sql</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">mapping</span><span class="p">[</span><span class="n">new_field</span><span class="o">.</span><span class="n">column</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">old_field</span><span class="o">.</span><span class="n">column</span><span class="p">)</span>
+            <span class="n">rename_mapping</span><span class="p">[</span><span class="n">old_field</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_field</span><span class="o">.</span><span class="n">name</span>
+        <span class="c1"># Remove any deleted fields</span>
+        <span class="k">if</span> <span class="n">delete_field</span><span class="p">:</span>
+            <span class="k">del</span> <span class="n">body</span><span class="p">[</span><span class="n">delete_field</span><span class="o">.</span><span class="n">name</span><span class="p">]</span>
+            <span class="k">del</span> <span class="n">mapping</span><span class="p">[</span><span class="n">delete_field</span><span class="o">.</span><span class="n">column</span><span class="p">]</span>
+            <span class="c1"># Remove any implicit M2M tables</span>
+            <span class="k">if</span> <span class="p">(</span>
+                <span class="n">delete_field</span><span class="o">.</span><span class="n">many_to_many</span>
+                <span class="ow">and</span> <span class="n">delete_field</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">through</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">auto_created</span>
+            <span class="p">):</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">delete_model</span><span class="p">(</span><span class="n">delete_field</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">through</span><span class="p">)</span>
+        <span class="c1"># Work inside a new app registry</span>
+        <span class="n">apps</span> <span class="o">=</span> <span class="n">Apps</span><span class="p">()</span>
+
+        <span class="c1"># Work out the new value of unique_together, taking renames into</span>
+        <span class="c1"># account</span>
+        <span class="n">unique_together</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="p">[</span><span class="n">rename_mapping</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">unique</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">unique</span> <span class="ow">in</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">unique_together</span>
+        <span class="p">]</span>
+
+        <span class="c1"># Work out the new value for index_together, taking renames into</span>
+        <span class="c1"># account</span>
+        <span class="n">index_together</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="p">[</span><span class="n">rename_mapping</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">index</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">index</span> <span class="ow">in</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">index_together</span>
+        <span class="p">]</span>
+
+        <span class="n">indexes</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">indexes</span>
+        <span class="k">if</span> <span class="n">delete_field</span><span class="p">:</span>
+            <span class="n">indexes</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="n">index</span> <span class="k">for</span> <span class="n">index</span> <span class="ow">in</span> <span class="n">indexes</span> <span class="k">if</span> <span class="n">delete_field</span><span class="o">.</span><span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">index</span><span class="o">.</span><span class="n">fields</span>
+            <span class="p">]</span>
+
+        <span class="n">constraints</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">constraints</span><span class="p">)</span>
+
+        <span class="c1"># Provide isolated instances of the fields to the new model body so</span>
+        <span class="c1"># that the existing model&#39;s internals aren&#39;t interfered with when</span>
+        <span class="c1"># the dummy model is constructed.</span>
+        <span class="n">body_copy</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">body</span><span class="p">)</span>
+
+        <span class="c1"># Construct a new model with the new fields to allow self referential</span>
+        <span class="c1"># primary key to resolve to. This model won&#39;t ever be materialized as a</span>
+        <span class="c1"># table and solely exists for foreign key reference resolution purposes.</span>
+        <span class="c1"># This wouldn&#39;t be required if the schema editor was operating on model</span>
+        <span class="c1"># states instead of rendered models.</span>
+        <span class="n">meta_contents</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;app_label&quot;</span><span class="p">:</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">app_label</span><span class="p">,</span>
+            <span class="s2">&quot;db_table&quot;</span><span class="p">:</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span><span class="p">,</span>
+            <span class="s2">&quot;unique_together&quot;</span><span class="p">:</span> <span class="n">unique_together</span><span class="p">,</span>
+            <span class="s2">&quot;index_together&quot;</span><span class="p">:</span> <span class="n">index_together</span><span class="p">,</span>
+            <span class="s2">&quot;indexes&quot;</span><span class="p">:</span> <span class="n">indexes</span><span class="p">,</span>
+            <span class="s2">&quot;constraints&quot;</span><span class="p">:</span> <span class="n">constraints</span><span class="p">,</span>
+            <span class="s2">&quot;apps&quot;</span><span class="p">:</span> <span class="n">apps</span><span class="p">,</span>
+        <span class="p">}</span>
+        <span class="n">meta</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="s2">&quot;Meta&quot;</span><span class="p">,</span> <span class="p">(),</span> <span class="n">meta_contents</span><span class="p">)</span>
+        <span class="n">body_copy</span><span class="p">[</span><span class="s2">&quot;Meta&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">meta</span>
+        <span class="n">body_copy</span><span class="p">[</span><span class="s2">&quot;__module__&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="vm">__module__</span>
+        <span class="nb">type</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">object_name</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="vm">__bases__</span><span class="p">,</span> <span class="n">body_copy</span><span class="p">)</span>
+
+        <span class="c1"># Construct a model with a renamed table name.</span>
+        <span class="n">body_copy</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">body</span><span class="p">)</span>
+        <span class="n">meta_contents</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;app_label&quot;</span><span class="p">:</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">app_label</span><span class="p">,</span>
+            <span class="s2">&quot;db_table&quot;</span><span class="p">:</span> <span class="s2">&quot;new__</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">strip_quotes</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span><span class="p">),</span>
+            <span class="s2">&quot;unique_together&quot;</span><span class="p">:</span> <span class="n">unique_together</span><span class="p">,</span>
+            <span class="s2">&quot;index_together&quot;</span><span class="p">:</span> <span class="n">index_together</span><span class="p">,</span>
+            <span class="s2">&quot;indexes&quot;</span><span class="p">:</span> <span class="n">indexes</span><span class="p">,</span>
+            <span class="s2">&quot;constraints&quot;</span><span class="p">:</span> <span class="n">constraints</span><span class="p">,</span>
+            <span class="s2">&quot;apps&quot;</span><span class="p">:</span> <span class="n">apps</span><span class="p">,</span>
+        <span class="p">}</span>
+        <span class="n">meta</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="s2">&quot;Meta&quot;</span><span class="p">,</span> <span class="p">(),</span> <span class="n">meta_contents</span><span class="p">)</span>
+        <span class="n">body_copy</span><span class="p">[</span><span class="s2">&quot;Meta&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">meta</span>
+        <span class="n">body_copy</span><span class="p">[</span><span class="s2">&quot;__module__&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="vm">__module__</span>
+        <span class="n">new_model</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="s2">&quot;New</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">object_name</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="vm">__bases__</span><span class="p">,</span> <span class="n">body_copy</span><span class="p">)</span>
+
+        <span class="c1"># Create a new table with the updated schema.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">create_model</span><span class="p">(</span><span class="n">new_model</span><span class="p">)</span>
+
+        <span class="c1"># Copy data from the old table into the new table</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;INSERT INTO </span><span class="si">%s</span><span class="s2"> (</span><span class="si">%s</span><span class="s2">) SELECT </span><span class="si">%s</span><span class="s2"> FROM </span><span class="si">%s</span><span class="s2">&quot;</span>
+            <span class="o">%</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">new_model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span><span class="p">),</span>
+                <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">mapping</span><span class="p">),</span>
+                <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">mapping</span><span class="o">.</span><span class="n">values</span><span class="p">()),</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span><span class="p">),</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Delete the old table to make way for the new</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">delete_model</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">handle_autom2m</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+        <span class="c1"># Rename the new table to take way for the old</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">alter_db_table</span><span class="p">(</span>
+            <span class="n">new_model</span><span class="p">,</span>
+            <span class="n">new_model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span><span class="p">,</span>
+            <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span><span class="p">,</span>
+            <span class="n">disable_constraints</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Run deferred SQL on correct table</span>
+        <span class="k">for</span> <span class="n">sql</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">deferred_sql</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">sql</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">deferred_sql</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="c1"># Fix any PK-removed field</span>
+        <span class="k">if</span> <span class="n">restore_pk_field</span><span class="p">:</span>
+            <span class="n">restore_pk_field</span><span class="o">.</span><span class="n">primary_key</span> <span class="o">=</span> <span class="kc">True</span>
+
+<div class="viewcode-block" id="DatabaseSchemaEditor.delete_model">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/schema/index.html#django.db.backends.sqlite3.schema.DatabaseSchemaEditor.delete_model">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">delete_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">handle_autom2m</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">handle_autom2m</span><span class="p">:</span>
+            <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">delete_model</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Delete the table (and only that)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">sql_delete_table</span>
+                <span class="o">%</span> <span class="p">{</span>
+                    <span class="s2">&quot;table&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span><span class="p">),</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+            <span class="c1"># Remove all deferred statements referencing the deleted table.</span>
+            <span class="k">for</span> <span class="n">sql</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">deferred_sql</span><span class="p">):</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">sql</span><span class="p">,</span> <span class="n">Statement</span><span class="p">)</span> <span class="ow">and</span> <span class="n">sql</span><span class="o">.</span><span class="n">references_table</span><span class="p">(</span>
+                    <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span>
+                <span class="p">):</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">deferred_sql</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">sql</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseSchemaEditor.add_field">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/schema/index.html#django.db.backends.sqlite3.schema.DatabaseSchemaEditor.add_field">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add_field</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">field</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a field on a model.&quot;&quot;&quot;</span>
+        <span class="c1"># Special-case implicit M2M tables.</span>
+        <span class="k">if</span> <span class="n">field</span><span class="o">.</span><span class="n">many_to_many</span> <span class="ow">and</span> <span class="n">field</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">through</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">auto_created</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">create_model</span><span class="p">(</span><span class="n">field</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">through</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="p">(</span>
+            <span class="c1"># Primary keys and unique fields are not supported in ALTER TABLE</span>
+            <span class="c1"># ADD COLUMN.</span>
+            <span class="n">field</span><span class="o">.</span><span class="n">primary_key</span>
+            <span class="ow">or</span> <span class="n">field</span><span class="o">.</span><span class="n">unique</span>
+            <span class="ow">or</span>
+            <span class="c1"># Fields with default values cannot by handled by ALTER TABLE ADD</span>
+            <span class="c1"># COLUMN statement because DROP DEFAULT is not supported in</span>
+            <span class="c1"># ALTER TABLE.</span>
+            <span class="ow">not</span> <span class="n">field</span><span class="o">.</span><span class="n">null</span>
+            <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">effective_default</span><span class="p">(</span><span class="n">field</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+        <span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_remake_table</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">create_field</span><span class="o">=</span><span class="n">field</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">add_field</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">field</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseSchemaEditor.remove_field">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/schema/index.html#django.db.backends.sqlite3.schema.DatabaseSchemaEditor.remove_field">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">remove_field</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">field</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Remove a field from a model. Usually involves deleting a column,</span>
+<span class="sd">        but for M2Ms may involve deleting a table.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># M2M fields are a special case</span>
+        <span class="k">if</span> <span class="n">field</span><span class="o">.</span><span class="n">many_to_many</span><span class="p">:</span>
+            <span class="c1"># For implicit M2M tables, delete the auto-created table</span>
+            <span class="k">if</span> <span class="n">field</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">through</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">auto_created</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">delete_model</span><span class="p">(</span><span class="n">field</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">through</span><span class="p">)</span>
+            <span class="c1"># For explicit &quot;through&quot; M2M fields, do nothing</span>
+        <span class="k">elif</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">can_alter_table_drop_column</span>
+            <span class="c1"># Primary keys, unique fields, indexed fields, and foreign keys are</span>
+            <span class="c1"># not supported in ALTER TABLE DROP COLUMN.</span>
+            <span class="ow">and</span> <span class="ow">not</span> <span class="n">field</span><span class="o">.</span><span class="n">primary_key</span>
+            <span class="ow">and</span> <span class="ow">not</span> <span class="n">field</span><span class="o">.</span><span class="n">unique</span>
+            <span class="ow">and</span> <span class="ow">not</span> <span class="n">field</span><span class="o">.</span><span class="n">db_index</span>
+            <span class="ow">and</span> <span class="ow">not</span> <span class="p">(</span><span class="n">field</span><span class="o">.</span><span class="n">remote_field</span> <span class="ow">and</span> <span class="n">field</span><span class="o">.</span><span class="n">db_constraint</span><span class="p">)</span>
+        <span class="p">):</span>
+            <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">remove_field</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">field</span><span class="p">)</span>
+        <span class="c1"># For everything else, remake.</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># It might not actually have a column behind it</span>
+            <span class="k">if</span> <span class="n">field</span><span class="o">.</span><span class="n">db_parameters</span><span class="p">(</span><span class="n">connection</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="p">)[</span><span class="s2">&quot;type&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_remake_table</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">delete_field</span><span class="o">=</span><span class="n">field</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_alter_field</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">model</span><span class="p">,</span>
+        <span class="n">old_field</span><span class="p">,</span>
+        <span class="n">new_field</span><span class="p">,</span>
+        <span class="n">old_type</span><span class="p">,</span>
+        <span class="n">new_type</span><span class="p">,</span>
+        <span class="n">old_db_params</span><span class="p">,</span>
+        <span class="n">new_db_params</span><span class="p">,</span>
+        <span class="n">strict</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Perform a &quot;physical&quot; (non-ManyToMany) field update.&quot;&quot;&quot;</span>
+        <span class="c1"># Use &quot;ALTER TABLE ... RENAME COLUMN&quot; if only the column name</span>
+        <span class="c1"># changed and there aren&#39;t any constraints.</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">can_alter_table_rename_column</span>
+            <span class="ow">and</span> <span class="n">old_field</span><span class="o">.</span><span class="n">column</span> <span class="o">!=</span> <span class="n">new_field</span><span class="o">.</span><span class="n">column</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">column_sql</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">old_field</span><span class="p">)</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">column_sql</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">new_field</span><span class="p">)</span>
+            <span class="ow">and</span> <span class="ow">not</span> <span class="p">(</span>
+                <span class="n">old_field</span><span class="o">.</span><span class="n">remote_field</span>
+                <span class="ow">and</span> <span class="n">old_field</span><span class="o">.</span><span class="n">db_constraint</span>
+                <span class="ow">or</span> <span class="n">new_field</span><span class="o">.</span><span class="n">remote_field</span>
+                <span class="ow">and</span> <span class="n">new_field</span><span class="o">.</span><span class="n">db_constraint</span>
+            <span class="p">)</span>
+        <span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_rename_field_sql</span><span class="p">(</span>
+                    <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span><span class="p">,</span> <span class="n">old_field</span><span class="p">,</span> <span class="n">new_field</span><span class="p">,</span> <span class="n">new_type</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+        <span class="c1"># Alter by remaking table</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_remake_table</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">alter_fields</span><span class="o">=</span><span class="p">[(</span><span class="n">old_field</span><span class="p">,</span> <span class="n">new_field</span><span class="p">)])</span>
+        <span class="c1"># Rebuild tables with FKs pointing to this field.</span>
+        <span class="n">old_collation</span> <span class="o">=</span> <span class="n">old_db_params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;collation&quot;</span><span class="p">)</span>
+        <span class="n">new_collation</span> <span class="o">=</span> <span class="n">new_db_params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;collation&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">new_field</span><span class="o">.</span><span class="n">unique</span> <span class="ow">and</span> <span class="p">(</span>
+            <span class="n">old_type</span> <span class="o">!=</span> <span class="n">new_type</span> <span class="ow">or</span> <span class="n">old_collation</span> <span class="o">!=</span> <span class="n">new_collation</span>
+        <span class="p">):</span>
+            <span class="n">related_models</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+            <span class="n">opts</span> <span class="o">=</span> <span class="n">new_field</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span>
+            <span class="k">for</span> <span class="n">remote_field</span> <span class="ow">in</span> <span class="n">opts</span><span class="o">.</span><span class="n">related_objects</span><span class="p">:</span>
+                <span class="c1"># Ignore self-relationship since the table was already rebuilt.</span>
+                <span class="k">if</span> <span class="n">remote_field</span><span class="o">.</span><span class="n">related_model</span> <span class="o">==</span> <span class="n">model</span><span class="p">:</span>
+                    <span class="k">continue</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">remote_field</span><span class="o">.</span><span class="n">many_to_many</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">remote_field</span><span class="o">.</span><span class="n">field_name</span> <span class="o">==</span> <span class="n">new_field</span><span class="o">.</span><span class="n">name</span><span class="p">:</span>
+                        <span class="n">related_models</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">remote_field</span><span class="o">.</span><span class="n">related_model</span><span class="p">)</span>
+                <span class="k">elif</span> <span class="n">new_field</span><span class="o">.</span><span class="n">primary_key</span> <span class="ow">and</span> <span class="n">remote_field</span><span class="o">.</span><span class="n">through</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">auto_created</span><span class="p">:</span>
+                    <span class="n">related_models</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">remote_field</span><span class="o">.</span><span class="n">through</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">new_field</span><span class="o">.</span><span class="n">primary_key</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">many_to_many</span> <span class="ow">in</span> <span class="n">opts</span><span class="o">.</span><span class="n">many_to_many</span><span class="p">:</span>
+                    <span class="c1"># Ignore self-relationship since the table was already rebuilt.</span>
+                    <span class="k">if</span> <span class="n">many_to_many</span><span class="o">.</span><span class="n">related_model</span> <span class="o">==</span> <span class="n">model</span><span class="p">:</span>
+                        <span class="k">continue</span>
+                    <span class="k">if</span> <span class="n">many_to_many</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">through</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">auto_created</span><span class="p">:</span>
+                        <span class="n">related_models</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">many_to_many</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">through</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">related_model</span> <span class="ow">in</span> <span class="n">related_models</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_remake_table</span><span class="p">(</span><span class="n">related_model</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_alter_many_to_many</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">old_field</span><span class="p">,</span> <span class="n">new_field</span><span class="p">,</span> <span class="n">strict</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Alter M2Ms to repoint their to= endpoints.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="n">old_field</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">through</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span>
+            <span class="o">==</span> <span class="n">new_field</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">through</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span>
+        <span class="p">):</span>
+            <span class="c1"># The field name didn&#39;t change, but some options did, so we have to</span>
+            <span class="c1"># propagate this altering.</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_remake_table</span><span class="p">(</span>
+                <span class="n">old_field</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">through</span><span class="p">,</span>
+                <span class="n">alter_fields</span><span class="o">=</span><span class="p">[</span>
+                    <span class="p">(</span>
+                        <span class="c1"># The field that points to the target model is needed,</span>
+                        <span class="c1"># so that table can be remade with the new m2m field -</span>
+                        <span class="c1"># this is m2m_reverse_field_name().</span>
+                        <span class="n">old_field</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">through</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">get_field</span><span class="p">(</span>
+                            <span class="n">old_field</span><span class="o">.</span><span class="n">m2m_reverse_field_name</span><span class="p">()</span>
+                        <span class="p">),</span>
+                        <span class="n">new_field</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">through</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">get_field</span><span class="p">(</span>
+                            <span class="n">new_field</span><span class="o">.</span><span class="n">m2m_reverse_field_name</span><span class="p">()</span>
+                        <span class="p">),</span>
+                    <span class="p">),</span>
+                    <span class="p">(</span>
+                        <span class="c1"># The field that points to the model itself is needed,</span>
+                        <span class="c1"># so that table can be remade with the new self field -</span>
+                        <span class="c1"># this is m2m_field_name().</span>
+                        <span class="n">old_field</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">through</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">get_field</span><span class="p">(</span>
+                            <span class="n">old_field</span><span class="o">.</span><span class="n">m2m_field_name</span><span class="p">()</span>
+                        <span class="p">),</span>
+                        <span class="n">new_field</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">through</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">get_field</span><span class="p">(</span>
+                            <span class="n">new_field</span><span class="o">.</span><span class="n">m2m_field_name</span><span class="p">()</span>
+                        <span class="p">),</span>
+                    <span class="p">),</span>
+                <span class="p">],</span>
+            <span class="p">)</span>
+            <span class="k">return</span>
+
+        <span class="c1"># Make a new through table</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">create_model</span><span class="p">(</span><span class="n">new_field</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">through</span><span class="p">)</span>
+        <span class="c1"># Copy the data across</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;INSERT INTO </span><span class="si">%s</span><span class="s2"> (</span><span class="si">%s</span><span class="s2">) SELECT </span><span class="si">%s</span><span class="s2"> FROM </span><span class="si">%s</span><span class="s2">&quot;</span>
+            <span class="o">%</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">new_field</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">through</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span><span class="p">),</span>
+                <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+                    <span class="p">[</span>
+                        <span class="s2">&quot;id&quot;</span><span class="p">,</span>
+                        <span class="n">new_field</span><span class="o">.</span><span class="n">m2m_column_name</span><span class="p">(),</span>
+                        <span class="n">new_field</span><span class="o">.</span><span class="n">m2m_reverse_name</span><span class="p">(),</span>
+                    <span class="p">]</span>
+                <span class="p">),</span>
+                <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+                    <span class="p">[</span>
+                        <span class="s2">&quot;id&quot;</span><span class="p">,</span>
+                        <span class="n">old_field</span><span class="o">.</span><span class="n">m2m_column_name</span><span class="p">(),</span>
+                        <span class="n">old_field</span><span class="o">.</span><span class="n">m2m_reverse_name</span><span class="p">(),</span>
+                    <span class="p">]</span>
+                <span class="p">),</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">old_field</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">through</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span><span class="p">),</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+        <span class="c1"># Delete the old through table</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">delete_model</span><span class="p">(</span><span class="n">old_field</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">through</span><span class="p">)</span>
+
+<div class="viewcode-block" id="DatabaseSchemaEditor.add_constraint">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/schema/index.html#django.db.backends.sqlite3.schema.DatabaseSchemaEditor.add_constraint">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add_constraint</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">constraint</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">constraint</span><span class="p">,</span> <span class="n">UniqueConstraint</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span>
+            <span class="n">constraint</span><span class="o">.</span><span class="n">condition</span>
+            <span class="ow">or</span> <span class="n">constraint</span><span class="o">.</span><span class="n">contains_expressions</span>
+            <span class="ow">or</span> <span class="n">constraint</span><span class="o">.</span><span class="n">include</span>
+            <span class="ow">or</span> <span class="n">constraint</span><span class="o">.</span><span class="n">deferrable</span>
+        <span class="p">):</span>
+            <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">add_constraint</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">constraint</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_remake_table</span><span class="p">(</span><span class="n">model</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseSchemaEditor.remove_constraint">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/schema/index.html#django.db.backends.sqlite3.schema.DatabaseSchemaEditor.remove_constraint">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">remove_constraint</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">constraint</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">constraint</span><span class="p">,</span> <span class="n">UniqueConstraint</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span>
+            <span class="n">constraint</span><span class="o">.</span><span class="n">condition</span>
+            <span class="ow">or</span> <span class="n">constraint</span><span class="o">.</span><span class="n">contains_expressions</span>
+            <span class="ow">or</span> <span class="n">constraint</span><span class="o">.</span><span class="n">include</span>
+            <span class="ow">or</span> <span class="n">constraint</span><span class="o">.</span><span class="n">deferrable</span>
+        <span class="p">):</span>
+            <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">remove_constraint</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">constraint</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_remake_table</span><span class="p">(</span><span class="n">model</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_collate_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">collation</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;COLLATE &quot;</span> <span class="o">+</span> <span class="n">collation</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

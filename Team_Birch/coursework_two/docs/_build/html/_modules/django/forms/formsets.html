@@ -1,0 +1,823 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.forms.formsets &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../django.html">django</a></li>
+      <li class="breadcrumb-item active">django.forms.formsets</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.forms.formsets</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ValidationError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.forms</span><span class="w"> </span><span class="kn">import</span> <span class="n">Form</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.forms.fields</span><span class="w"> </span><span class="kn">import</span> <span class="n">BooleanField</span><span class="p">,</span> <span class="n">IntegerField</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.forms.renderers</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_default_renderer</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.forms.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">ErrorList</span><span class="p">,</span> <span class="n">RenderableFormMixin</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.forms.widgets</span><span class="w"> </span><span class="kn">import</span> <span class="n">CheckboxInput</span><span class="p">,</span> <span class="n">HiddenInput</span><span class="p">,</span> <span class="n">NumberInput</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">cached_property</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.translation</span><span class="w"> </span><span class="kn">import</span> <span class="n">gettext_lazy</span> <span class="k">as</span> <span class="n">_</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.translation</span><span class="w"> </span><span class="kn">import</span> <span class="n">ngettext_lazy</span>
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;BaseFormSet&quot;</span><span class="p">,</span> <span class="s2">&quot;formset_factory&quot;</span><span class="p">,</span> <span class="s2">&quot;all_valid&quot;</span><span class="p">)</span>
+
+<span class="c1"># special field names</span>
+<span class="n">TOTAL_FORM_COUNT</span> <span class="o">=</span> <span class="s2">&quot;TOTAL_FORMS&quot;</span>
+<span class="n">INITIAL_FORM_COUNT</span> <span class="o">=</span> <span class="s2">&quot;INITIAL_FORMS&quot;</span>
+<span class="n">MIN_NUM_FORM_COUNT</span> <span class="o">=</span> <span class="s2">&quot;MIN_NUM_FORMS&quot;</span>
+<span class="n">MAX_NUM_FORM_COUNT</span> <span class="o">=</span> <span class="s2">&quot;MAX_NUM_FORMS&quot;</span>
+<span class="n">ORDERING_FIELD_NAME</span> <span class="o">=</span> <span class="s2">&quot;ORDER&quot;</span>
+<span class="n">DELETION_FIELD_NAME</span> <span class="o">=</span> <span class="s2">&quot;DELETE&quot;</span>
+
+<span class="c1"># default minimum number of forms in a formset</span>
+<span class="n">DEFAULT_MIN_NUM</span> <span class="o">=</span> <span class="mi">0</span>
+
+<span class="c1"># default maximum number of forms in a formset, to prevent memory exhaustion</span>
+<span class="n">DEFAULT_MAX_NUM</span> <span class="o">=</span> <span class="mi">1000</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">ManagementForm</span><span class="p">(</span><span class="n">Form</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Keep track of how many form instances are displayed on the page. If adding</span>
+<span class="sd">    new forms via JavaScript, you should increment the count field of this form</span>
+<span class="sd">    as well.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">template_name</span> <span class="o">=</span> <span class="s2">&quot;django/forms/div.html&quot;</span>  <span class="c1"># RemovedInDjango50Warning.</span>
+
+    <span class="n">TOTAL_FORMS</span> <span class="o">=</span> <span class="n">IntegerField</span><span class="p">(</span><span class="n">widget</span><span class="o">=</span><span class="n">HiddenInput</span><span class="p">)</span>
+    <span class="n">INITIAL_FORMS</span> <span class="o">=</span> <span class="n">IntegerField</span><span class="p">(</span><span class="n">widget</span><span class="o">=</span><span class="n">HiddenInput</span><span class="p">)</span>
+    <span class="c1"># MIN_NUM_FORM_COUNT and MAX_NUM_FORM_COUNT are output with the rest of the</span>
+    <span class="c1"># management form, but only for the convenience of client-side code. The</span>
+    <span class="c1"># POST value of them returned from the client is not checked.</span>
+    <span class="n">MIN_NUM_FORMS</span> <span class="o">=</span> <span class="n">IntegerField</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">widget</span><span class="o">=</span><span class="n">HiddenInput</span><span class="p">)</span>
+    <span class="n">MAX_NUM_FORMS</span> <span class="o">=</span> <span class="n">IntegerField</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">widget</span><span class="o">=</span><span class="n">HiddenInput</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">clean</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">cleaned_data</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">clean</span><span class="p">()</span>
+        <span class="c1"># When the management form is invalid, we don&#39;t know how many forms</span>
+        <span class="c1"># were submitted.</span>
+        <span class="n">cleaned_data</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">TOTAL_FORM_COUNT</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="n">cleaned_data</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">INITIAL_FORM_COUNT</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">cleaned_data</span>
+
+
+<div class="viewcode-block" id="BaseFormSet">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BaseFormSet</span><span class="p">(</span><span class="n">RenderableFormMixin</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A collection of instances of the same Form class.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="BaseFormSet.deletion_widget">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.deletion_widget">[docs]</a>
+    <span class="n">deletion_widget</span> <span class="o">=</span> <span class="n">CheckboxInput</span></div>
+
+<div class="viewcode-block" id="BaseFormSet.ordering_widget">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.ordering_widget">[docs]</a>
+    <span class="n">ordering_widget</span> <span class="o">=</span> <span class="n">NumberInput</span></div>
+
+<div class="viewcode-block" id="BaseFormSet.default_error_messages">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.default_error_messages">[docs]</a>
+    <span class="n">default_error_messages</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;missing_management_form&quot;</span><span class="p">:</span> <span class="n">_</span><span class="p">(</span>
+            <span class="s2">&quot;ManagementForm data is missing or has been tampered with. Missing fields: &quot;</span>
+            <span class="s2">&quot;</span><span class="si">%(field_names)s</span><span class="s2">. You may need to file a bug report if the issue persists.&quot;</span>
+        <span class="p">),</span>
+        <span class="s2">&quot;too_many_forms&quot;</span><span class="p">:</span> <span class="n">ngettext_lazy</span><span class="p">(</span>
+            <span class="s2">&quot;Please submit at most </span><span class="si">%(num)d</span><span class="s2"> form.&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Please submit at most </span><span class="si">%(num)d</span><span class="s2"> forms.&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;num&quot;</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="s2">&quot;too_few_forms&quot;</span><span class="p">:</span> <span class="n">ngettext_lazy</span><span class="p">(</span>
+            <span class="s2">&quot;Please submit at least </span><span class="si">%(num)d</span><span class="s2"> form.&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Please submit at least </span><span class="si">%(num)d</span><span class="s2"> forms.&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;num&quot;</span><span class="p">,</span>
+        <span class="p">),</span>
+    <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="BaseFormSet.template_name_div">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.template_name_div">[docs]</a>
+    <span class="n">template_name_div</span> <span class="o">=</span> <span class="s2">&quot;django/forms/formsets/div.html&quot;</span></div>
+
+<div class="viewcode-block" id="BaseFormSet.template_name_p">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.template_name_p">[docs]</a>
+    <span class="n">template_name_p</span> <span class="o">=</span> <span class="s2">&quot;django/forms/formsets/p.html&quot;</span></div>
+
+<div class="viewcode-block" id="BaseFormSet.template_name_table">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.template_name_table">[docs]</a>
+    <span class="n">template_name_table</span> <span class="o">=</span> <span class="s2">&quot;django/forms/formsets/table.html&quot;</span></div>
+
+<div class="viewcode-block" id="BaseFormSet.template_name_ul">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.template_name_ul">[docs]</a>
+    <span class="n">template_name_ul</span> <span class="o">=</span> <span class="s2">&quot;django/forms/formsets/ul.html&quot;</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">data</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">files</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">auto_id</span><span class="o">=</span><span class="s2">&quot;id_</span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="n">prefix</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">initial</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">error_class</span><span class="o">=</span><span class="n">ErrorList</span><span class="p">,</span>
+        <span class="n">form_kwargs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">error_messages</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+<div class="viewcode-block" id="BaseFormSet.is_bound">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.is_bound">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">is_bound</span> <span class="o">=</span> <span class="n">data</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">files</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="BaseFormSet.prefix">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.prefix">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">prefix</span> <span class="o">=</span> <span class="n">prefix</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_default_prefix</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="BaseFormSet.auto_id">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.auto_id">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">auto_id</span> <span class="o">=</span> <span class="n">auto_id</span></div>
+
+<div class="viewcode-block" id="BaseFormSet.data">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.data">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">data</span> <span class="ow">or</span> <span class="p">{}</span></div>
+
+<div class="viewcode-block" id="BaseFormSet.files">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.files">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">files</span> <span class="o">=</span> <span class="n">files</span> <span class="ow">or</span> <span class="p">{}</span></div>
+
+<div class="viewcode-block" id="BaseFormSet.initial">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.initial">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">initial</span> <span class="o">=</span> <span class="n">initial</span></div>
+
+<div class="viewcode-block" id="BaseFormSet.form_kwargs">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.form_kwargs">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">form_kwargs</span> <span class="o">=</span> <span class="n">form_kwargs</span> <span class="ow">or</span> <span class="p">{}</span></div>
+
+<div class="viewcode-block" id="BaseFormSet.error_class">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.error_class">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">error_class</span> <span class="o">=</span> <span class="n">error_class</span></div>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_errors</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_non_form_errors</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="n">messages</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="bp">cls</span> <span class="ow">in</span> <span class="nb">reversed</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="vm">__mro__</span><span class="p">):</span>
+            <span class="n">messages</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="s2">&quot;default_error_messages&quot;</span><span class="p">,</span> <span class="p">{}))</span>
+        <span class="k">if</span> <span class="n">error_messages</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">messages</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">error_messages</span><span class="p">)</span>
+<div class="viewcode-block" id="BaseFormSet.error_messages">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.error_messages">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">error_messages</span> <span class="o">=</span> <span class="n">messages</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Yield the forms in the order they should be rendered.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">iter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">forms</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the form at the given index, based on the rendering order.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">forms</span><span class="p">[</span><span class="n">index</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">forms</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__bool__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return True since all formsets have a management form which is not</span>
+<span class="sd">        included in the length.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="kc">True</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_errors</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">is_valid</span> <span class="o">=</span> <span class="s2">&quot;Unknown&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">is_valid</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">is_bound</span>
+                <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_non_form_errors</span>
+                <span class="ow">and</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">form_errors</span> <span class="k">for</span> <span class="n">form_errors</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_errors</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="s2">&quot;&lt;</span><span class="si">%s</span><span class="s2">: bound=</span><span class="si">%s</span><span class="s2"> valid=</span><span class="si">%s</span><span class="s2"> total_forms=</span><span class="si">%s</span><span class="s2">&gt;&quot;</span> <span class="o">%</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__qualname__</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">is_bound</span><span class="p">,</span>
+            <span class="n">is_valid</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">total_form_count</span><span class="p">(),</span>
+        <span class="p">)</span>
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="BaseFormSet.management_form">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.management_form">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">management_form</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the ManagementForm instance for this FormSet.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_bound</span><span class="p">:</span>
+            <span class="n">form</span> <span class="o">=</span> <span class="n">ManagementForm</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">,</span>
+                <span class="n">auto_id</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">auto_id</span><span class="p">,</span>
+                <span class="n">prefix</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">prefix</span><span class="p">,</span>
+                <span class="n">renderer</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">renderer</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">form</span><span class="o">.</span><span class="n">full_clean</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">form</span> <span class="o">=</span> <span class="n">ManagementForm</span><span class="p">(</span>
+                <span class="n">auto_id</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">auto_id</span><span class="p">,</span>
+                <span class="n">prefix</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">prefix</span><span class="p">,</span>
+                <span class="n">initial</span><span class="o">=</span><span class="p">{</span>
+                    <span class="n">TOTAL_FORM_COUNT</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">total_form_count</span><span class="p">(),</span>
+                    <span class="n">INITIAL_FORM_COUNT</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial_form_count</span><span class="p">(),</span>
+                    <span class="n">MIN_NUM_FORM_COUNT</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">min_num</span><span class="p">,</span>
+                    <span class="n">MAX_NUM_FORM_COUNT</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_num</span><span class="p">,</span>
+                <span class="p">},</span>
+                <span class="n">renderer</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">renderer</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">form</span></div>
+
+
+<div class="viewcode-block" id="BaseFormSet.total_form_count">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.total_form_count">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">total_form_count</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the total number of forms in this FormSet.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_bound</span><span class="p">:</span>
+            <span class="c1"># return absolute_max if it is lower than the actual total form</span>
+            <span class="c1"># count in the data; this is DoS protection to prevent clients</span>
+            <span class="c1"># from forcing the server to instantiate arbitrary numbers of</span>
+            <span class="c1"># forms</span>
+            <span class="k">return</span> <span class="nb">min</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">management_form</span><span class="o">.</span><span class="n">cleaned_data</span><span class="p">[</span><span class="n">TOTAL_FORM_COUNT</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">absolute_max</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">initial_forms</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial_form_count</span><span class="p">()</span>
+            <span class="n">total_forms</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">initial_forms</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">min_num</span><span class="p">)</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">extra</span>
+            <span class="c1"># Allow all existing related objects/inlines to be displayed,</span>
+            <span class="c1"># but don&#39;t allow extra beyond max_num.</span>
+            <span class="k">if</span> <span class="n">initial_forms</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_num</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">total_forms</span> <span class="o">=</span> <span class="n">initial_forms</span>
+            <span class="k">elif</span> <span class="n">total_forms</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_num</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">total_forms</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_num</span>
+        <span class="k">return</span> <span class="n">total_forms</span></div>
+
+
+<div class="viewcode-block" id="BaseFormSet.initial_form_count">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.initial_form_count">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">initial_form_count</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the number of forms that are required in this FormSet.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_bound</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">management_form</span><span class="o">.</span><span class="n">cleaned_data</span><span class="p">[</span><span class="n">INITIAL_FORM_COUNT</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Use the length of the initial data if it&#39;s there, 0 otherwise.</span>
+            <span class="n">initial_forms</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">initial</span><span class="p">)</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial</span> <span class="k">else</span> <span class="mi">0</span>
+        <span class="k">return</span> <span class="n">initial_forms</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="BaseFormSet.forms">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.forms">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">forms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Instantiate forms at first property access.&quot;&quot;&quot;</span>
+        <span class="c1"># DoS protection is included in total_form_count()</span>
+        <span class="k">return</span> <span class="p">[</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_construct_form</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">get_form_kwargs</span><span class="p">(</span><span class="n">i</span><span class="p">))</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">total_form_count</span><span class="p">())</span>
+        <span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="BaseFormSet.get_form_kwargs">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.get_form_kwargs">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_form_kwargs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return additional keyword arguments for each individual formset form.</span>
+
+<span class="sd">        index will be None if the form being constructed is a new empty</span>
+<span class="sd">        form.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">form_kwargs</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_construct_form</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Instantiate and return the i-th form instance in a formset.&quot;&quot;&quot;</span>
+        <span class="n">defaults</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;auto_id&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">auto_id</span><span class="p">,</span>
+            <span class="s2">&quot;prefix&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">add_prefix</span><span class="p">(</span><span class="n">i</span><span class="p">),</span>
+            <span class="s2">&quot;error_class&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">error_class</span><span class="p">,</span>
+            <span class="c1"># Don&#39;t render the HTML &#39;required&#39; attribute as it may cause</span>
+            <span class="c1"># incorrect validation for extra, optional, and deleted</span>
+            <span class="c1"># forms in the formset.</span>
+            <span class="s2">&quot;use_required_attribute&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="s2">&quot;renderer&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">renderer</span><span class="p">,</span>
+        <span class="p">}</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_bound</span><span class="p">:</span>
+            <span class="n">defaults</span><span class="p">[</span><span class="s2">&quot;data&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span>
+            <span class="n">defaults</span><span class="p">[</span><span class="s2">&quot;files&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">files</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial</span> <span class="ow">and</span> <span class="s2">&quot;initial&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">defaults</span><span class="p">[</span><span class="s2">&quot;initial&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span>
+                <span class="k">pass</span>
+        <span class="c1"># Allow extra forms to be empty, unless they&#39;re part of</span>
+        <span class="c1"># the minimum forms.</span>
+        <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial_form_count</span><span class="p">()</span> <span class="ow">and</span> <span class="n">i</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">min_num</span><span class="p">:</span>
+            <span class="n">defaults</span><span class="p">[</span><span class="s2">&quot;empty_permitted&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="n">defaults</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="n">form</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">form</span><span class="p">(</span><span class="o">**</span><span class="n">defaults</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">add_fields</span><span class="p">(</span><span class="n">form</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">form</span>
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="BaseFormSet.initial_forms">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.initial_forms">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">initial_forms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a list of all the initial forms in this formset.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">forms</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial_form_count</span><span class="p">()]</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="BaseFormSet.extra_forms">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.extra_forms">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">extra_forms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a list of all the extra forms in this formset.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">forms</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">initial_form_count</span><span class="p">()</span> <span class="p">:]</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="BaseFormSet.empty_form">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.empty_form">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">empty_form</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">form_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">get_form_kwargs</span><span class="p">(</span><span class="kc">None</span><span class="p">),</span>
+            <span class="s2">&quot;auto_id&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">auto_id</span><span class="p">,</span>
+            <span class="s2">&quot;prefix&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">add_prefix</span><span class="p">(</span><span class="s2">&quot;__prefix__&quot;</span><span class="p">),</span>
+            <span class="s2">&quot;empty_permitted&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+            <span class="s2">&quot;use_required_attribute&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="s2">&quot;renderer&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">renderer</span><span class="p">,</span>
+        <span class="p">}</span>
+        <span class="n">form</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">form</span><span class="p">(</span><span class="o">**</span><span class="n">form_kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">add_fields</span><span class="p">(</span><span class="n">form</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">form</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="BaseFormSet.cleaned_data">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.cleaned_data">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">cleaned_data</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a list of form.cleaned_data dicts for every form in self.forms.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_valid</span><span class="p">():</span>
+            <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span>
+                <span class="s2">&quot;&#39;</span><span class="si">%s</span><span class="s2">&#39; object has no attribute &#39;cleaned_data&#39;&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">form</span><span class="o">.</span><span class="n">cleaned_data</span> <span class="k">for</span> <span class="n">form</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">forms</span><span class="p">]</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="BaseFormSet.deleted_forms">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.deleted_forms">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">deleted_forms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a list of forms that have been marked for deletion.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_valid</span><span class="p">()</span> <span class="ow">or</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">can_delete</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="c1"># construct _deleted_form_indexes which is just a list of form indexes</span>
+        <span class="c1"># that have had their deletion widget set to True</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;_deleted_form_indexes&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_deleted_form_indexes</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">form</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">forms</span><span class="p">):</span>
+                <span class="c1"># if this is an extra form and hasn&#39;t changed, don&#39;t consider it</span>
+                <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial_form_count</span><span class="p">()</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">form</span><span class="o">.</span><span class="n">has_changed</span><span class="p">():</span>
+                    <span class="k">continue</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_delete_form</span><span class="p">(</span><span class="n">form</span><span class="p">):</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_deleted_form_indexes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">forms</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_deleted_form_indexes</span><span class="p">]</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="BaseFormSet.ordered_forms">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.ordered_forms">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">ordered_forms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a list of form in the order specified by the incoming data.</span>
+<span class="sd">        Raise an AttributeError if ordering is not allowed.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_valid</span><span class="p">()</span> <span class="ow">or</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">can_order</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span>
+                <span class="s2">&quot;&#39;</span><span class="si">%s</span><span class="s2">&#39; object has no attribute &#39;ordered_forms&#39;&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span>
+            <span class="p">)</span>
+        <span class="c1"># Construct _ordering, which is a list of (form_index, order_field_value)</span>
+        <span class="c1"># tuples. After constructing this list, we&#39;ll sort it by order_field_value</span>
+        <span class="c1"># so we have a way to get to the form indexes in the order specified</span>
+        <span class="c1"># by the form data.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;_ordering&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_ordering</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">form</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">forms</span><span class="p">):</span>
+                <span class="c1"># if this is an extra form and hasn&#39;t changed, don&#39;t consider it</span>
+                <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial_form_count</span><span class="p">()</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">form</span><span class="o">.</span><span class="n">has_changed</span><span class="p">():</span>
+                    <span class="k">continue</span>
+                <span class="c1"># don&#39;t add data marked for deletion to self.ordered_data</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">can_delete</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_delete_form</span><span class="p">(</span><span class="n">form</span><span class="p">):</span>
+                    <span class="k">continue</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_ordering</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">i</span><span class="p">,</span> <span class="n">form</span><span class="o">.</span><span class="n">cleaned_data</span><span class="p">[</span><span class="n">ORDERING_FIELD_NAME</span><span class="p">]))</span>
+            <span class="c1"># After we&#39;re done populating self._ordering, sort it.</span>
+            <span class="c1"># A sort function to order things numerically ascending, but</span>
+            <span class="c1"># None should be sorted below anything else. Allowing None as</span>
+            <span class="c1"># a comparison value makes it so we can leave ordering fields</span>
+            <span class="c1"># blank.</span>
+
+            <span class="k">def</span><span class="w"> </span><span class="nf">compare_ordering_key</span><span class="p">(</span><span class="n">k</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">k</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>  <span class="c1"># +infinity, larger than any number</span>
+                <span class="k">return</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">k</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">_ordering</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="n">compare_ordering_key</span><span class="p">)</span>
+        <span class="c1"># Return a list of form.cleaned_data dicts in the order specified by</span>
+        <span class="c1"># the form data.</span>
+        <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">forms</span><span class="p">[</span><span class="n">i</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ordering</span><span class="p">]</span></div>
+
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="BaseFormSet.get_default_prefix">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.get_default_prefix">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_default_prefix</span><span class="p">(</span><span class="bp">cls</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;form&quot;</span></div>
+
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="BaseFormSet.get_deletion_widget">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.get_deletion_widget">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_deletion_widget</span><span class="p">(</span><span class="bp">cls</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">cls</span><span class="o">.</span><span class="n">deletion_widget</span></div>
+
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="BaseFormSet.get_ordering_widget">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.get_ordering_widget">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_ordering_widget</span><span class="p">(</span><span class="bp">cls</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">cls</span><span class="o">.</span><span class="n">ordering_widget</span></div>
+
+
+<div class="viewcode-block" id="BaseFormSet.non_form_errors">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.non_form_errors">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">non_form_errors</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return an ErrorList of errors that aren&#39;t associated with a particular</span>
+<span class="sd">        form -- i.e., from formset.clean(). Return an empty ErrorList if there</span>
+<span class="sd">        are none.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_non_form_errors</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">full_clean</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_non_form_errors</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="BaseFormSet.errors">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.errors">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">errors</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a list of form.errors for every form in self.forms.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_errors</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">full_clean</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_errors</span></div>
+
+
+<div class="viewcode-block" id="BaseFormSet.total_error_count">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.total_error_count">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">total_error_count</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the number of errors across all forms in the formset.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">non_form_errors</span><span class="p">())</span> <span class="o">+</span> <span class="nb">sum</span><span class="p">(</span>
+            <span class="nb">len</span><span class="p">(</span><span class="n">form_errors</span><span class="p">)</span> <span class="k">for</span> <span class="n">form_errors</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">errors</span>
+        <span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_should_delete_form</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">form</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return whether or not the form was marked for deletion.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">form</span><span class="o">.</span><span class="n">cleaned_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">DELETION_FIELD_NAME</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+
+<div class="viewcode-block" id="BaseFormSet.is_valid">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.is_valid">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_valid</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return True if every form in self.forms is valid.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_bound</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="c1"># Accessing errors triggers a full clean the first time only.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">errors</span>
+        <span class="c1"># List comprehension ensures is_valid() is called for all forms.</span>
+        <span class="c1"># Forms due to be deleted shouldn&#39;t cause the formset to be invalid.</span>
+        <span class="n">forms_valid</span> <span class="o">=</span> <span class="nb">all</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="n">form</span><span class="o">.</span><span class="n">is_valid</span><span class="p">()</span>
+                <span class="k">for</span> <span class="n">form</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">forms</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">can_delete</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_delete_form</span><span class="p">(</span><span class="n">form</span><span class="p">))</span>
+            <span class="p">]</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">forms_valid</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">non_form_errors</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="BaseFormSet.full_clean">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.full_clean">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">full_clean</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Clean all of self.data and populate self._errors and</span>
+<span class="sd">        self._non_form_errors.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_errors</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_non_form_errors</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">error_class</span><span class="p">(</span>
+            <span class="n">error_class</span><span class="o">=</span><span class="s2">&quot;nonform&quot;</span><span class="p">,</span> <span class="n">renderer</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">renderer</span>
+        <span class="p">)</span>
+        <span class="n">empty_forms_count</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_bound</span><span class="p">:</span>  <span class="c1"># Stop further processing.</span>
+            <span class="k">return</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">management_form</span><span class="o">.</span><span class="n">is_valid</span><span class="p">():</span>
+            <span class="n">error</span> <span class="o">=</span> <span class="n">ValidationError</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">error_messages</span><span class="p">[</span><span class="s2">&quot;missing_management_form&quot;</span><span class="p">],</span>
+                <span class="n">params</span><span class="o">=</span><span class="p">{</span>
+                    <span class="s2">&quot;field_names&quot;</span><span class="p">:</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">management_form</span><span class="o">.</span><span class="n">add_prefix</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
+                        <span class="k">for</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">management_form</span><span class="o">.</span><span class="n">errors</span>
+                    <span class="p">),</span>
+                <span class="p">},</span>
+                <span class="n">code</span><span class="o">=</span><span class="s2">&quot;missing_management_form&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_non_form_errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">error</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">form</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">forms</span><span class="p">):</span>
+            <span class="c1"># Empty forms are unchanged forms beyond those with initial data.</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">form</span><span class="o">.</span><span class="n">has_changed</span><span class="p">()</span> <span class="ow">and</span> <span class="n">i</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial_form_count</span><span class="p">():</span>
+                <span class="n">empty_forms_count</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="c1"># Accessing errors calls full_clean() if necessary.</span>
+            <span class="c1"># _should_delete_form() requires cleaned_data.</span>
+            <span class="n">form_errors</span> <span class="o">=</span> <span class="n">form</span><span class="o">.</span><span class="n">errors</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">can_delete</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_delete_form</span><span class="p">(</span><span class="n">form</span><span class="p">):</span>
+                <span class="k">continue</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">form_errors</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">validate_max</span>
+                <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">total_form_count</span><span class="p">()</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">deleted_forms</span><span class="p">)</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_num</span>
+            <span class="p">)</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">management_form</span><span class="o">.</span><span class="n">cleaned_data</span><span class="p">[</span>
+                <span class="n">TOTAL_FORM_COUNT</span>
+            <span class="p">]</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">absolute_max</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">error_messages</span><span class="p">[</span><span class="s2">&quot;too_many_forms&quot;</span><span class="p">]</span> <span class="o">%</span> <span class="p">{</span><span class="s2">&quot;num&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_num</span><span class="p">},</span>
+                    <span class="n">code</span><span class="o">=</span><span class="s2">&quot;too_many_forms&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="k">if</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">validate_min</span>
+                <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">total_form_count</span><span class="p">()</span>
+                <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">deleted_forms</span><span class="p">)</span>
+                <span class="o">-</span> <span class="n">empty_forms_count</span>
+                <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">min_num</span>
+            <span class="p">):</span>
+                <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">error_messages</span><span class="p">[</span><span class="s2">&quot;too_few_forms&quot;</span><span class="p">]</span> <span class="o">%</span> <span class="p">{</span><span class="s2">&quot;num&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">min_num</span><span class="p">},</span>
+                    <span class="n">code</span><span class="o">=</span><span class="s2">&quot;too_few_forms&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="c1"># Give self.clean() a chance to do cross-form validation.</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">clean</span><span class="p">()</span>
+        <span class="k">except</span> <span class="n">ValidationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_non_form_errors</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">error_class</span><span class="p">(</span>
+                <span class="n">e</span><span class="o">.</span><span class="n">error_list</span><span class="p">,</span>
+                <span class="n">error_class</span><span class="o">=</span><span class="s2">&quot;nonform&quot;</span><span class="p">,</span>
+                <span class="n">renderer</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">renderer</span><span class="p">,</span>
+            <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseFormSet.clean">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.clean">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clean</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Hook for doing any extra formset-wide cleaning after Form.clean() has</span>
+<span class="sd">        been called on every form. Any ValidationError raised by this method</span>
+<span class="sd">        will not be associated with a particular form; it will be accessible</span>
+<span class="sd">        via formset.non_form_errors()</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="BaseFormSet.has_changed">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.has_changed">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">has_changed</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return True if data in any form differs from initial.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">any</span><span class="p">(</span><span class="n">form</span><span class="o">.</span><span class="n">has_changed</span><span class="p">()</span> <span class="k">for</span> <span class="n">form</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseFormSet.add_fields">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.add_fields">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add_fields</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">form</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;A hook for adding extra fields on to each form instance.&quot;&quot;&quot;</span>
+        <span class="n">initial_form_count</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial_form_count</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">can_order</span><span class="p">:</span>
+            <span class="c1"># Only pre-fill the ordering field for initial forms.</span>
+            <span class="k">if</span> <span class="n">index</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">index</span> <span class="o">&lt;</span> <span class="n">initial_form_count</span><span class="p">:</span>
+                <span class="n">form</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="n">ORDERING_FIELD_NAME</span><span class="p">]</span> <span class="o">=</span> <span class="n">IntegerField</span><span class="p">(</span>
+                    <span class="n">label</span><span class="o">=</span><span class="n">_</span><span class="p">(</span><span class="s2">&quot;Order&quot;</span><span class="p">),</span>
+                    <span class="n">initial</span><span class="o">=</span><span class="n">index</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span>
+                    <span class="n">required</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                    <span class="n">widget</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">get_ordering_widget</span><span class="p">(),</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">form</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="n">ORDERING_FIELD_NAME</span><span class="p">]</span> <span class="o">=</span> <span class="n">IntegerField</span><span class="p">(</span>
+                    <span class="n">label</span><span class="o">=</span><span class="n">_</span><span class="p">(</span><span class="s2">&quot;Order&quot;</span><span class="p">),</span>
+                    <span class="n">required</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                    <span class="n">widget</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">get_ordering_widget</span><span class="p">(),</span>
+                <span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">can_delete</span> <span class="ow">and</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">can_delete_extra</span> <span class="ow">or</span> <span class="p">(</span><span class="n">index</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">index</span> <span class="o">&lt;</span> <span class="n">initial_form_count</span><span class="p">)</span>
+        <span class="p">):</span>
+            <span class="n">form</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="n">DELETION_FIELD_NAME</span><span class="p">]</span> <span class="o">=</span> <span class="n">BooleanField</span><span class="p">(</span>
+                <span class="n">label</span><span class="o">=</span><span class="n">_</span><span class="p">(</span><span class="s2">&quot;Delete&quot;</span><span class="p">),</span>
+                <span class="n">required</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                <span class="n">widget</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">get_deletion_widget</span><span class="p">(),</span>
+            <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseFormSet.add_prefix">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.add_prefix">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add_prefix</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">-</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">prefix</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseFormSet.is_multipart">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.is_multipart">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_multipart</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return True if the formset needs to be multipart, i.e. it</span>
+<span class="sd">        has FileInput, or False otherwise.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">forms</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">forms</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">is_multipart</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">empty_form</span><span class="o">.</span><span class="n">is_multipart</span><span class="p">()</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="BaseFormSet.media">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.media">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">media</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># All the forms on a FormSet are the same, so you only need to</span>
+        <span class="c1"># interrogate the first form for media.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">forms</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">forms</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">media</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">empty_form</span><span class="o">.</span><span class="n">media</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="BaseFormSet.template_name">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.template_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">template_name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">renderer</span><span class="o">.</span><span class="n">formset_template_name</span></div>
+
+
+<div class="viewcode-block" id="BaseFormSet.get_context">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.BaseFormSet.get_context">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_context</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;formset&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="p">}</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="formset_factory">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.formset_factory">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">formset_factory</span><span class="p">(</span>
+    <span class="n">form</span><span class="p">,</span>
+    <span class="n">formset</span><span class="o">=</span><span class="n">BaseFormSet</span><span class="p">,</span>
+    <span class="n">extra</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+    <span class="n">can_order</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="n">can_delete</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="n">max_num</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">validate_max</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="n">min_num</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">validate_min</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="n">absolute_max</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">can_delete_extra</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">renderer</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return a FormSet for the given form class.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">min_num</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">min_num</span> <span class="o">=</span> <span class="n">DEFAULT_MIN_NUM</span>
+    <span class="k">if</span> <span class="n">max_num</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">max_num</span> <span class="o">=</span> <span class="n">DEFAULT_MAX_NUM</span>
+    <span class="c1"># absolute_max is a hard limit on forms instantiated, to prevent</span>
+    <span class="c1"># memory-exhaustion attacks. Default to max_num + DEFAULT_MAX_NUM</span>
+    <span class="c1"># (which is 2 * DEFAULT_MAX_NUM if max_num is None in the first place).</span>
+    <span class="k">if</span> <span class="n">absolute_max</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">absolute_max</span> <span class="o">=</span> <span class="n">max_num</span> <span class="o">+</span> <span class="n">DEFAULT_MAX_NUM</span>
+    <span class="k">if</span> <span class="n">max_num</span> <span class="o">&gt;</span> <span class="n">absolute_max</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;&#39;absolute_max&#39; must be greater or equal to &#39;max_num&#39;.&quot;</span><span class="p">)</span>
+    <span class="n">attrs</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;form&quot;</span><span class="p">:</span> <span class="n">form</span><span class="p">,</span>
+        <span class="s2">&quot;extra&quot;</span><span class="p">:</span> <span class="n">extra</span><span class="p">,</span>
+        <span class="s2">&quot;can_order&quot;</span><span class="p">:</span> <span class="n">can_order</span><span class="p">,</span>
+        <span class="s2">&quot;can_delete&quot;</span><span class="p">:</span> <span class="n">can_delete</span><span class="p">,</span>
+        <span class="s2">&quot;can_delete_extra&quot;</span><span class="p">:</span> <span class="n">can_delete_extra</span><span class="p">,</span>
+        <span class="s2">&quot;min_num&quot;</span><span class="p">:</span> <span class="n">min_num</span><span class="p">,</span>
+        <span class="s2">&quot;max_num&quot;</span><span class="p">:</span> <span class="n">max_num</span><span class="p">,</span>
+        <span class="s2">&quot;absolute_max&quot;</span><span class="p">:</span> <span class="n">absolute_max</span><span class="p">,</span>
+        <span class="s2">&quot;validate_min&quot;</span><span class="p">:</span> <span class="n">validate_min</span><span class="p">,</span>
+        <span class="s2">&quot;validate_max&quot;</span><span class="p">:</span> <span class="n">validate_max</span><span class="p">,</span>
+        <span class="s2">&quot;renderer&quot;</span><span class="p">:</span> <span class="n">renderer</span> <span class="ow">or</span> <span class="n">get_default_renderer</span><span class="p">(),</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="nb">type</span><span class="p">(</span><span class="n">form</span><span class="o">.</span><span class="vm">__name__</span> <span class="o">+</span> <span class="s2">&quot;FormSet&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">formset</span><span class="p">,),</span> <span class="n">attrs</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="all_valid">
+<a class="viewcode-back" href="../../../autoapi/django/forms/formsets/index.html#django.forms.formsets.all_valid">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">all_valid</span><span class="p">(</span><span class="n">formsets</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate every formset and return True if all are valid.&quot;&quot;&quot;</span>
+    <span class="c1"># List comprehension ensures is_valid() is called for all formsets.</span>
+    <span class="k">return</span> <span class="nb">all</span><span class="p">([</span><span class="n">formset</span><span class="o">.</span><span class="n">is_valid</span><span class="p">()</span> <span class="k">for</span> <span class="n">formset</span> <span class="ow">in</span> <span class="n">formsets</span><span class="p">])</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

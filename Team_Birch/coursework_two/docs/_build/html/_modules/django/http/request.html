@@ -1,0 +1,1031 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.http.request &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../django.html">django</a></li>
+      <li class="breadcrumb-item active">django.http.request</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.http.request</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">codecs</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">copy</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">io</span><span class="w"> </span><span class="kn">import</span> <span class="n">BytesIO</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">itertools</span><span class="w"> </span><span class="kn">import</span> <span class="n">chain</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">urllib.parse</span><span class="w"> </span><span class="kn">import</span> <span class="n">parse_qsl</span><span class="p">,</span> <span class="n">quote</span><span class="p">,</span> <span class="n">urlencode</span><span class="p">,</span> <span class="n">urljoin</span><span class="p">,</span> <span class="n">urlsplit</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">signing</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">DisallowedHost</span><span class="p">,</span>
+    <span class="n">ImproperlyConfigured</span><span class="p">,</span>
+    <span class="n">RequestDataTooBig</span><span class="p">,</span>
+    <span class="n">TooManyFieldsSent</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.files</span><span class="w"> </span><span class="kn">import</span> <span class="n">uploadhandler</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.http.multipartparser</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">MultiPartParser</span><span class="p">,</span>
+    <span class="n">MultiPartParserError</span><span class="p">,</span>
+    <span class="n">TooManyFilesSent</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.datastructures</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">CaseInsensitiveMapping</span><span class="p">,</span>
+    <span class="n">ImmutableList</span><span class="p">,</span>
+    <span class="n">MultiValueDict</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.encoding</span><span class="w"> </span><span class="kn">import</span> <span class="n">escape_uri_path</span><span class="p">,</span> <span class="n">iri_to_uri</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">cached_property</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.http</span><span class="w"> </span><span class="kn">import</span> <span class="n">is_same_domain</span><span class="p">,</span> <span class="n">parse_header_parameters</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.regex_helper</span><span class="w"> </span><span class="kn">import</span> <span class="n">_lazy_re_compile</span>
+
+<div class="viewcode-block" id="RAISE_ERROR">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.RAISE_ERROR">[docs]</a>
+<span class="n">RAISE_ERROR</span> <span class="o">=</span> <span class="nb">object</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="host_validation_re">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.host_validation_re">[docs]</a>
+<span class="n">host_validation_re</span> <span class="o">=</span> <span class="n">_lazy_re_compile</span><span class="p">(</span>
+    <span class="sa">r</span><span class="s2">&quot;^([a-z0-9.-]+|\[[a-f0-9]*:[a-f0-9\.:]+\])(:[0-9]+)?$&quot;</span>
+<span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="UnreadablePostError">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.UnreadablePostError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">UnreadablePostError</span><span class="p">(</span><span class="ne">OSError</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+
+
+<div class="viewcode-block" id="RawPostDataException">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.RawPostDataException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">RawPostDataException</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    You cannot access raw_post_data from a request that has</span>
+<span class="sd">    multipart/* POST data if it has been accessed via POST,</span>
+<span class="sd">    FILES, etc..</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">pass</span></div>
+
+
+
+<div class="viewcode-block" id="HttpRequest">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">HttpRequest</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A basic HTTP request.&quot;&quot;&quot;</span>
+
+    <span class="c1"># The encoding used in GET/POST dicts. None means use default setting.</span>
+    <span class="n">_encoding</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">_upload_handlers</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># WARNING: The `WSGIRequest` subclass doesn&#39;t call `super`.</span>
+        <span class="c1"># Any variable assignment made here should also happen in</span>
+        <span class="c1"># `WSGIRequest.__init__()`.</span>
+
+<div class="viewcode-block" id="HttpRequest.GET">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.GET">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">GET</span> <span class="o">=</span> <span class="n">QueryDict</span><span class="p">(</span><span class="n">mutable</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="HttpRequest.POST">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.POST">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">POST</span> <span class="o">=</span> <span class="n">QueryDict</span><span class="p">(</span><span class="n">mutable</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="HttpRequest.COOKIES">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.COOKIES">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">COOKIES</span> <span class="o">=</span> <span class="p">{}</span></div>
+
+<div class="viewcode-block" id="HttpRequest.META">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.META">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">META</span> <span class="o">=</span> <span class="p">{}</span></div>
+
+<div class="viewcode-block" id="HttpRequest.FILES">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.FILES">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">FILES</span> <span class="o">=</span> <span class="n">MultiValueDict</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="HttpRequest.path">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.path">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">path</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span></div>
+
+<div class="viewcode-block" id="HttpRequest.path_info">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.path_info">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">path_info</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span></div>
+
+<div class="viewcode-block" id="HttpRequest.method">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.method">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="HttpRequest.resolver_match">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.resolver_match">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">resolver_match</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="HttpRequest.content_type">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.content_type">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">content_type</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="HttpRequest.content_params">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.content_params">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">content_params</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_full_path</span><span class="p">():</span>
+            <span class="k">return</span> <span class="s2">&quot;&lt;</span><span class="si">%s</span><span class="s2">&gt;&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span>
+        <span class="k">return</span> <span class="s2">&quot;&lt;</span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2"> </span><span class="si">%r</span><span class="s2">&gt;&quot;</span> <span class="o">%</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">get_full_path</span><span class="p">(),</span>
+        <span class="p">)</span>
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="HttpRequest.headers">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.headers">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">headers</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">HttpHeaders</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">)</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="HttpRequest.accepted_types">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.accepted_types">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">accepted_types</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a list of MediaType instances.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">parse_accept_header</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">headers</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;Accept&quot;</span><span class="p">,</span> <span class="s2">&quot;*/*&quot;</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="HttpRequest.accepts">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.accepts">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">accepts</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">media_type</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">any</span><span class="p">(</span>
+            <span class="n">accepted_type</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">media_type</span><span class="p">)</span> <span class="k">for</span> <span class="n">accepted_type</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">accepted_types</span>
+        <span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_set_content_type_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">meta</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Set content_type, content_params, and encoding.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">content_type</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">content_params</span> <span class="o">=</span> <span class="n">parse_header_parameters</span><span class="p">(</span>
+            <span class="n">meta</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;CONTENT_TYPE&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="s2">&quot;charset&quot;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">content_params</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">codecs</span><span class="o">.</span><span class="n">lookup</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">content_params</span><span class="p">[</span><span class="s2">&quot;charset&quot;</span><span class="p">])</span>
+            <span class="k">except</span> <span class="ne">LookupError</span><span class="p">:</span>
+                <span class="k">pass</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">encoding</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">content_params</span><span class="p">[</span><span class="s2">&quot;charset&quot;</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_raw_host</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the HTTP host using the environment or request headers. Skip</span>
+<span class="sd">        allowed hosts protection, so may return an insecure host.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># We try three options, in order of decreasing preference.</span>
+        <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">USE_X_FORWARDED_HOST</span> <span class="ow">and</span> <span class="p">(</span><span class="s2">&quot;HTTP_X_FORWARDED_HOST&quot;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">):</span>
+            <span class="n">host</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;HTTP_X_FORWARDED_HOST&quot;</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="s2">&quot;HTTP_HOST&quot;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">:</span>
+            <span class="n">host</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;HTTP_HOST&quot;</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Reconstruct the host using the algorithm from PEP 333.</span>
+            <span class="n">host</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;SERVER_NAME&quot;</span><span class="p">]</span>
+            <span class="n">server_port</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_port</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">server_port</span> <span class="o">!=</span> <span class="p">(</span><span class="s2">&quot;443&quot;</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_secure</span><span class="p">()</span> <span class="k">else</span> <span class="s2">&quot;80&quot;</span><span class="p">):</span>
+                <span class="n">host</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">:</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">host</span><span class="p">,</span> <span class="n">server_port</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">host</span>
+
+<div class="viewcode-block" id="HttpRequest.get_host">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.get_host">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_host</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the HTTP host using the environment or request headers.&quot;&quot;&quot;</span>
+        <span class="n">host</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_raw_host</span><span class="p">()</span>
+
+        <span class="c1"># Allow variants of localhost if ALLOWED_HOSTS is empty and DEBUG=True.</span>
+        <span class="n">allowed_hosts</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">ALLOWED_HOSTS</span>
+        <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">DEBUG</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">allowed_hosts</span><span class="p">:</span>
+            <span class="n">allowed_hosts</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;.localhost&quot;</span><span class="p">,</span> <span class="s2">&quot;127.0.0.1&quot;</span><span class="p">,</span> <span class="s2">&quot;[::1]&quot;</span><span class="p">]</span>
+
+        <span class="n">domain</span><span class="p">,</span> <span class="n">port</span> <span class="o">=</span> <span class="n">split_domain_port</span><span class="p">(</span><span class="n">host</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">domain</span> <span class="ow">and</span> <span class="n">validate_host</span><span class="p">(</span><span class="n">domain</span><span class="p">,</span> <span class="n">allowed_hosts</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">host</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;Invalid HTTP_HOST header: </span><span class="si">%r</span><span class="s2">.&quot;</span> <span class="o">%</span> <span class="n">host</span>
+            <span class="k">if</span> <span class="n">domain</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">+=</span> <span class="s2">&quot; You may need to add </span><span class="si">%r</span><span class="s2"> to ALLOWED_HOSTS.&quot;</span> <span class="o">%</span> <span class="n">domain</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">+=</span> <span class="p">(</span>
+                    <span class="s2">&quot; The domain name provided is not valid according to RFC 1034/1035.&quot;</span>
+                <span class="p">)</span>
+            <span class="k">raise</span> <span class="n">DisallowedHost</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="HttpRequest.get_port">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.get_port">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_port</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the port number for the request as a string.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">USE_X_FORWARDED_PORT</span> <span class="ow">and</span> <span class="s2">&quot;HTTP_X_FORWARDED_PORT&quot;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">:</span>
+            <span class="n">port</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;HTTP_X_FORWARDED_PORT&quot;</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">port</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;SERVER_PORT&quot;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">port</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="HttpRequest.get_full_path">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.get_full_path">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_full_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">force_append_slash</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_full_path</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">force_append_slash</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="HttpRequest.get_full_path_info">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.get_full_path_info">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_full_path_info</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">force_append_slash</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_full_path</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">path_info</span><span class="p">,</span> <span class="n">force_append_slash</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_full_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">force_append_slash</span><span class="p">):</span>
+        <span class="c1"># RFC 3986 requires query string arguments to be in the ASCII range.</span>
+        <span class="c1"># Rather than crash if this doesn&#39;t happen, we encode defensively.</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%s%s%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span>
+            <span class="n">escape_uri_path</span><span class="p">(</span><span class="n">path</span><span class="p">),</span>
+            <span class="s2">&quot;/&quot;</span> <span class="k">if</span> <span class="n">force_append_slash</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">path</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="p">(</span><span class="s2">&quot;?&quot;</span> <span class="o">+</span> <span class="n">iri_to_uri</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;QUERY_STRING&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)))</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;QUERY_STRING&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+            <span class="k">else</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+
+<div class="viewcode-block" id="HttpRequest.get_signed_cookie">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.get_signed_cookie">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_signed_cookie</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="n">RAISE_ERROR</span><span class="p">,</span> <span class="n">salt</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">max_age</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Attempt to return a signed cookie. If the signature fails or the</span>
+<span class="sd">        cookie has expired, raise an exception, unless the `default` argument</span>
+<span class="sd">        is provided,  in which case return that value.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">cookie_value</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">COOKIES</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">default</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">RAISE_ERROR</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">default</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">signing</span><span class="o">.</span><span class="n">get_cookie_signer</span><span class="p">(</span><span class="n">salt</span><span class="o">=</span><span class="n">key</span> <span class="o">+</span> <span class="n">salt</span><span class="p">)</span><span class="o">.</span><span class="n">unsign</span><span class="p">(</span>
+                <span class="n">cookie_value</span><span class="p">,</span> <span class="n">max_age</span><span class="o">=</span><span class="n">max_age</span>
+            <span class="p">)</span>
+        <span class="k">except</span> <span class="n">signing</span><span class="o">.</span><span class="n">BadSignature</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">default</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">RAISE_ERROR</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">default</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+<div class="viewcode-block" id="HttpRequest.build_absolute_uri">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.build_absolute_uri">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">build_absolute_uri</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">location</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Build an absolute URI from the location and the variables available in</span>
+<span class="sd">        this request. If no ``location`` is specified, build the absolute URI</span>
+<span class="sd">        using request.get_full_path(). If the location is absolute, convert it</span>
+<span class="sd">        to an RFC 3987 compliant URI and return it. If location is relative or</span>
+<span class="sd">        is scheme-relative (i.e., ``//example.com/``), urljoin() it to a base</span>
+<span class="sd">        URL constructed from the request variables.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">location</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Make it an absolute url (but schemeless and domainless) for the</span>
+            <span class="c1"># edge case that the path starts with &#39;//&#39;.</span>
+            <span class="n">location</span> <span class="o">=</span> <span class="s2">&quot;//</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_full_path</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Coerce lazy locations.</span>
+            <span class="n">location</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">location</span><span class="p">)</span>
+        <span class="n">bits</span> <span class="o">=</span> <span class="n">urlsplit</span><span class="p">(</span><span class="n">location</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">bits</span><span class="o">.</span><span class="n">scheme</span> <span class="ow">and</span> <span class="n">bits</span><span class="o">.</span><span class="n">netloc</span><span class="p">):</span>
+            <span class="c1"># Handle the simple, most common case. If the location is absolute</span>
+            <span class="c1"># and a scheme or host (netloc) isn&#39;t provided, skip an expensive</span>
+            <span class="c1"># urljoin() as long as no path segments are &#39;.&#39; or &#39;..&#39;.</span>
+            <span class="k">if</span> <span class="p">(</span>
+                <span class="n">bits</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)</span>
+                <span class="ow">and</span> <span class="ow">not</span> <span class="n">bits</span><span class="o">.</span><span class="n">scheme</span>
+                <span class="ow">and</span> <span class="ow">not</span> <span class="n">bits</span><span class="o">.</span><span class="n">netloc</span>
+                <span class="ow">and</span> <span class="s2">&quot;/./&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">bits</span><span class="o">.</span><span class="n">path</span>
+                <span class="ow">and</span> <span class="s2">&quot;/../&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">bits</span><span class="o">.</span><span class="n">path</span>
+            <span class="p">):</span>
+                <span class="c1"># If location starts with &#39;//&#39; but has no netloc, reuse the</span>
+                <span class="c1"># schema and netloc from the current request. Strip the double</span>
+                <span class="c1"># slashes and continue as if it wasn&#39;t specified.</span>
+                <span class="k">if</span> <span class="n">location</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;//&quot;</span><span class="p">):</span>
+                    <span class="n">location</span> <span class="o">=</span> <span class="n">location</span><span class="p">[</span><span class="mi">2</span><span class="p">:]</span>
+                <span class="n">location</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_current_scheme_host</span> <span class="o">+</span> <span class="n">location</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Join the constructed URL with the provided location, which</span>
+                <span class="c1"># allows the provided location to apply query strings to the</span>
+                <span class="c1"># base path.</span>
+                <span class="n">location</span> <span class="o">=</span> <span class="n">urljoin</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_current_scheme_host</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">location</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">iri_to_uri</span><span class="p">(</span><span class="n">location</span><span class="p">)</span></div>
+
+
+    <span class="nd">@cached_property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_current_scheme_host</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="si">{}</span><span class="s2">://</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scheme</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_host</span><span class="p">())</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_scheme</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Hook for subclasses like WSGIRequest to implement. Return &#39;http&#39; by</span>
+<span class="sd">        default.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s2">&quot;http&quot;</span>
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="HttpRequest.scheme">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.scheme">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">scheme</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">SECURE_PROXY_SSL_HEADER</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">header</span><span class="p">,</span> <span class="n">secure_value</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">SECURE_PROXY_SSL_HEADER</span>
+            <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+                    <span class="s2">&quot;The SECURE_PROXY_SSL_HEADER setting must be a tuple containing &quot;</span>
+                    <span class="s2">&quot;two values.&quot;</span>
+                <span class="p">)</span>
+            <span class="n">header_value</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">header</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">header_value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">header_value</span><span class="p">,</span> <span class="o">*</span><span class="n">_</span> <span class="o">=</span> <span class="n">header_value</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+                <span class="k">return</span> <span class="s2">&quot;https&quot;</span> <span class="k">if</span> <span class="n">header_value</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="o">==</span> <span class="n">secure_value</span> <span class="k">else</span> <span class="s2">&quot;http&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_scheme</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="HttpRequest.is_secure">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.is_secure">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_secure</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">scheme</span> <span class="o">==</span> <span class="s2">&quot;https&quot;</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="HttpRequest.encoding">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.encoding">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">encoding</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_encoding</span></div>
+
+
+    <span class="nd">@encoding</span><span class="o">.</span><span class="n">setter</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">encoding</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">val</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Set the encoding used for GET/POST accesses. If the GET or POST</span>
+<span class="sd">        dictionary has already been created, remove and recreate it on the</span>
+<span class="sd">        next access (so that it is decoded correctly).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_encoding</span> <span class="o">=</span> <span class="n">val</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;GET&quot;</span><span class="p">):</span>
+            <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">GET</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;_post&quot;</span><span class="p">):</span>
+            <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">_post</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_initialize_handlers</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_upload_handlers</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">uploadhandler</span><span class="o">.</span><span class="n">load_handler</span><span class="p">(</span><span class="n">handler</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">handler</span> <span class="ow">in</span> <span class="n">settings</span><span class="o">.</span><span class="n">FILE_UPLOAD_HANDLERS</span>
+        <span class="p">]</span>
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="HttpRequest.upload_handlers">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.upload_handlers">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">upload_handlers</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_upload_handlers</span><span class="p">:</span>
+            <span class="c1"># If there are no upload handlers defined, initialize them from settings.</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_initialize_handlers</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_upload_handlers</span></div>
+
+
+    <span class="nd">@upload_handlers</span><span class="o">.</span><span class="n">setter</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">upload_handlers</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">upload_handlers</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;_files&quot;</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span>
+                <span class="s2">&quot;You cannot set the upload handlers after the upload has been &quot;</span>
+                <span class="s2">&quot;processed.&quot;</span>
+            <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_upload_handlers</span> <span class="o">=</span> <span class="n">upload_handlers</span>
+
+<div class="viewcode-block" id="HttpRequest.parse_file_upload">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.parse_file_upload">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">parse_file_upload</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">META</span><span class="p">,</span> <span class="n">post_data</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a tuple of (POST QueryDict, FILES MultiValueDict).&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">upload_handlers</span> <span class="o">=</span> <span class="n">ImmutableList</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">upload_handlers</span><span class="p">,</span>
+            <span class="n">warning</span><span class="o">=</span><span class="p">(</span>
+                <span class="s2">&quot;You cannot alter upload handlers after the upload has been &quot;</span>
+                <span class="s2">&quot;processed.&quot;</span>
+            <span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">parser</span> <span class="o">=</span> <span class="n">MultiPartParser</span><span class="p">(</span><span class="n">META</span><span class="p">,</span> <span class="n">post_data</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">upload_handlers</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">encoding</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse</span><span class="p">()</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="HttpRequest.body">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.body">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">body</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;_body&quot;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_read_started</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">RawPostDataException</span><span class="p">(</span>
+                    <span class="s2">&quot;You cannot access body after reading from request&#39;s data stream&quot;</span>
+                <span class="p">)</span>
+
+            <span class="c1"># Limit the maximum request data size that will be handled in-memory.</span>
+            <span class="k">if</span> <span class="p">(</span>
+                <span class="n">settings</span><span class="o">.</span><span class="n">DATA_UPLOAD_MAX_MEMORY_SIZE</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+                <span class="ow">and</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;CONTENT_LENGTH&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">)</span>
+                <span class="o">&gt;</span> <span class="n">settings</span><span class="o">.</span><span class="n">DATA_UPLOAD_MAX_MEMORY_SIZE</span>
+            <span class="p">):</span>
+                <span class="k">raise</span> <span class="n">RequestDataTooBig</span><span class="p">(</span>
+                    <span class="s2">&quot;Request body exceeded settings.DATA_UPLOAD_MAX_MEMORY_SIZE.&quot;</span>
+                <span class="p">)</span>
+
+            <span class="k">try</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_body</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+            <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">UnreadablePostError</span><span class="p">(</span><span class="o">*</span><span class="n">e</span><span class="o">.</span><span class="n">args</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
+            <span class="k">finally</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_stream</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_stream</span> <span class="o">=</span> <span class="n">BytesIO</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_body</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_body</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_mark_post_parse_error</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_post</span> <span class="o">=</span> <span class="n">QueryDict</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_files</span> <span class="o">=</span> <span class="n">MultiValueDict</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_load_post_and_files</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Populate self._post and self._files if the content-type is a form type&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="o">!=</span> <span class="s2">&quot;POST&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_post</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_files</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">QueryDict</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_encoding</span><span class="p">),</span>
+                <span class="n">MultiValueDict</span><span class="p">(),</span>
+            <span class="p">)</span>
+            <span class="k">return</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_read_started</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;_body&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_mark_post_parse_error</span><span class="p">()</span>
+            <span class="k">return</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">content_type</span> <span class="o">==</span> <span class="s2">&quot;multipart/form-data&quot;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;_body&quot;</span><span class="p">):</span>
+                <span class="c1"># Use already read data</span>
+                <span class="n">data</span> <span class="o">=</span> <span class="n">BytesIO</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_body</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">data</span> <span class="o">=</span> <span class="bp">self</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_post</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_files</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_file_upload</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
+            <span class="k">except</span> <span class="p">(</span><span class="n">MultiPartParserError</span><span class="p">,</span> <span class="n">TooManyFilesSent</span><span class="p">):</span>
+                <span class="c1"># An error occurred while parsing POST data. Since when</span>
+                <span class="c1"># formatting the error the request handler might access</span>
+                <span class="c1"># self.POST, set self._post and self._file to prevent</span>
+                <span class="c1"># attempts to parse POST data again.</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_mark_post_parse_error</span><span class="p">()</span>
+                <span class="k">raise</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">content_type</span> <span class="o">==</span> <span class="s2">&quot;application/x-www-form-urlencoded&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_post</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_files</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">QueryDict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">body</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_encoding</span><span class="p">),</span>
+                <span class="n">MultiValueDict</span><span class="p">(),</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_post</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_files</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">QueryDict</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_encoding</span><span class="p">),</span>
+                <span class="n">MultiValueDict</span><span class="p">(),</span>
+            <span class="p">)</span>
+
+<div class="viewcode-block" id="HttpRequest.close">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.close">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;_files&quot;</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span><span class="n">list_</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">list_</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_files</span><span class="o">.</span><span class="n">lists</span><span class="p">()):</span>
+                <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></div>
+
+
+    <span class="c1"># File-like and iterator interface.</span>
+    <span class="c1">#</span>
+    <span class="c1"># Expects self._stream to be set to an appropriate source of bytes by</span>
+    <span class="c1"># a corresponding request subclass (e.g. WSGIRequest).</span>
+    <span class="c1"># Also when request data has already been read by request.POST or</span>
+    <span class="c1"># request.body, self._stream points to a BytesIO instance</span>
+    <span class="c1"># containing that data.</span>
+
+<div class="viewcode-block" id="HttpRequest.read">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.read">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">read</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_read_started</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_stream</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">UnreadablePostError</span><span class="p">(</span><span class="o">*</span><span class="n">e</span><span class="o">.</span><span class="n">args</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span></div>
+
+
+<div class="viewcode-block" id="HttpRequest.readline">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.readline">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">readline</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_read_started</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_stream</span><span class="o">.</span><span class="n">readline</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">UnreadablePostError</span><span class="p">(</span><span class="o">*</span><span class="n">e</span><span class="o">.</span><span class="n">args</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">iter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">readline</span><span class="p">,</span> <span class="sa">b</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="HttpRequest.readlines">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpRequest.readlines">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">readlines</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="HttpHeaders">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpHeaders">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">HttpHeaders</span><span class="p">(</span><span class="n">CaseInsensitiveMapping</span><span class="p">):</span>
+<div class="viewcode-block" id="HttpHeaders.HTTP_PREFIX">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpHeaders.HTTP_PREFIX">[docs]</a>
+    <span class="n">HTTP_PREFIX</span> <span class="o">=</span> <span class="s2">&quot;HTTP_&quot;</span></div>
+
+    <span class="c1"># PEP 333 gives two headers which aren&#39;t prepended with HTTP_.</span>
+<div class="viewcode-block" id="HttpHeaders.UNPREFIXED_HEADERS">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpHeaders.UNPREFIXED_HEADERS">[docs]</a>
+    <span class="n">UNPREFIXED_HEADERS</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;CONTENT_TYPE&quot;</span><span class="p">,</span> <span class="s2">&quot;CONTENT_LENGTH&quot;</span><span class="p">}</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">environ</span><span class="p">):</span>
+        <span class="n">headers</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">header</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">environ</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_header_name</span><span class="p">(</span><span class="n">header</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">name</span><span class="p">:</span>
+                <span class="n">headers</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">headers</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Allow header lookup using underscores in place of hyphens.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__getitem__</span><span class="p">(</span><span class="n">key</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;_&quot;</span><span class="p">,</span> <span class="s2">&quot;-&quot;</span><span class="p">))</span>
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="HttpHeaders.parse_header_name">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpHeaders.parse_header_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">parse_header_name</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">header</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">header</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="n">HTTP_PREFIX</span><span class="p">):</span>
+            <span class="n">header</span> <span class="o">=</span> <span class="n">header</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="n">HTTP_PREFIX</span><span class="p">)</span> <span class="p">:]</span>
+        <span class="k">elif</span> <span class="n">header</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">cls</span><span class="o">.</span><span class="n">UNPREFIXED_HEADERS</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="k">return</span> <span class="n">header</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;_&quot;</span><span class="p">,</span> <span class="s2">&quot;-&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">title</span><span class="p">()</span></div>
+
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="HttpHeaders.to_wsgi_name">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpHeaders.to_wsgi_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_wsgi_name</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">header</span><span class="p">):</span>
+        <span class="n">header</span> <span class="o">=</span> <span class="n">header</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">,</span> <span class="s2">&quot;_&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">header</span> <span class="ow">in</span> <span class="bp">cls</span><span class="o">.</span><span class="n">UNPREFIXED_HEADERS</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">header</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">cls</span><span class="o">.</span><span class="n">HTTP_PREFIX</span><span class="si">}{</span><span class="n">header</span><span class="si">}</span><span class="s2">&quot;</span></div>
+
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="HttpHeaders.to_asgi_name">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpHeaders.to_asgi_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_asgi_name</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">header</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">header</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">,</span> <span class="s2">&quot;_&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span></div>
+
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="HttpHeaders.to_wsgi_names">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpHeaders.to_wsgi_names">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_wsgi_names</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">headers</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="bp">cls</span><span class="o">.</span><span class="n">to_wsgi_name</span><span class="p">(</span><span class="n">header_name</span><span class="p">):</span> <span class="n">value</span>
+            <span class="k">for</span> <span class="n">header_name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">headers</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+        <span class="p">}</span></div>
+
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="HttpHeaders.to_asgi_names">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.HttpHeaders.to_asgi_names">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_asgi_names</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">headers</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="bp">cls</span><span class="o">.</span><span class="n">to_asgi_name</span><span class="p">(</span><span class="n">header_name</span><span class="p">):</span> <span class="n">value</span>
+            <span class="k">for</span> <span class="n">header_name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">headers</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+        <span class="p">}</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="QueryDict">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.QueryDict">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">QueryDict</span><span class="p">(</span><span class="n">MultiValueDict</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A specialized MultiValueDict which represents a query string.</span>
+
+<span class="sd">    A QueryDict can be used to represent GET or POST data. It subclasses</span>
+<span class="sd">    MultiValueDict since keys in such data can be repeated, for instance</span>
+<span class="sd">    in the data from a form with a &lt;select multiple&gt; field.</span>
+
+<span class="sd">    By default QueryDicts are immutable, though the copy() method</span>
+<span class="sd">    will always return a mutable copy.</span>
+
+<span class="sd">    Both keys and values set on this class are converted from the given encoding</span>
+<span class="sd">    (DEFAULT_CHARSET by default) to str.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># These are both reset in __init__, but is specified here at the class</span>
+    <span class="c1"># level so that unpickling will have valid values</span>
+    <span class="n">_mutable</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">_encoding</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query_string</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">mutable</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">encoding</span> <span class="o">=</span> <span class="n">encoding</span> <span class="ow">or</span> <span class="n">settings</span><span class="o">.</span><span class="n">DEFAULT_CHARSET</span>
+        <span class="n">query_string</span> <span class="o">=</span> <span class="n">query_string</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span>
+        <span class="n">parse_qsl_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;keep_blank_values&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+            <span class="s2">&quot;encoding&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">encoding</span><span class="p">,</span>
+            <span class="s2">&quot;max_num_fields&quot;</span><span class="p">:</span> <span class="n">settings</span><span class="o">.</span><span class="n">DATA_UPLOAD_MAX_NUMBER_FIELDS</span><span class="p">,</span>
+        <span class="p">}</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">query_string</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
+            <span class="c1"># query_string normally contains URL-encoded data, a subset of ASCII.</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">query_string</span> <span class="o">=</span> <span class="n">query_string</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">encoding</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">UnicodeDecodeError</span><span class="p">:</span>
+                <span class="c1"># ... but some user agents are misbehaving :-(</span>
+                <span class="n">query_string</span> <span class="o">=</span> <span class="n">query_string</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;iso-8859-1&quot;</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">parse_qsl</span><span class="p">(</span><span class="n">query_string</span><span class="p">,</span> <span class="o">**</span><span class="n">parse_qsl_kwargs</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">appendlist</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="c1"># ValueError can also be raised if the strict_parsing argument to</span>
+            <span class="c1"># parse_qsl() is True. As that is not used by Django, assume that</span>
+            <span class="c1"># the exception was raised by exceeding the value of max_num_fields</span>
+            <span class="c1"># instead of fragile checks of exception message strings.</span>
+            <span class="k">raise</span> <span class="n">TooManyFieldsSent</span><span class="p">(</span>
+                <span class="s2">&quot;The number of GET/POST parameters exceeded &quot;</span>
+                <span class="s2">&quot;settings.DATA_UPLOAD_MAX_NUMBER_FIELDS.&quot;</span>
+            <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_mutable</span> <span class="o">=</span> <span class="n">mutable</span>
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="QueryDict.fromkeys">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.QueryDict.fromkeys">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">fromkeys</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">iterable</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">mutable</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a new QueryDict with keys (may be repeated) from an iterable and</span>
+<span class="sd">        values from value.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">q</span> <span class="o">=</span> <span class="bp">cls</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">mutable</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="n">encoding</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">iterable</span><span class="p">:</span>
+            <span class="n">q</span><span class="o">.</span><span class="n">appendlist</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">mutable</span><span class="p">:</span>
+            <span class="n">q</span><span class="o">.</span><span class="n">_mutable</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">return</span> <span class="n">q</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="QueryDict.encoding">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.QueryDict.encoding">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">encoding</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_encoding</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_encoding</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">DEFAULT_CHARSET</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_encoding</span></div>
+
+
+    <span class="nd">@encoding</span><span class="o">.</span><span class="n">setter</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">encoding</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_encoding</span> <span class="o">=</span> <span class="n">value</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_assert_mutable</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mutable</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span><span class="s2">&quot;This QueryDict instance is immutable&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__setitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_assert_mutable</span><span class="p">()</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="n">bytes_to_text</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">encoding</span><span class="p">)</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="n">bytes_to_text</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">encoding</span><span class="p">)</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__setitem__</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__delitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_assert_mutable</span><span class="p">()</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__delitem__</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">__copy__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">mutable</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">encoding</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">lists</span><span class="p">():</span>
+            <span class="n">result</span><span class="o">.</span><span class="n">setlist</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">__deepcopy__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">memo</span><span class="p">):</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">mutable</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">encoding</span><span class="p">)</span>
+        <span class="n">memo</span><span class="p">[</span><span class="nb">id</span><span class="p">(</span><span class="bp">self</span><span class="p">)]</span> <span class="o">=</span> <span class="n">result</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">lists</span><span class="p">():</span>
+            <span class="n">result</span><span class="o">.</span><span class="n">setlist</span><span class="p">(</span><span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">memo</span><span class="p">),</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">memo</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">result</span>
+
+<div class="viewcode-block" id="QueryDict.setlist">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.QueryDict.setlist">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">setlist</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">list_</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_assert_mutable</span><span class="p">()</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="n">bytes_to_text</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">encoding</span><span class="p">)</span>
+        <span class="n">list_</span> <span class="o">=</span> <span class="p">[</span><span class="n">bytes_to_text</span><span class="p">(</span><span class="n">elt</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">encoding</span><span class="p">)</span> <span class="k">for</span> <span class="n">elt</span> <span class="ow">in</span> <span class="n">list_</span><span class="p">]</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">setlist</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">list_</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="QueryDict.setlistdefault">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.QueryDict.setlistdefault">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">setlistdefault</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">default_list</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_assert_mutable</span><span class="p">()</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">setlistdefault</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">default_list</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="QueryDict.appendlist">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.QueryDict.appendlist">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">appendlist</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_assert_mutable</span><span class="p">()</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="n">bytes_to_text</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">encoding</span><span class="p">)</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="n">bytes_to_text</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">encoding</span><span class="p">)</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">appendlist</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="QueryDict.pop">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.QueryDict.pop">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">pop</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_assert_mutable</span><span class="p">()</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="QueryDict.popitem">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.QueryDict.popitem">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">popitem</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_assert_mutable</span><span class="p">()</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">popitem</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="QueryDict.clear">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.QueryDict.clear">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clear</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_assert_mutable</span><span class="p">()</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="QueryDict.setdefault">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.QueryDict.setdefault">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">setdefault</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_assert_mutable</span><span class="p">()</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="n">bytes_to_text</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">encoding</span><span class="p">)</span>
+        <span class="n">default</span> <span class="o">=</span> <span class="n">bytes_to_text</span><span class="p">(</span><span class="n">default</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">encoding</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">default</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="QueryDict.copy">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.QueryDict.copy">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">copy</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a mutable copy of this object.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">__deepcopy__</span><span class="p">({})</span></div>
+
+
+<div class="viewcode-block" id="QueryDict.urlencode">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.QueryDict.urlencode">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">urlencode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">safe</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return an encoded string of all query string arguments.</span>
+
+<span class="sd">        `safe` specifies characters which don&#39;t require quoting, for example::</span>
+
+<span class="sd">            &gt;&gt;&gt; q = QueryDict(mutable=True)</span>
+<span class="sd">            &gt;&gt;&gt; q[&#39;next&#39;] = &#39;/a&amp;b/&#39;</span>
+<span class="sd">            &gt;&gt;&gt; q.urlencode()</span>
+<span class="sd">            &#39;next=%2Fa%26b%2F&#39;</span>
+<span class="sd">            &gt;&gt;&gt; q.urlencode(safe=&#39;/&#39;)</span>
+<span class="sd">            &#39;next=/a%26b/&#39;</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="n">safe</span><span class="p">:</span>
+            <span class="n">safe</span> <span class="o">=</span> <span class="n">safe</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">encoding</span><span class="p">)</span>
+
+            <span class="k">def</span><span class="w"> </span><span class="nf">encode</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">):</span>
+                <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">=</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">((</span><span class="n">quote</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">safe</span><span class="p">),</span> <span class="n">quote</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">safe</span><span class="p">)))</span>
+
+        <span class="k">else</span><span class="p">:</span>
+
+            <span class="k">def</span><span class="w"> </span><span class="nf">encode</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">urlencode</span><span class="p">({</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span><span class="p">})</span>
+
+        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">list_</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">lists</span><span class="p">():</span>
+            <span class="n">output</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span>
+                <span class="n">encode</span><span class="p">(</span><span class="n">k</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">encoding</span><span class="p">),</span> <span class="nb">str</span><span class="p">(</span><span class="n">v</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">encoding</span><span class="p">))</span>
+                <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">list_</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="s2">&quot;&amp;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">output</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="MediaType">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.MediaType">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MediaType</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">media_type_raw_line</span><span class="p">):</span>
+        <span class="n">full_type</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">params</span> <span class="o">=</span> <span class="n">parse_header_parameters</span><span class="p">(</span>
+            <span class="n">media_type_raw_line</span> <span class="k">if</span> <span class="n">media_type_raw_line</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">main_type</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">sub_type</span> <span class="o">=</span> <span class="n">full_type</span><span class="o">.</span><span class="n">partition</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">params_str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s2">&quot;; </span><span class="si">%s</span><span class="s2">=</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">items</span><span class="p">())</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%s%s%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">main_type</span><span class="p">,</span>
+            <span class="p">(</span><span class="s2">&quot;/</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">sub_type</span><span class="p">)</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">sub_type</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="n">params_str</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;&lt;</span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&gt;&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__qualname__</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="MediaType.is_all_types">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.MediaType.is_all_types">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_all_types</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">main_type</span> <span class="o">==</span> <span class="s2">&quot;*&quot;</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">sub_type</span> <span class="o">==</span> <span class="s2">&quot;*&quot;</span></div>
+
+
+<div class="viewcode-block" id="MediaType.match">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.MediaType.match">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">match</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_all_types</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="n">other</span> <span class="o">=</span> <span class="n">MediaType</span><span class="p">(</span><span class="n">other</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">main_type</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">main_type</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">sub_type</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;*&quot;</span><span class="p">,</span> <span class="n">other</span><span class="o">.</span><span class="n">sub_type</span><span class="p">}:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+</div>
+
+
+
+<span class="c1"># It&#39;s neither necessary nor appropriate to use</span>
+<span class="c1"># django.utils.encoding.force_str() for parsing URLs and form inputs. Thus,</span>
+<span class="c1"># this slightly more restricted function, used by QueryDict.</span>
+<div class="viewcode-block" id="bytes_to_text">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.bytes_to_text">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">bytes_to_text</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">encoding</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert bytes objects to strings, using the given encoding. Illegally</span>
+<span class="sd">    encoded input characters are replaced with Unicode &quot;unknown&quot; codepoint</span>
+<span class="sd">    (\ufffd).</span>
+
+<span class="sd">    Return any non-bytes objects without change.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">encoding</span><span class="p">,</span> <span class="s2">&quot;replace&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">s</span></div>
+
+
+
+<div class="viewcode-block" id="split_domain_port">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.split_domain_port">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">split_domain_port</span><span class="p">(</span><span class="n">host</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return a (domain, port) tuple from a given host.</span>
+
+<span class="sd">    Returned domain is lowercased. If the host is invalid, the domain will be</span>
+<span class="sd">    empty.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">host</span> <span class="o">=</span> <span class="n">host</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">host_validation_re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">host</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span>
+
+    <span class="k">if</span> <span class="n">host</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;]&quot;</span><span class="p">:</span>
+        <span class="c1"># It&#39;s an IPv6 address without a port.</span>
+        <span class="k">return</span> <span class="n">host</span><span class="p">,</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">bits</span> <span class="o">=</span> <span class="n">host</span><span class="o">.</span><span class="n">rsplit</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">domain</span><span class="p">,</span> <span class="n">port</span> <span class="o">=</span> <span class="n">bits</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">bits</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span> <span class="k">else</span> <span class="p">(</span><span class="n">bits</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+    <span class="c1"># Remove a trailing dot (if present) from the domain.</span>
+    <span class="n">domain</span> <span class="o">=</span> <span class="n">domain</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="n">domain</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="n">domain</span>
+    <span class="k">return</span> <span class="n">domain</span><span class="p">,</span> <span class="n">port</span></div>
+
+
+
+<div class="viewcode-block" id="validate_host">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.validate_host">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_host</span><span class="p">(</span><span class="n">host</span><span class="p">,</span> <span class="n">allowed_hosts</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Validate the given host for this site.</span>
+
+<span class="sd">    Check that the host looks valid and matches a host or host pattern in the</span>
+<span class="sd">    given list of ``allowed_hosts``. Any pattern beginning with a period</span>
+<span class="sd">    matches a domain and all its subdomains (e.g. ``.example.com`` matches</span>
+<span class="sd">    ``example.com`` and any subdomain), ``*`` matches anything, and anything</span>
+<span class="sd">    else must match exactly.</span>
+
+<span class="sd">    Note: This function assumes that the given host is lowercased and has</span>
+<span class="sd">    already had the port, if any, stripped off.</span>
+
+<span class="sd">    Return ``True`` for a valid host, ``False`` otherwise.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="nb">any</span><span class="p">(</span>
+        <span class="n">pattern</span> <span class="o">==</span> <span class="s2">&quot;*&quot;</span> <span class="ow">or</span> <span class="n">is_same_domain</span><span class="p">(</span><span class="n">host</span><span class="p">,</span> <span class="n">pattern</span><span class="p">)</span> <span class="k">for</span> <span class="n">pattern</span> <span class="ow">in</span> <span class="n">allowed_hosts</span>
+    <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="parse_accept_header">
+<a class="viewcode-back" href="../../../autoapi/django/http/request/index.html#django.http.request.parse_accept_header">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">parse_accept_header</span><span class="p">(</span><span class="n">header</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">MediaType</span><span class="p">(</span><span class="n">token</span><span class="p">)</span> <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">header</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">token</span><span class="o">.</span><span class="n">strip</span><span class="p">()]</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,293 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gunicorn.reloader &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../gunicorn.html">gunicorn</a></li>
+      <li class="breadcrumb-item active">gunicorn.reloader</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gunicorn.reloader</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -</span>
+<span class="c1">#</span>
+<span class="c1"># This file is part of gunicorn released under the MIT license.</span>
+<span class="c1"># See the NOTICE for more information.</span>
+<span class="c1"># pylint: disable=no-else-continue</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os.path</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">threading</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+
+<div class="viewcode-block" id="COMPILED_EXT_RE">
+<a class="viewcode-back" href="../../autoapi/gunicorn/reloader/index.html#gunicorn.reloader.COMPILED_EXT_RE">[docs]</a>
+<span class="n">COMPILED_EXT_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;py[co]$&quot;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="Reloader">
+<a class="viewcode-back" href="../../autoapi/gunicorn/reloader/index.html#gunicorn.reloader.Reloader">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Reloader</span><span class="p">(</span><span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">extra_files</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">interval</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">callback</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+<div class="viewcode-block" id="Reloader.daemon">
+<a class="viewcode-back" href="../../autoapi/gunicorn/reloader/index.html#gunicorn.reloader.Reloader.daemon">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">daemon</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_extra_files</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">extra_files</span> <span class="ow">or</span> <span class="p">())</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_interval</span> <span class="o">=</span> <span class="n">interval</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_callback</span> <span class="o">=</span> <span class="n">callback</span>
+
+<div class="viewcode-block" id="Reloader.add_extra_file">
+<a class="viewcode-back" href="../../autoapi/gunicorn/reloader/index.html#gunicorn.reloader.Reloader.add_extra_file">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add_extra_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_extra_files</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Reloader.get_files">
+<a class="viewcode-back" href="../../autoapi/gunicorn/reloader/index.html#gunicorn.reloader.Reloader.get_files">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_files</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">fnames</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">COMPILED_EXT_RE</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s2">&quot;py&quot;</span><span class="p">,</span> <span class="n">module</span><span class="o">.</span><span class="vm">__file__</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">module</span> <span class="ow">in</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">modules</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+            <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="s2">&quot;__file__&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="p">]</span>
+
+        <span class="n">fnames</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_extra_files</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">fnames</span></div>
+
+
+<div class="viewcode-block" id="Reloader.run">
+<a class="viewcode-back" href="../../autoapi/gunicorn/reloader/index.html#gunicorn.reloader.Reloader.run">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">mtimes</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">filename</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_files</span><span class="p">():</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">mtime</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">stat</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span><span class="o">.</span><span class="n">st_mtime</span>
+                <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
+                    <span class="k">continue</span>
+                <span class="n">old_time</span> <span class="o">=</span> <span class="n">mtimes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">old_time</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">mtimes</span><span class="p">[</span><span class="n">filename</span><span class="p">]</span> <span class="o">=</span> <span class="n">mtime</span>
+                    <span class="k">continue</span>
+                <span class="k">elif</span> <span class="n">mtime</span> <span class="o">&gt;</span> <span class="n">old_time</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_callback</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">_callback</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+            <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_interval</span><span class="p">)</span></div>
+</div>
+
+
+
+<span class="n">has_inotify</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="k">if</span> <span class="n">sys</span><span class="o">.</span><span class="n">platform</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;linux&quot;</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">inotify.constants</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">inotify.adapters</span><span class="w"> </span><span class="kn">import</span> <span class="n">Inotify</span>
+
+<div class="viewcode-block" id="has_inotify">
+<a class="viewcode-back" href="../../autoapi/gunicorn/reloader/index.html#gunicorn.reloader.has_inotify">[docs]</a>
+        <span class="n">has_inotify</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+    <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+        <span class="k">pass</span>
+
+
+<span class="k">if</span> <span class="n">has_inotify</span><span class="p">:</span>
+
+<div class="viewcode-block" id="InotifyReloader">
+<a class="viewcode-back" href="../../autoapi/gunicorn/reloader/index.html#gunicorn.reloader.InotifyReloader">[docs]</a>
+    <span class="k">class</span><span class="w"> </span><span class="nc">InotifyReloader</span><span class="p">(</span><span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">):</span>
+<div class="viewcode-block" id="InotifyReloader.event_mask">
+<a class="viewcode-back" href="../../autoapi/gunicorn/reloader/index.html#gunicorn.reloader.InotifyReloader.event_mask">[docs]</a>
+        <span class="n">event_mask</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">inotify</span><span class="o">.</span><span class="n">constants</span><span class="o">.</span><span class="n">IN_CREATE</span>
+            <span class="o">|</span> <span class="n">inotify</span><span class="o">.</span><span class="n">constants</span><span class="o">.</span><span class="n">IN_DELETE</span>
+            <span class="o">|</span> <span class="n">inotify</span><span class="o">.</span><span class="n">constants</span><span class="o">.</span><span class="n">IN_DELETE_SELF</span>
+            <span class="o">|</span> <span class="n">inotify</span><span class="o">.</span><span class="n">constants</span><span class="o">.</span><span class="n">IN_MODIFY</span>
+            <span class="o">|</span> <span class="n">inotify</span><span class="o">.</span><span class="n">constants</span><span class="o">.</span><span class="n">IN_MOVE_SELF</span>
+            <span class="o">|</span> <span class="n">inotify</span><span class="o">.</span><span class="n">constants</span><span class="o">.</span><span class="n">IN_MOVED_FROM</span>
+            <span class="o">|</span> <span class="n">inotify</span><span class="o">.</span><span class="n">constants</span><span class="o">.</span><span class="n">IN_MOVED_TO</span>
+        <span class="p">)</span></div>
+
+
+        <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">extra_files</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">callback</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+            <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+<div class="viewcode-block" id="InotifyReloader.daemon">
+<a class="viewcode-back" href="../../autoapi/gunicorn/reloader/index.html#gunicorn.reloader.InotifyReloader.daemon">[docs]</a>
+            <span class="bp">self</span><span class="o">.</span><span class="n">daemon</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">_callback</span> <span class="o">=</span> <span class="n">callback</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_dirs</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_watcher</span> <span class="o">=</span> <span class="n">Inotify</span><span class="p">()</span>
+
+            <span class="k">for</span> <span class="n">extra_file</span> <span class="ow">in</span> <span class="n">extra_files</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">add_extra_file</span><span class="p">(</span><span class="n">extra_file</span><span class="p">)</span>
+
+<div class="viewcode-block" id="InotifyReloader.add_extra_file">
+<a class="viewcode-back" href="../../autoapi/gunicorn/reloader/index.html#gunicorn.reloader.InotifyReloader.add_extra_file">[docs]</a>
+        <span class="k">def</span><span class="w"> </span><span class="nf">add_extra_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">):</span>
+            <span class="n">dirname</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">dirname</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dirs</span><span class="p">:</span>
+                <span class="k">return</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">_watcher</span><span class="o">.</span><span class="n">add_watch</span><span class="p">(</span><span class="n">dirname</span><span class="p">,</span> <span class="n">mask</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">event_mask</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_dirs</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">dirname</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="InotifyReloader.get_dirs">
+<a class="viewcode-back" href="../../autoapi/gunicorn/reloader/index.html#gunicorn.reloader.InotifyReloader.get_dirs">[docs]</a>
+        <span class="k">def</span><span class="w"> </span><span class="nf">get_dirs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+            <span class="n">fnames</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span>
+                    <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">COMPILED_EXT_RE</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s2">&quot;py&quot;</span><span class="p">,</span> <span class="n">module</span><span class="o">.</span><span class="vm">__file__</span><span class="p">))</span>
+                <span class="p">)</span>
+                <span class="k">for</span> <span class="n">module</span> <span class="ow">in</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">modules</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+                <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="s2">&quot;__file__&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="p">]</span>
+
+            <span class="k">return</span> <span class="nb">set</span><span class="p">(</span><span class="n">fnames</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="InotifyReloader.run">
+<a class="viewcode-back" href="../../autoapi/gunicorn/reloader/index.html#gunicorn.reloader.InotifyReloader.run">[docs]</a>
+        <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_dirs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_dirs</span><span class="p">()</span>
+
+            <span class="k">for</span> <span class="n">dirname</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dirs</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">dirname</span><span class="p">):</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_watcher</span><span class="o">.</span><span class="n">add_watch</span><span class="p">(</span><span class="n">dirname</span><span class="p">,</span> <span class="n">mask</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">event_mask</span><span class="p">)</span>
+
+            <span class="k">for</span> <span class="n">event</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_watcher</span><span class="o">.</span><span class="n">event_gen</span><span class="p">():</span>
+                <span class="k">if</span> <span class="n">event</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="k">continue</span>
+
+                <span class="n">filename</span> <span class="o">=</span> <span class="n">event</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
+
+                <span class="bp">self</span><span class="o">.</span><span class="n">_callback</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span></div>
+</div>
+
+
+<span class="k">else</span><span class="p">:</span>
+
+    <span class="k">class</span><span class="w"> </span><span class="nc">InotifyReloader</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+        <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">extra_files</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">callback</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ImportError</span><span class="p">(</span>
+                <span class="s2">&quot;You must have the inotify module installed to &quot;</span>
+                <span class="s2">&quot;use the inotify reloader&quot;</span>
+            <span class="p">)</span>
+
+
+<div class="viewcode-block" id="preferred_reloader">
+<a class="viewcode-back" href="../../autoapi/gunicorn/reloader/index.html#gunicorn.reloader.preferred_reloader">[docs]</a>
+<span class="n">preferred_reloader</span> <span class="o">=</span> <span class="n">InotifyReloader</span> <span class="k">if</span> <span class="n">has_inotify</span> <span class="k">else</span> <span class="n">Reloader</span></div>
+
+
+<div class="viewcode-block" id="reloader_engines">
+<a class="viewcode-back" href="../../autoapi/gunicorn/reloader/index.html#gunicorn.reloader.reloader_engines">[docs]</a>
+<span class="n">reloader_engines</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;auto&quot;</span><span class="p">:</span> <span class="n">preferred_reloader</span><span class="p">,</span>
+    <span class="s2">&quot;poll&quot;</span><span class="p">:</span> <span class="n">Reloader</span><span class="p">,</span>
+    <span class="s2">&quot;inotify&quot;</span><span class="p">:</span> <span class="n">InotifyReloader</span><span class="p">,</span>
+<span class="p">}</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

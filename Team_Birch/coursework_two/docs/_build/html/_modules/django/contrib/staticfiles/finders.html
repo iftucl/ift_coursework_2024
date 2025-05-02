@@ -1,0 +1,519 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.contrib.staticfiles.finders &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../django.html">django</a></li>
+      <li class="breadcrumb-item active">django.contrib.staticfiles.finders</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.contrib.staticfiles.finders</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">functools</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.apps</span><span class="w"> </span><span class="kn">import</span> <span class="n">apps</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.staticfiles</span><span class="w"> </span><span class="kn">import</span> <span class="n">utils</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.checks</span><span class="w"> </span><span class="kn">import</span> <span class="n">Error</span><span class="p">,</span> <span class="ne">Warning</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImproperlyConfigured</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.files.storage</span><span class="w"> </span><span class="kn">import</span> <span class="n">FileSystemStorage</span><span class="p">,</span> <span class="n">Storage</span><span class="p">,</span> <span class="n">default_storage</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils._os</span><span class="w"> </span><span class="kn">import</span> <span class="n">safe_join</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">LazyObject</span><span class="p">,</span> <span class="n">empty</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.module_loading</span><span class="w"> </span><span class="kn">import</span> <span class="n">import_string</span>
+
+<span class="c1"># To keep track on which directories the finder has searched the static files.</span>
+<div class="viewcode-block" id="searched_locations">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.searched_locations">[docs]</a>
+<span class="n">searched_locations</span> <span class="o">=</span> <span class="p">[]</span></div>
+
+
+
+<div class="viewcode-block" id="BaseFinder">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.BaseFinder">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BaseFinder</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A base file finder to be used for custom staticfiles finder classes.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="BaseFinder.check">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.BaseFinder.check">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses may provide a check() method to verify the finder is &quot;</span>
+            <span class="s2">&quot;configured correctly.&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseFinder.find">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.BaseFinder.find">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">find</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="nb">all</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Given a relative file path, find an absolute file path.</span>
+
+<span class="sd">        If the ``all`` parameter is False (default) return only the first found</span>
+<span class="sd">        file path; if True, return a list of all found files paths.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of BaseFinder must provide a find() method&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseFinder.list">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.BaseFinder.list">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">list</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ignore_patterns</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Given an optional list of paths to ignore, return a two item iterable</span>
+<span class="sd">        consisting of the relative path and storage instance.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of BaseFinder must provide a list() method&quot;</span>
+        <span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="FileSystemFinder">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.FileSystemFinder">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">FileSystemFinder</span><span class="p">(</span><span class="n">BaseFinder</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A static files finder that uses the ``STATICFILES_DIRS`` setting</span>
+<span class="sd">    to locate files.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">app_names</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="c1"># List of locations with static files</span>
+<div class="viewcode-block" id="FileSystemFinder.locations">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.FileSystemFinder.locations">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">locations</span> <span class="o">=</span> <span class="p">[]</span></div>
+
+        <span class="c1"># Maps dir paths to an appropriate storage instance</span>
+<div class="viewcode-block" id="FileSystemFinder.storages">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.FileSystemFinder.storages">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">storages</span> <span class="o">=</span> <span class="p">{}</span></div>
+
+        <span class="k">for</span> <span class="n">root</span> <span class="ow">in</span> <span class="n">settings</span><span class="o">.</span><span class="n">STATICFILES_DIRS</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+                <span class="n">prefix</span><span class="p">,</span> <span class="n">root</span> <span class="o">=</span> <span class="n">root</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">prefix</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">prefix</span><span class="p">,</span> <span class="n">root</span><span class="p">)</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">locations</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">locations</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">prefix</span><span class="p">,</span> <span class="n">root</span><span class="p">))</span>
+        <span class="k">for</span> <span class="n">prefix</span><span class="p">,</span> <span class="n">root</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">locations</span><span class="p">:</span>
+            <span class="n">filesystem_storage</span> <span class="o">=</span> <span class="n">FileSystemStorage</span><span class="p">(</span><span class="n">location</span><span class="o">=</span><span class="n">root</span><span class="p">)</span>
+            <span class="n">filesystem_storage</span><span class="o">.</span><span class="n">prefix</span> <span class="o">=</span> <span class="n">prefix</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">storages</span><span class="p">[</span><span class="n">root</span><span class="p">]</span> <span class="o">=</span> <span class="n">filesystem_storage</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="FileSystemFinder.check">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.FileSystemFinder.check">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">errors</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">STATICFILES_DIRS</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="n">Error</span><span class="p">(</span>
+                    <span class="s2">&quot;The STATICFILES_DIRS setting is not a tuple or list.&quot;</span><span class="p">,</span>
+                    <span class="n">hint</span><span class="o">=</span><span class="s2">&quot;Perhaps you forgot a trailing comma?&quot;</span><span class="p">,</span>
+                    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;staticfiles.E001&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+            <span class="k">return</span> <span class="n">errors</span>
+        <span class="k">for</span> <span class="n">root</span> <span class="ow">in</span> <span class="n">settings</span><span class="o">.</span><span class="n">STATICFILES_DIRS</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+                <span class="n">prefix</span><span class="p">,</span> <span class="n">root</span> <span class="o">=</span> <span class="n">root</span>
+                <span class="k">if</span> <span class="n">prefix</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">):</span>
+                    <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                        <span class="n">Error</span><span class="p">(</span>
+                            <span class="s2">&quot;The prefix </span><span class="si">%r</span><span class="s2"> in the STATICFILES_DIRS setting must &quot;</span>
+                            <span class="s2">&quot;not end with a slash.&quot;</span> <span class="o">%</span> <span class="n">prefix</span><span class="p">,</span>
+                            <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;staticfiles.E003&quot;</span><span class="p">,</span>
+                        <span class="p">)</span>
+                    <span class="p">)</span>
+            <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">STATIC_ROOT</span> <span class="ow">and</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span>
+                <span class="n">settings</span><span class="o">.</span><span class="n">STATIC_ROOT</span>
+            <span class="p">)</span> <span class="o">==</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">root</span><span class="p">):</span>
+                <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="n">Error</span><span class="p">(</span>
+                        <span class="s2">&quot;The STATICFILES_DIRS setting should not contain the &quot;</span>
+                        <span class="s2">&quot;STATIC_ROOT setting.&quot;</span><span class="p">,</span>
+                        <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;staticfiles.E002&quot;</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">root</span><span class="p">):</span>
+                <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="ne">Warning</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;The directory &#39;</span><span class="si">{</span><span class="n">root</span><span class="si">}</span><span class="s2">&#39; in the STATICFILES_DIRS setting &quot;</span>
+                        <span class="sa">f</span><span class="s2">&quot;does not exist.&quot;</span><span class="p">,</span>
+                        <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;staticfiles.W004&quot;</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+        <span class="k">return</span> <span class="n">errors</span></div>
+
+
+<div class="viewcode-block" id="FileSystemFinder.find">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.FileSystemFinder.find">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">find</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="nb">all</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Look for files in the extra locations as defined in STATICFILES_DIRS.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">matches</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">prefix</span><span class="p">,</span> <span class="n">root</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">locations</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">root</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">searched_locations</span><span class="p">:</span>
+                <span class="n">searched_locations</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">root</span><span class="p">)</span>
+            <span class="n">matched_path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">find_location</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">prefix</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">matched_path</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="n">matched_path</span>
+                <span class="n">matches</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">matched_path</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">matches</span></div>
+
+
+<div class="viewcode-block" id="FileSystemFinder.find_location">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.FileSystemFinder.find_location">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">find_location</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Find a requested static file in a location and return the found</span>
+<span class="sd">        absolute path (or ``None`` if no match).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">prefix</span><span class="p">:</span>
+            <span class="n">prefix</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">prefix</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">sep</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">path</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">prefix</span><span class="p">):</span>
+                <span class="k">return</span> <span class="kc">None</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="n">path</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">prefix</span><span class="p">)</span> <span class="p">:]</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">safe_join</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">path</span></div>
+
+
+<div class="viewcode-block" id="FileSystemFinder.list">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.FileSystemFinder.list">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">list</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ignore_patterns</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        List all files in all locations.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">prefix</span><span class="p">,</span> <span class="n">root</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">locations</span><span class="p">:</span>
+            <span class="c1"># Skip nonexistent directories.</span>
+            <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">root</span><span class="p">):</span>
+                <span class="n">storage</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">storages</span><span class="p">[</span><span class="n">root</span><span class="p">]</span>
+                <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">utils</span><span class="o">.</span><span class="n">get_files</span><span class="p">(</span><span class="n">storage</span><span class="p">,</span> <span class="n">ignore_patterns</span><span class="p">):</span>
+                    <span class="k">yield</span> <span class="n">path</span><span class="p">,</span> <span class="n">storage</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="AppDirectoriesFinder">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.AppDirectoriesFinder">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">AppDirectoriesFinder</span><span class="p">(</span><span class="n">BaseFinder</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A static files finder that looks in the directory of each app as</span>
+<span class="sd">    specified in the source_dir attribute.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="AppDirectoriesFinder.storage_class">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.AppDirectoriesFinder.storage_class">[docs]</a>
+    <span class="n">storage_class</span> <span class="o">=</span> <span class="n">FileSystemStorage</span></div>
+
+<div class="viewcode-block" id="AppDirectoriesFinder.source_dir">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.AppDirectoriesFinder.source_dir">[docs]</a>
+    <span class="n">source_dir</span> <span class="o">=</span> <span class="s2">&quot;static&quot;</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">app_names</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="c1"># The list of apps that are handled</span>
+<div class="viewcode-block" id="AppDirectoriesFinder.apps">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.AppDirectoriesFinder.apps">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">apps</span> <span class="o">=</span> <span class="p">[]</span></div>
+
+        <span class="c1"># Mapping of app names to storage instances</span>
+<div class="viewcode-block" id="AppDirectoriesFinder.storages">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.AppDirectoriesFinder.storages">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">storages</span> <span class="o">=</span> <span class="p">{}</span></div>
+
+        <span class="n">app_configs</span> <span class="o">=</span> <span class="n">apps</span><span class="o">.</span><span class="n">get_app_configs</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">app_names</span><span class="p">:</span>
+            <span class="n">app_names</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">app_names</span><span class="p">)</span>
+            <span class="n">app_configs</span> <span class="o">=</span> <span class="p">[</span><span class="n">ac</span> <span class="k">for</span> <span class="n">ac</span> <span class="ow">in</span> <span class="n">app_configs</span> <span class="k">if</span> <span class="n">ac</span><span class="o">.</span><span class="n">name</span> <span class="ow">in</span> <span class="n">app_names</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">app_config</span> <span class="ow">in</span> <span class="n">app_configs</span><span class="p">:</span>
+            <span class="n">app_storage</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">storage_class</span><span class="p">(</span>
+                <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">app_config</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">source_dir</span><span class="p">)</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">app_storage</span><span class="o">.</span><span class="n">location</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">storages</span><span class="p">[</span><span class="n">app_config</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">app_storage</span>
+                <span class="k">if</span> <span class="n">app_config</span><span class="o">.</span><span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">apps</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">apps</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">app_config</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="AppDirectoriesFinder.list">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.AppDirectoriesFinder.list">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">list</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ignore_patterns</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        List all files in all app storages.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">storage</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">storages</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">storage</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">):</span>  <span class="c1"># check if storage location exists</span>
+                <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">utils</span><span class="o">.</span><span class="n">get_files</span><span class="p">(</span><span class="n">storage</span><span class="p">,</span> <span class="n">ignore_patterns</span><span class="p">):</span>
+                    <span class="k">yield</span> <span class="n">path</span><span class="p">,</span> <span class="n">storage</span></div>
+
+
+<div class="viewcode-block" id="AppDirectoriesFinder.find">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.AppDirectoriesFinder.find">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">find</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="nb">all</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Look for files in the app directories.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">matches</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">app</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">apps</span><span class="p">:</span>
+            <span class="n">app_location</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">storages</span><span class="p">[</span><span class="n">app</span><span class="p">]</span><span class="o">.</span><span class="n">location</span>
+            <span class="k">if</span> <span class="n">app_location</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">searched_locations</span><span class="p">:</span>
+                <span class="n">searched_locations</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">app_location</span><span class="p">)</span>
+            <span class="n">match</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">find_in_app</span><span class="p">(</span><span class="n">app</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">match</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="n">match</span>
+                <span class="n">matches</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">match</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">matches</span></div>
+
+
+<div class="viewcode-block" id="AppDirectoriesFinder.find_in_app">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.AppDirectoriesFinder.find_in_app">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">find_in_app</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">app</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Find a requested static file in an app&#39;s static locations.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">storage</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">storages</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">app</span><span class="p">)</span>
+        <span class="c1"># Only try to find a file if the source dir actually exists.</span>
+        <span class="k">if</span> <span class="n">storage</span> <span class="ow">and</span> <span class="n">storage</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+            <span class="n">matched_path</span> <span class="o">=</span> <span class="n">storage</span><span class="o">.</span><span class="n">path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">matched_path</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">matched_path</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="BaseStorageFinder">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.BaseStorageFinder">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BaseStorageFinder</span><span class="p">(</span><span class="n">BaseFinder</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A base static files finder to be used to extended</span>
+<span class="sd">    with an own storage class.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="BaseStorageFinder.storage">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.BaseStorageFinder.storage">[docs]</a>
+    <span class="n">storage</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">storage</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">storage</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">storage</span> <span class="o">=</span> <span class="n">storage</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">storage</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+                <span class="s2">&quot;The staticfiles storage finder </span><span class="si">%r</span><span class="s2"> &quot;</span>
+                <span class="s2">&quot;doesn&#39;t have a storage class &quot;</span>
+                <span class="s2">&quot;assigned.&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span>
+            <span class="p">)</span>
+        <span class="c1"># Make sure we have a storage instance here.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">storage</span><span class="p">,</span> <span class="p">(</span><span class="n">Storage</span><span class="p">,</span> <span class="n">LazyObject</span><span class="p">)):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">storage</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">storage</span><span class="p">()</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="BaseStorageFinder.find">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.BaseStorageFinder.find">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">find</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="nb">all</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Look for files in the default file storage, if it&#39;s local.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">storage</span><span class="o">.</span><span class="n">path</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">NotImplementedError</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">storage</span><span class="o">.</span><span class="n">location</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">searched_locations</span><span class="p">:</span>
+                <span class="n">searched_locations</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">storage</span><span class="o">.</span><span class="n">location</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">storage</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+                <span class="n">match</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">storage</span><span class="o">.</span><span class="n">path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+                <span class="k">if</span> <span class="nb">all</span><span class="p">:</span>
+                    <span class="n">match</span> <span class="o">=</span> <span class="p">[</span><span class="n">match</span><span class="p">]</span>
+                <span class="k">return</span> <span class="n">match</span>
+        <span class="k">return</span> <span class="p">[]</span></div>
+
+
+<div class="viewcode-block" id="BaseStorageFinder.list">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.BaseStorageFinder.list">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">list</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ignore_patterns</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        List all files of the storage.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">utils</span><span class="o">.</span><span class="n">get_files</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">storage</span><span class="p">,</span> <span class="n">ignore_patterns</span><span class="p">):</span>
+            <span class="k">yield</span> <span class="n">path</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">storage</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="DefaultStorageFinder">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.DefaultStorageFinder">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DefaultStorageFinder</span><span class="p">(</span><span class="n">BaseStorageFinder</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A static files finder that uses the default storage backend.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="DefaultStorageFinder.storage">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.DefaultStorageFinder.storage">[docs]</a>
+    <span class="n">storage</span> <span class="o">=</span> <span class="n">default_storage</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="n">base_location</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">storage</span><span class="p">,</span> <span class="s2">&quot;base_location&quot;</span><span class="p">,</span> <span class="n">empty</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">base_location</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+                <span class="s2">&quot;The storage backend of the &quot;</span>
+                <span class="s2">&quot;staticfiles finder </span><span class="si">%r</span><span class="s2"> doesn&#39;t have &quot;</span>
+                <span class="s2">&quot;a valid location.&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span>
+            <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="find">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.find">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">find</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="nb">all</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Find a static file with the given path using all enabled finders.</span>
+
+<span class="sd">    If ``all`` is ``False`` (default), return the first matching</span>
+<span class="sd">    absolute path (or ``None`` if no match). Otherwise return a list.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">searched_locations</span><span class="p">[:]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">matches</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">finder</span> <span class="ow">in</span> <span class="n">get_finders</span><span class="p">():</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">finder</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="nb">all</span><span class="o">=</span><span class="nb">all</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span> <span class="ow">and</span> <span class="n">result</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">result</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="p">[</span><span class="n">result</span><span class="p">]</span>
+        <span class="n">matches</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">matches</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">matches</span>
+    <span class="c1"># No match.</span>
+    <span class="k">return</span> <span class="p">[]</span> <span class="k">if</span> <span class="nb">all</span> <span class="k">else</span> <span class="kc">None</span></div>
+
+
+
+<div class="viewcode-block" id="get_finders">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.get_finders">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_finders</span><span class="p">():</span>
+    <span class="k">for</span> <span class="n">finder_path</span> <span class="ow">in</span> <span class="n">settings</span><span class="o">.</span><span class="n">STATICFILES_FINDERS</span><span class="p">:</span>
+        <span class="k">yield</span> <span class="n">get_finder</span><span class="p">(</span><span class="n">finder_path</span><span class="p">)</span></div>
+
+
+
+<span class="nd">@functools</span><span class="o">.</span><span class="n">lru_cache</span><span class="p">(</span><span class="n">maxsize</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+<div class="viewcode-block" id="get_finder">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/staticfiles/finders/index.html#django.contrib.staticfiles.finders.get_finder">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_finder</span><span class="p">(</span><span class="n">import_path</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Import the staticfiles finder class described by import_path, where</span>
+<span class="sd">    import_path is the full Python path to the class.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">Finder</span> <span class="o">=</span> <span class="n">import_string</span><span class="p">(</span><span class="n">import_path</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">issubclass</span><span class="p">(</span><span class="n">Finder</span><span class="p">,</span> <span class="n">BaseFinder</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+            <span class="s1">&#39;Finder &quot;</span><span class="si">%s</span><span class="s1">&quot; is not a subclass of &quot;</span><span class="si">%s</span><span class="s1">&quot;&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">Finder</span><span class="p">,</span> <span class="n">BaseFinder</span><span class="p">)</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">Finder</span><span class="p">()</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

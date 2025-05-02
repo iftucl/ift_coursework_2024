@@ -1,0 +1,935 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gunicorn.arbiter &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../gunicorn.html">gunicorn</a></li>
+      <li class="breadcrumb-item active">gunicorn.arbiter</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gunicorn.arbiter</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -</span>
+<span class="c1">#</span>
+<span class="c1"># This file is part of gunicorn released under the MIT license.</span>
+<span class="c1"># See the NOTICE for more information.</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">errno</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">random</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">select</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">signal</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">traceback</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">gunicorn</span><span class="w"> </span><span class="kn">import</span> <span class="n">SERVER_SOFTWARE</span><span class="p">,</span> <span class="n">__version__</span><span class="p">,</span> <span class="n">sock</span><span class="p">,</span> <span class="n">systemd</span><span class="p">,</span> <span class="n">util</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">gunicorn.errors</span><span class="w"> </span><span class="kn">import</span> <span class="n">AppImportError</span><span class="p">,</span> <span class="n">HaltServer</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">gunicorn.pidfile</span><span class="w"> </span><span class="kn">import</span> <span class="n">Pidfile</span>
+
+
+<div class="viewcode-block" id="Arbiter">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Arbiter</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Arbiter maintain the workers processes alive. It launches or</span>
+<span class="sd">    kills them if needed. It also manages application reloading</span>
+<span class="sd">    via SIGHUP/USR2.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># A flag indicating if a worker failed to</span>
+    <span class="c1"># to boot. If a worker process exist with</span>
+    <span class="c1"># this error code, the arbiter will terminate.</span>
+<div class="viewcode-block" id="Arbiter.WORKER_BOOT_ERROR">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.WORKER_BOOT_ERROR">[docs]</a>
+    <span class="n">WORKER_BOOT_ERROR</span> <span class="o">=</span> <span class="mi">3</span></div>
+
+
+    <span class="c1"># A flag indicating if an application failed to be loaded</span>
+<div class="viewcode-block" id="Arbiter.APP_LOAD_ERROR">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.APP_LOAD_ERROR">[docs]</a>
+    <span class="n">APP_LOAD_ERROR</span> <span class="o">=</span> <span class="mi">4</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.START_CTX">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.START_CTX">[docs]</a>
+    <span class="n">START_CTX</span> <span class="o">=</span> <span class="p">{}</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.LISTENERS">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.LISTENERS">[docs]</a>
+    <span class="n">LISTENERS</span> <span class="o">=</span> <span class="p">[]</span></div>
+
+<div class="viewcode-block" id="Arbiter.WORKERS">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.WORKERS">[docs]</a>
+    <span class="n">WORKERS</span> <span class="o">=</span> <span class="p">{}</span></div>
+
+<div class="viewcode-block" id="Arbiter.PIPE">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.PIPE">[docs]</a>
+    <span class="n">PIPE</span> <span class="o">=</span> <span class="p">[]</span></div>
+
+
+    <span class="c1"># I love dynamic languages</span>
+<div class="viewcode-block" id="Arbiter.SIG_QUEUE">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.SIG_QUEUE">[docs]</a>
+    <span class="n">SIG_QUEUE</span> <span class="o">=</span> <span class="p">[]</span></div>
+
+<div class="viewcode-block" id="Arbiter.SIGNALS">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.SIGNALS">[docs]</a>
+    <span class="n">SIGNALS</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="nb">getattr</span><span class="p">(</span><span class="n">signal</span><span class="p">,</span> <span class="s2">&quot;SIG</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">x</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="s2">&quot;HUP QUIT INT TERM TTIN TTOU USR1 USR2 WINCH&quot;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+    <span class="p">]</span></div>
+
+<div class="viewcode-block" id="Arbiter.SIG_NAMES">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.SIG_NAMES">[docs]</a>
+    <span class="n">SIG_NAMES</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+        <span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">signal</span><span class="p">,</span> <span class="n">name</span><span class="p">),</span> <span class="n">name</span><span class="p">[</span><span class="mi">3</span><span class="p">:]</span><span class="o">.</span><span class="n">lower</span><span class="p">())</span>
+        <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="nb">dir</span><span class="p">(</span><span class="n">signal</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">name</span><span class="p">[:</span><span class="mi">3</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;SIG&quot;</span> <span class="ow">and</span> <span class="n">name</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;_&quot;</span>
+    <span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">app</span><span class="p">):</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;SERVER_SOFTWARE&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">SERVER_SOFTWARE</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_num_workers</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_last_logged_active_worker_count</span> <span class="o">=</span> <span class="kc">None</span>
+<div class="viewcode-block" id="Arbiter.log">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.log">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">setup</span><span class="p">(</span><span class="n">app</span><span class="p">)</span>
+
+<div class="viewcode-block" id="Arbiter.pidfile">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.pidfile">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pidfile</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="Arbiter.systemd">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.systemd">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">systemd</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+<div class="viewcode-block" id="Arbiter.worker_age">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.worker_age">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">worker_age</span> <span class="o">=</span> <span class="mi">0</span></div>
+
+<div class="viewcode-block" id="Arbiter.reexec_pid">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.reexec_pid">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">reexec_pid</span> <span class="o">=</span> <span class="mi">0</span></div>
+
+<div class="viewcode-block" id="Arbiter.master_pid">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.master_pid">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">master_pid</span> <span class="o">=</span> <span class="mi">0</span></div>
+
+<div class="viewcode-block" id="Arbiter.master_name">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.master_name">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">master_name</span> <span class="o">=</span> <span class="s2">&quot;Master&quot;</span></div>
+
+
+        <span class="n">cwd</span> <span class="o">=</span> <span class="n">util</span><span class="o">.</span><span class="n">getcwd</span><span class="p">()</span>
+
+        <span class="n">args</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[:]</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">sys</span><span class="o">.</span><span class="n">executable</span><span class="p">)</span>
+
+        <span class="c1"># init start context</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">START_CTX</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;args&quot;</span><span class="p">:</span> <span class="n">args</span><span class="p">,</span> <span class="s2">&quot;cwd&quot;</span><span class="p">:</span> <span class="n">cwd</span><span class="p">,</span> <span class="mi">0</span><span class="p">:</span> <span class="n">sys</span><span class="o">.</span><span class="n">executable</span><span class="p">}</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_num_workers</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_workers</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_set_num_workers</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="n">old_value</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_workers</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_num_workers</span> <span class="o">=</span> <span class="n">value</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">nworkers_changed</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">old_value</span><span class="p">)</span>
+
+<div class="viewcode-block" id="Arbiter.num_workers">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.num_workers">[docs]</a>
+    <span class="n">num_workers</span> <span class="o">=</span> <span class="nb">property</span><span class="p">(</span><span class="n">_get_num_workers</span><span class="p">,</span> <span class="n">_set_num_workers</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.setup">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.setup">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">setup</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">app</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">app</span> <span class="o">=</span> <span class="n">app</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span> <span class="o">=</span> <span class="n">app</span><span class="o">.</span><span class="n">cfg</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">log</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">logger_class</span><span class="p">(</span><span class="n">app</span><span class="o">.</span><span class="n">cfg</span><span class="p">)</span>
+
+        <span class="c1"># reopen files</span>
+        <span class="k">if</span> <span class="s2">&quot;GUNICORN_FD&quot;</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">reopen_files</span><span class="p">()</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">worker_class</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">worker_class</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">address</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">address</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">num_workers</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">workers</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">timeout</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">timeout</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">proc_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">proc_name</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+            <span class="s2">&quot;Current configuration:</span><span class="se">\n</span><span class="si">{0}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+                    <span class="s2">&quot;  </span><span class="si">{0}</span><span class="s2">: </span><span class="si">{1}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">value</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>
+                    <span class="k">for</span> <span class="n">config</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">settings</span><span class="o">.</span><span class="n">items</span><span class="p">(),</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">setting</span><span class="p">:</span> <span class="n">setting</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="c1"># set enviroment&#39; variables</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">env</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">env</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">preload_app</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">app</span><span class="o">.</span><span class="n">wsgi</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.start">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.start">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">start</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;\</span>
+<span class="sd">        Initialize the arbiter. Start listening and set pidfile if needed.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Starting gunicorn </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">__version__</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="s2">&quot;GUNICORN_PID&quot;</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">master_pid</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;GUNICORN_PID&quot;</span><span class="p">))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">proc_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">proc_name</span> <span class="o">+</span> <span class="s2">&quot;.2&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">master_name</span> <span class="o">=</span> <span class="s2">&quot;Master.2&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">pid</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getpid</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">pidfile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">pidname</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">pidfile</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">master_pid</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">pidname</span> <span class="o">+=</span> <span class="s2">&quot;.2&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">pidfile</span> <span class="o">=</span> <span class="n">Pidfile</span><span class="p">(</span><span class="n">pidname</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">pidfile</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">pid</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">on_starting</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">init_signals</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">LISTENERS</span><span class="p">:</span>
+            <span class="n">fds</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="n">listen_fds</span> <span class="o">=</span> <span class="n">systemd</span><span class="o">.</span><span class="n">listen_fds</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">listen_fds</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">systemd</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="n">fds</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span>
+                    <span class="n">systemd</span><span class="o">.</span><span class="n">SD_LISTEN_FDS_START</span><span class="p">,</span>
+                    <span class="n">systemd</span><span class="o">.</span><span class="n">SD_LISTEN_FDS_START</span> <span class="o">+</span> <span class="n">listen_fds</span><span class="p">,</span>
+                <span class="p">)</span>
+
+            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">master_pid</span><span class="p">:</span>
+                <span class="n">fds</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="k">for</span> <span class="n">fd</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;GUNICORN_FD&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">):</span>
+                    <span class="n">fds</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">fd</span><span class="p">))</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">LISTENERS</span> <span class="o">=</span> <span class="n">sock</span><span class="o">.</span><span class="n">create_sockets</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">,</span> <span class="n">fds</span><span class="p">)</span>
+
+        <span class="n">listeners_str</span> <span class="o">=</span> <span class="s2">&quot;,&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="nb">str</span><span class="p">(</span><span class="n">lnr</span><span class="p">)</span> <span class="k">for</span> <span class="n">lnr</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">LISTENERS</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Arbiter booted&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Listening at: </span><span class="si">%s</span><span class="s2"> (</span><span class="si">%s</span><span class="s2">)&quot;</span><span class="p">,</span> <span class="n">listeners_str</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">pid</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Using worker: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">worker_class_str</span><span class="p">)</span>
+        <span class="n">systemd</span><span class="o">.</span><span class="n">sd_notify</span><span class="p">(</span><span class="s2">&quot;READY=1</span><span class="se">\n</span><span class="s2">STATUS=Gunicorn arbiter booted&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">)</span>
+
+        <span class="c1"># check worker class requirements</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">worker_class</span><span class="p">,</span> <span class="s2">&quot;check_config&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">worker_class</span><span class="o">.</span><span class="n">check_config</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">when_ready</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.init_signals">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.init_signals">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">init_signals</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;\</span>
+<span class="sd">        Initialize master signal handling. Most of the signals</span>
+<span class="sd">        are queued. Child signals only wake up the master.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># close old PIPE</span>
+        <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">PIPE</span><span class="p">:</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>
+
+        <span class="c1"># initialize the pipe</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">PIPE</span> <span class="o">=</span> <span class="n">pair</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">pipe</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">pair</span><span class="p">:</span>
+            <span class="n">util</span><span class="o">.</span><span class="n">set_non_blocking</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>
+            <span class="n">util</span><span class="o">.</span><span class="n">close_on_exec</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">close_on_exec</span><span class="p">()</span>
+
+        <span class="c1"># initialize all signals</span>
+        <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">SIGNALS</span><span class="p">:</span>
+            <span class="n">signal</span><span class="o">.</span><span class="n">signal</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">signal</span><span class="p">)</span>
+        <span class="n">signal</span><span class="o">.</span><span class="n">signal</span><span class="p">(</span><span class="n">signal</span><span class="o">.</span><span class="n">SIGCHLD</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle_chld</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.signal">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.signal">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">signal</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sig</span><span class="p">,</span> <span class="n">frame</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SIG_QUEUE</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">5</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">SIG_QUEUE</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">sig</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">wakeup</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.run">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.run">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s2">&quot;Main master loop.&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+        <span class="n">util</span><span class="o">.</span><span class="n">_setproctitle</span><span class="p">(</span><span class="s2">&quot;master [</span><span class="si">%s</span><span class="s2">]&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">proc_name</span><span class="p">)</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">manage_workers</span><span class="p">()</span>
+
+            <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">maybe_promote_master</span><span class="p">()</span>
+
+                <span class="n">sig</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">SIG_QUEUE</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">SIG_QUEUE</span> <span class="k">else</span> <span class="kc">None</span>
+                <span class="k">if</span> <span class="n">sig</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">sleep</span><span class="p">()</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">murder_workers</span><span class="p">()</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">manage_workers</span><span class="p">()</span>
+                    <span class="k">continue</span>
+
+                <span class="k">if</span> <span class="n">sig</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">SIG_NAMES</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Ignoring unknown signal: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">sig</span><span class="p">)</span>
+                    <span class="k">continue</span>
+
+                <span class="n">signame</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">SIG_NAMES</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">sig</span><span class="p">)</span>
+                <span class="n">handler</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;handle_</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">signame</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">handler</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">&quot;Unhandled signal: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">signame</span><span class="p">)</span>
+                    <span class="k">continue</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Handling signal: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">signame</span><span class="p">)</span>
+                <span class="n">handler</span><span class="p">()</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">wakeup</span><span class="p">()</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">StopIteration</span><span class="p">,</span> <span class="ne">KeyboardInterrupt</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">halt</span><span class="p">()</span>
+        <span class="k">except</span> <span class="n">HaltServer</span> <span class="k">as</span> <span class="n">inst</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">halt</span><span class="p">(</span><span class="n">reason</span><span class="o">=</span><span class="n">inst</span><span class="o">.</span><span class="n">reason</span><span class="p">,</span> <span class="n">exit_status</span><span class="o">=</span><span class="n">inst</span><span class="o">.</span><span class="n">exit_status</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">SystemExit</span><span class="p">:</span>
+            <span class="k">raise</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">&quot;Unhandled exception in main loop&quot;</span><span class="p">,</span> <span class="n">exc_info</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">stop</span><span class="p">(</span><span class="kc">False</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">pidfile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">pidfile</span><span class="o">.</span><span class="n">unlink</span><span class="p">()</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.handle_chld">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.handle_chld">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle_chld</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sig</span><span class="p">,</span> <span class="n">frame</span><span class="p">):</span>
+        <span class="s2">&quot;SIGCHLD handling&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">reap_workers</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wakeup</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.handle_hup">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.handle_hup">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle_hup</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;\</span>
+<span class="sd">        HUP handling.</span>
+<span class="sd">        - Reload configuration</span>
+<span class="sd">        - Start the new worker processes with a new configuration</span>
+<span class="sd">        - Gracefully shutdown the old worker processes</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Hang up: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">master_name</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">reload</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.handle_term">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.handle_term">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle_term</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s2">&quot;SIGTERM handling&quot;</span>
+        <span class="k">raise</span> <span class="ne">StopIteration</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.handle_int">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.handle_int">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle_int</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s2">&quot;SIGINT handling&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stop</span><span class="p">(</span><span class="kc">False</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">StopIteration</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.handle_quit">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.handle_quit">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle_quit</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s2">&quot;SIGQUIT handling&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stop</span><span class="p">(</span><span class="kc">False</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">StopIteration</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.handle_ttin">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.handle_ttin">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle_ttin</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;\</span>
+<span class="sd">        SIGTTIN handling.</span>
+<span class="sd">        Increases the number of workers by one.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">num_workers</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">manage_workers</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.handle_ttou">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.handle_ttou">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle_ttou</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;\</span>
+<span class="sd">        SIGTTOU handling.</span>
+<span class="sd">        Decreases the number of workers by one.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_workers</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">num_workers</span> <span class="o">-=</span> <span class="mi">1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">manage_workers</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.handle_usr1">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.handle_usr1">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle_usr1</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;\</span>
+<span class="sd">        SIGUSR1 handling.</span>
+<span class="sd">        Kill all workers by sending them a SIGUSR1</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">reopen_files</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">kill_workers</span><span class="p">(</span><span class="n">signal</span><span class="o">.</span><span class="n">SIGUSR1</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.handle_usr2">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.handle_usr2">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle_usr2</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;\</span>
+<span class="sd">        SIGUSR2 handling.</span>
+<span class="sd">        Creates a new arbiter/worker set as a fork of the current</span>
+<span class="sd">        arbiter without affecting old workers. Use this to do live</span>
+<span class="sd">        deployment with the ability to backout a change.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">reexec</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.handle_winch">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.handle_winch">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle_winch</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;SIGWINCH handling&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">daemon</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;graceful stop of workers&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">num_workers</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">kill_workers</span><span class="p">(</span><span class="n">signal</span><span class="o">.</span><span class="n">SIGTERM</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;SIGWINCH ignored. Not daemonized&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.maybe_promote_master">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.maybe_promote_master">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">maybe_promote_master</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">master_pid</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">master_pid</span> <span class="o">!=</span> <span class="n">os</span><span class="o">.</span><span class="n">getppid</span><span class="p">():</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Master has been promoted.&quot;</span><span class="p">)</span>
+            <span class="c1"># reset master infos</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">master_name</span> <span class="o">=</span> <span class="s2">&quot;Master&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">master_pid</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">proc_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">proc_name</span>
+            <span class="k">del</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;GUNICORN_PID&quot;</span><span class="p">]</span>
+            <span class="c1"># rename the pidfile</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">pidfile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">pidfile</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">pidfile</span><span class="p">)</span>
+            <span class="c1"># reset proctitle</span>
+            <span class="n">util</span><span class="o">.</span><span class="n">_setproctitle</span><span class="p">(</span><span class="s2">&quot;master [</span><span class="si">%s</span><span class="s2">]&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">proc_name</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.wakeup">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.wakeup">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">wakeup</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;\</span>
+<span class="sd">        Wake up the arbiter by writing to the PIPE</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">PIPE</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="sa">b</span><span class="s2">&quot;.&quot;</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">IOError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">e</span><span class="o">.</span><span class="n">errno</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="n">errno</span><span class="o">.</span><span class="n">EAGAIN</span><span class="p">,</span> <span class="n">errno</span><span class="o">.</span><span class="n">EINTR</span><span class="p">]:</span>
+                <span class="k">raise</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.halt">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.halt">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">halt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reason</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">exit_status</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;halt arbiter&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+
+        <span class="n">log_func</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span> <span class="k">if</span> <span class="n">exit_status</span> <span class="o">==</span> <span class="mi">0</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">error</span>
+        <span class="n">log_func</span><span class="p">(</span><span class="s2">&quot;Shutting down: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">master_name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">reason</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">log_func</span><span class="p">(</span><span class="s2">&quot;Reason: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">reason</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">pidfile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">pidfile</span><span class="o">.</span><span class="n">unlink</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">on_exit</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="n">exit_status</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.sleep">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.sleep">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">sleep</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;\</span>
+<span class="sd">        Sleep until PIPE is readable or we timeout.</span>
+<span class="sd">        A readable PIPE means a signal occurred.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">ready</span> <span class="o">=</span> <span class="n">select</span><span class="o">.</span><span class="n">select</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">PIPE</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span> <span class="p">[],</span> <span class="p">[],</span> <span class="mf">1.0</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">ready</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+                <span class="k">return</span>
+            <span class="k">while</span> <span class="n">os</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">PIPE</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">1</span><span class="p">):</span>
+                <span class="k">pass</span>
+        <span class="k">except</span> <span class="p">(</span><span class="n">select</span><span class="o">.</span><span class="n">error</span><span class="p">,</span> <span class="ne">OSError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="c1"># TODO: select.error is a subclass of OSError since Python 3.3.</span>
+            <span class="n">error_number</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="s2">&quot;errno&quot;</span><span class="p">,</span> <span class="n">e</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="k">if</span> <span class="n">error_number</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="n">errno</span><span class="o">.</span><span class="n">EAGAIN</span><span class="p">,</span> <span class="n">errno</span><span class="o">.</span><span class="n">EINTR</span><span class="p">]:</span>
+                <span class="k">raise</span>
+        <span class="k">except</span> <span class="ne">KeyboardInterrupt</span><span class="p">:</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.stop">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.stop">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">stop</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">graceful</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;\</span>
+<span class="sd">        Stop workers</span>
+
+<span class="sd">        :attr graceful: boolean, If True (the default) workers will be</span>
+<span class="sd">        killed gracefully  (ie. trying to wait for the current connection)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">unlink</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">reexec_pid</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">master_pid</span> <span class="o">==</span> <span class="mi">0</span>
+            <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">systemd</span>
+            <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">reuse_port</span>
+        <span class="p">)</span>
+        <span class="n">sock</span><span class="o">.</span><span class="n">close_sockets</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">LISTENERS</span><span class="p">,</span> <span class="n">unlink</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">LISTENERS</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">sig</span> <span class="o">=</span> <span class="n">signal</span><span class="o">.</span><span class="n">SIGTERM</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">graceful</span><span class="p">:</span>
+            <span class="n">sig</span> <span class="o">=</span> <span class="n">signal</span><span class="o">.</span><span class="n">SIGQUIT</span>
+        <span class="n">limit</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">graceful_timeout</span>
+        <span class="c1"># instruct the workers to exit</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">kill_workers</span><span class="p">(</span><span class="n">sig</span><span class="p">)</span>
+        <span class="c1"># wait until the graceful timeout</span>
+        <span class="k">while</span> <span class="bp">self</span><span class="o">.</span><span class="n">WORKERS</span> <span class="ow">and</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">limit</span><span class="p">:</span>
+            <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">kill_workers</span><span class="p">(</span><span class="n">signal</span><span class="o">.</span><span class="n">SIGKILL</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.reexec">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.reexec">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">reexec</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;\</span>
+<span class="sd">        Relaunch the master and workers.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reexec_pid</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;USR2 signal ignored. Child exists.&quot;</span><span class="p">)</span>
+            <span class="k">return</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">master_pid</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;USR2 signal ignored. Parent exists.&quot;</span><span class="p">)</span>
+            <span class="k">return</span>
+
+        <span class="n">master_pid</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getpid</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">reexec_pid</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">fork</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reexec_pid</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">pre_exec</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+        <span class="n">environ</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">env_orig</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">environ</span><span class="p">[</span><span class="s2">&quot;GUNICORN_PID&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">master_pid</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">systemd</span><span class="p">:</span>
+            <span class="n">environ</span><span class="p">[</span><span class="s2">&quot;LISTEN_PID&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">getpid</span><span class="p">())</span>
+            <span class="n">environ</span><span class="p">[</span><span class="s2">&quot;LISTEN_FDS&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">LISTENERS</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">environ</span><span class="p">[</span><span class="s2">&quot;GUNICORN_FD&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;,&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+                <span class="nb">str</span><span class="p">(</span><span class="n">lnr</span><span class="o">.</span><span class="n">fileno</span><span class="p">())</span> <span class="k">for</span> <span class="n">lnr</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">LISTENERS</span>
+            <span class="p">)</span>
+
+        <span class="n">os</span><span class="o">.</span><span class="n">chdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">START_CTX</span><span class="p">[</span><span class="s2">&quot;cwd&quot;</span><span class="p">])</span>
+
+        <span class="c1"># exec the process using the original environment</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">execvpe</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">START_CTX</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">START_CTX</span><span class="p">[</span><span class="s2">&quot;args&quot;</span><span class="p">],</span> <span class="n">environ</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.reload">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.reload">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">reload</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">old_address</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">address</span>
+
+        <span class="c1"># reset old environment</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">env</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">env_orig</span><span class="p">:</span>
+                <span class="c1"># reset the key to the value it had before</span>
+                <span class="c1"># we launched gunicorn</span>
+                <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">env_orig</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># delete the value set by gunicorn</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="k">del</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+                <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+                    <span class="k">pass</span>
+
+        <span class="c1"># reload conf</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">app</span><span class="o">.</span><span class="n">reload</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">setup</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">app</span><span class="p">)</span>
+
+        <span class="c1"># reopen log files</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">reopen_files</span><span class="p">()</span>
+
+        <span class="c1"># do we need to change listener ?</span>
+        <span class="k">if</span> <span class="n">old_address</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">address</span><span class="p">:</span>
+            <span class="c1"># close all listeners</span>
+            <span class="k">for</span> <span class="n">lnr</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">LISTENERS</span><span class="p">:</span>
+                <span class="n">lnr</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="c1"># init new listeners</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">LISTENERS</span> <span class="o">=</span> <span class="n">sock</span><span class="o">.</span><span class="n">create_sockets</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">)</span>
+            <span class="n">listeners_str</span> <span class="o">=</span> <span class="s2">&quot;,&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="nb">str</span><span class="p">(</span><span class="n">lnr</span><span class="p">)</span> <span class="k">for</span> <span class="n">lnr</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">LISTENERS</span><span class="p">])</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Listening at: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">listeners_str</span><span class="p">)</span>
+
+        <span class="c1"># do some actions on reload</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">on_reload</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+        <span class="c1"># unlink pidfile</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">pidfile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">pidfile</span><span class="o">.</span><span class="n">unlink</span><span class="p">()</span>
+
+        <span class="c1"># create new pidfile</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">pidfile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">pidfile</span> <span class="o">=</span> <span class="n">Pidfile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">pidfile</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">pidfile</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">pid</span><span class="p">)</span>
+
+        <span class="c1"># set new proc_name</span>
+        <span class="n">util</span><span class="o">.</span><span class="n">_setproctitle</span><span class="p">(</span><span class="s2">&quot;master [</span><span class="si">%s</span><span class="s2">]&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">proc_name</span><span class="p">)</span>
+
+        <span class="c1"># spawn new workers</span>
+        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">workers</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">spawn_worker</span><span class="p">()</span>
+
+        <span class="c1"># manage workers</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">manage_workers</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.murder_workers">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.murder_workers">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">murder_workers</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;\</span>
+<span class="sd">        Kill unused/idle workers</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">timeout</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="n">workers</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">WORKERS</span><span class="o">.</span><span class="n">items</span><span class="p">())</span>
+        <span class="k">for</span> <span class="n">pid</span><span class="p">,</span> <span class="n">worker</span> <span class="ow">in</span> <span class="n">workers</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">worker</span><span class="o">.</span><span class="n">tmp</span><span class="o">.</span><span class="n">last_update</span><span class="p">()</span> <span class="o">&lt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">timeout</span><span class="p">:</span>
+                    <span class="k">continue</span>
+            <span class="k">except</span> <span class="p">(</span><span class="ne">OSError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
+                <span class="k">continue</span>
+
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">worker</span><span class="o">.</span><span class="n">aborted</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">critical</span><span class="p">(</span><span class="s2">&quot;WORKER TIMEOUT (pid:</span><span class="si">%s</span><span class="s2">)&quot;</span><span class="p">,</span> <span class="n">pid</span><span class="p">)</span>
+                <span class="n">worker</span><span class="o">.</span><span class="n">aborted</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">kill_worker</span><span class="p">(</span><span class="n">pid</span><span class="p">,</span> <span class="n">signal</span><span class="o">.</span><span class="n">SIGABRT</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">kill_worker</span><span class="p">(</span><span class="n">pid</span><span class="p">,</span> <span class="n">signal</span><span class="o">.</span><span class="n">SIGKILL</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.reap_workers">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.reap_workers">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">reap_workers</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;\</span>
+<span class="sd">        Reap workers to avoid zombie processes</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+                <span class="n">wpid</span><span class="p">,</span> <span class="n">status</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">waitpid</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">WNOHANG</span><span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">wpid</span><span class="p">:</span>
+                    <span class="k">break</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reexec_pid</span> <span class="o">==</span> <span class="n">wpid</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">reexec_pid</span> <span class="o">=</span> <span class="mi">0</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c1"># A worker was terminated. If the termination reason was</span>
+                    <span class="c1"># that it could not boot, we&#39;ll shut it down to avoid</span>
+                    <span class="c1"># infinite start/stop cycles.</span>
+                    <span class="n">exitcode</span> <span class="o">=</span> <span class="n">status</span> <span class="o">&gt;&gt;</span> <span class="mi">8</span>
+                    <span class="k">if</span> <span class="n">exitcode</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
+                            <span class="s2">&quot;Worker (pid:</span><span class="si">%s</span><span class="s2">) exited with code </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">wpid</span><span class="p">,</span> <span class="n">exitcode</span>
+                        <span class="p">)</span>
+                    <span class="k">if</span> <span class="n">exitcode</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">WORKER_BOOT_ERROR</span><span class="p">:</span>
+                        <span class="n">reason</span> <span class="o">=</span> <span class="s2">&quot;Worker failed to boot.&quot;</span>
+                        <span class="k">raise</span> <span class="n">HaltServer</span><span class="p">(</span><span class="n">reason</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">WORKER_BOOT_ERROR</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">exitcode</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">APP_LOAD_ERROR</span><span class="p">:</span>
+                        <span class="n">reason</span> <span class="o">=</span> <span class="s2">&quot;App failed to load.&quot;</span>
+                        <span class="k">raise</span> <span class="n">HaltServer</span><span class="p">(</span><span class="n">reason</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">APP_LOAD_ERROR</span><span class="p">)</span>
+
+                    <span class="k">if</span> <span class="n">exitcode</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="c1"># If the exit code of the worker is greater than 0,</span>
+                        <span class="c1"># let the user know.</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
+                            <span class="s2">&quot;Worker (pid:</span><span class="si">%s</span><span class="s2">) exited with code </span><span class="si">%s</span><span class="s2">.&quot;</span><span class="p">,</span> <span class="n">wpid</span><span class="p">,</span> <span class="n">exitcode</span>
+                        <span class="p">)</span>
+                    <span class="k">elif</span> <span class="n">status</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="c1"># If the exit code of the worker is 0 and the status</span>
+                        <span class="c1"># is greater than 0, then it was most likely killed</span>
+                        <span class="c1"># via a signal.</span>
+                        <span class="k">try</span><span class="p">:</span>
+                            <span class="n">sig_name</span> <span class="o">=</span> <span class="n">signal</span><span class="o">.</span><span class="n">Signals</span><span class="p">(</span><span class="n">status</span><span class="p">)</span><span class="o">.</span><span class="n">name</span>
+                        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                            <span class="n">sig_name</span> <span class="o">=</span> <span class="s2">&quot;code </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">status</span><span class="p">)</span>
+                        <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;Worker (pid:</span><span class="si">{}</span><span class="s2">) was sent </span><span class="si">{}</span><span class="s2">!&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">wpid</span><span class="p">,</span> <span class="n">sig_name</span><span class="p">)</span>
+
+                        <span class="c1"># Additional hint for SIGKILL</span>
+                        <span class="k">if</span> <span class="n">status</span> <span class="o">==</span> <span class="n">signal</span><span class="o">.</span><span class="n">SIGKILL</span><span class="p">:</span>
+                            <span class="n">msg</span> <span class="o">+=</span> <span class="s2">&quot; Perhaps out of memory?&quot;</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+                    <span class="n">worker</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">WORKERS</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">wpid</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="n">worker</span><span class="p">:</span>
+                        <span class="k">continue</span>
+                    <span class="n">worker</span><span class="o">.</span><span class="n">tmp</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">child_exit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">worker</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">e</span><span class="o">.</span><span class="n">errno</span> <span class="o">!=</span> <span class="n">errno</span><span class="o">.</span><span class="n">ECHILD</span><span class="p">:</span>
+                <span class="k">raise</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.manage_workers">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.manage_workers">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">manage_workers</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;\</span>
+<span class="sd">        Maintain the number of workers by spawning or killing</span>
+<span class="sd">        as required.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">WORKERS</span><span class="p">)</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_workers</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">spawn_workers</span><span class="p">()</span>
+
+        <span class="n">workers</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">WORKERS</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+        <span class="n">workers</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">workers</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">w</span><span class="p">:</span> <span class="n">w</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">age</span><span class="p">)</span>
+        <span class="k">while</span> <span class="nb">len</span><span class="p">(</span><span class="n">workers</span><span class="p">)</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_workers</span><span class="p">:</span>
+            <span class="p">(</span><span class="n">pid</span><span class="p">,</span> <span class="n">_</span><span class="p">)</span> <span class="o">=</span> <span class="n">workers</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">kill_worker</span><span class="p">(</span><span class="n">pid</span><span class="p">,</span> <span class="n">signal</span><span class="o">.</span><span class="n">SIGTERM</span><span class="p">)</span>
+
+        <span class="n">active_worker_count</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">workers</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_last_logged_active_worker_count</span> <span class="o">!=</span> <span class="n">active_worker_count</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_last_logged_active_worker_count</span> <span class="o">=</span> <span class="n">active_worker_count</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+                <span class="s2">&quot;</span><span class="si">{0}</span><span class="s2"> workers&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">active_worker_count</span><span class="p">),</span>
+                <span class="n">extra</span><span class="o">=</span><span class="p">{</span>
+                    <span class="s2">&quot;metric&quot;</span><span class="p">:</span> <span class="s2">&quot;gunicorn.workers&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">active_worker_count</span><span class="p">,</span>
+                    <span class="s2">&quot;mtype&quot;</span><span class="p">:</span> <span class="s2">&quot;gauge&quot;</span><span class="p">,</span>
+                <span class="p">},</span>
+            <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.spawn_worker">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.spawn_worker">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">spawn_worker</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">worker_age</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">worker</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">worker_class</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">worker_age</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">pid</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">LISTENERS</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">app</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">timeout</span> <span class="o">/</span> <span class="mf">2.0</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">pre_fork</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">worker</span><span class="p">)</span>
+        <span class="n">pid</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">fork</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">pid</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">worker</span><span class="o">.</span><span class="n">pid</span> <span class="o">=</span> <span class="n">pid</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">WORKERS</span><span class="p">[</span><span class="n">pid</span><span class="p">]</span> <span class="o">=</span> <span class="n">worker</span>
+            <span class="k">return</span> <span class="n">pid</span>
+
+        <span class="c1"># Do not inherit the temporary files of other workers</span>
+        <span class="k">for</span> <span class="n">sibling</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">WORKERS</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+            <span class="n">sibling</span><span class="o">.</span><span class="n">tmp</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+        <span class="c1"># Process Child</span>
+        <span class="n">worker</span><span class="o">.</span><span class="n">pid</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getpid</span><span class="p">()</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">util</span><span class="o">.</span><span class="n">_setproctitle</span><span class="p">(</span><span class="s2">&quot;worker [</span><span class="si">%s</span><span class="s2">]&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">proc_name</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Booting worker with pid: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">worker</span><span class="o">.</span><span class="n">pid</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">post_fork</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">worker</span><span class="p">)</span>
+            <span class="n">worker</span><span class="o">.</span><span class="n">init_process</span><span class="p">()</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">SystemExit</span><span class="p">:</span>
+            <span class="k">raise</span>
+        <span class="k">except</span> <span class="n">AppImportError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Exception while loading the application&quot;</span><span class="p">,</span> <span class="n">exc_info</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">e</span><span class="p">,</span> <span class="n">file</span><span class="o">=</span><span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="p">)</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">APP_LOAD_ERROR</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s2">&quot;Exception in worker process&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">worker</span><span class="o">.</span><span class="n">booted</span><span class="p">:</span>
+                <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">WORKER_BOOT_ERROR</span><span class="p">)</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Worker exiting (pid: </span><span class="si">%s</span><span class="s2">)&quot;</span><span class="p">,</span> <span class="n">worker</span><span class="o">.</span><span class="n">pid</span><span class="p">)</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">worker</span><span class="o">.</span><span class="n">tmp</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">worker_exit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">worker</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                    <span class="s2">&quot;Exception during worker exit:</span><span class="se">\n</span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">traceback</span><span class="o">.</span><span class="n">format_exc</span><span class="p">()</span>
+                <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.spawn_workers">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.spawn_workers">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">spawn_workers</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;\</span>
+<span class="sd">        Spawn new workers as needed.</span>
+
+<span class="sd">        This is where a worker process leaves the main loop</span>
+<span class="sd">        of the master process.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">num_workers</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">WORKERS</span><span class="p">)):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">spawn_worker</span><span class="p">()</span>
+            <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.1</span> <span class="o">*</span> <span class="n">random</span><span class="o">.</span><span class="n">random</span><span class="p">())</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.kill_workers">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.kill_workers">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">kill_workers</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sig</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;\</span>
+<span class="sd">        Kill all workers with the signal `sig`</span>
+<span class="sd">        :attr sig: `signal.SIG*` value</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">worker_pids</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">WORKERS</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+        <span class="k">for</span> <span class="n">pid</span> <span class="ow">in</span> <span class="n">worker_pids</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">kill_worker</span><span class="p">(</span><span class="n">pid</span><span class="p">,</span> <span class="n">sig</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Arbiter.kill_worker">
+<a class="viewcode-back" href="../../autoapi/gunicorn/arbiter/index.html#gunicorn.arbiter.Arbiter.kill_worker">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">kill_worker</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pid</span><span class="p">,</span> <span class="n">sig</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;\</span>
+<span class="sd">        Kill a worker</span>
+
+<span class="sd">        :attr pid: int, worker pid</span>
+<span class="sd">        :attr sig: `signal.SIG*` value</span>
+<span class="sd">         &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">kill</span><span class="p">(</span><span class="n">pid</span><span class="p">,</span> <span class="n">sig</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">e</span><span class="o">.</span><span class="n">errno</span> <span class="o">==</span> <span class="n">errno</span><span class="o">.</span><span class="n">ESRCH</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">worker</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">WORKERS</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">pid</span><span class="p">)</span>
+                    <span class="n">worker</span><span class="o">.</span><span class="n">tmp</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">worker_exit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">worker</span><span class="p">)</span>
+                    <span class="k">return</span>
+                <span class="k">except</span> <span class="p">(</span><span class="ne">KeyError</span><span class="p">,</span> <span class="ne">OSError</span><span class="p">):</span>
+                    <span class="k">return</span>
+            <span class="k">raise</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

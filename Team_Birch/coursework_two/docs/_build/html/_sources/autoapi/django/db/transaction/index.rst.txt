@@ -1,0 +1,191 @@
+django.db.transaction
+=====================
+
+.. py:module:: django.db.transaction
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   django.db.transaction.TransactionManagementError
+   django.db.transaction.Atomic
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   django.db.transaction.get_connection
+   django.db.transaction.get_autocommit
+   django.db.transaction.set_autocommit
+   django.db.transaction.commit
+   django.db.transaction.rollback
+   django.db.transaction.savepoint
+   django.db.transaction.savepoint_rollback
+   django.db.transaction.savepoint_commit
+   django.db.transaction.clean_savepoints
+   django.db.transaction.get_rollback
+   django.db.transaction.set_rollback
+   django.db.transaction.mark_for_rollback_on_error
+   django.db.transaction.on_commit
+   django.db.transaction.atomic
+   django.db.transaction.non_atomic_requests
+
+
+Module Contents
+---------------
+
+.. py:class:: TransactionManagementError
+
+   Bases: :py:obj:`django.db.ProgrammingError`
+
+
+   Transaction management is used improperly.
+
+
+.. py:function:: get_connection(using=None)
+
+   Get a database connection by name, or the default database connection
+   if no name is provided. This is a private API.
+
+
+.. py:function:: get_autocommit(using=None)
+
+   Get the autocommit status of the connection.
+
+
+.. py:function:: set_autocommit(autocommit, using=None)
+
+   Set the autocommit status of the connection.
+
+
+.. py:function:: commit(using=None)
+
+   Commit a transaction.
+
+
+.. py:function:: rollback(using=None)
+
+   Roll back a transaction.
+
+
+.. py:function:: savepoint(using=None)
+
+   Create a savepoint (if supported and required by the backend) inside the
+   current transaction. Return an identifier for the savepoint that will be
+   used for the subsequent rollback or commit.
+
+
+.. py:function:: savepoint_rollback(sid, using=None)
+
+   Roll back the most recent savepoint (if one exists). Do nothing if
+   savepoints are not supported.
+
+
+.. py:function:: savepoint_commit(sid, using=None)
+
+   Commit the most recent savepoint (if one exists). Do nothing if
+   savepoints are not supported.
+
+
+.. py:function:: clean_savepoints(using=None)
+
+   Reset the counter used to generate unique savepoint ids in this thread.
+
+
+.. py:function:: get_rollback(using=None)
+
+   Get the "needs rollback" flag -- for *advanced use* only.
+
+
+.. py:function:: set_rollback(rollback, using=None)
+
+   Set or unset the "needs rollback" flag -- for *advanced use* only.
+
+   When `rollback` is `True`, trigger a rollback when exiting the innermost
+   enclosing atomic block that has `savepoint=True` (that's the default). Use
+   this to force a rollback without raising an exception.
+
+   When `rollback` is `False`, prevent such a rollback. Use this only after
+   rolling back to a known-good state! Otherwise, you break the atomic block
+   and data corruption may occur.
+
+
+.. py:function:: mark_for_rollback_on_error(using=None)
+
+   Internal low-level utility to mark a transaction as "needs rollback" when
+   an exception is raised while not enforcing the enclosed block to be in a
+   transaction. This is needed by Model.save() and friends to avoid starting a
+   transaction when in autocommit mode and a single query is executed.
+
+   It's equivalent to:
+
+       connection = get_connection(using)
+       if connection.get_autocommit():
+           yield
+       else:
+           with transaction.atomic(using=using, savepoint=False):
+               yield
+
+   but it uses low-level utilities to avoid performance overhead.
+
+
+.. py:function:: on_commit(func, using=None, robust=False)
+
+   Register `func` to be called when the current transaction is committed.
+   If the current transaction is rolled back, `func` will not be called.
+
+
+.. py:class:: Atomic(using, savepoint, durable)
+
+   Bases: :py:obj:`contextlib.ContextDecorator`
+
+
+   Guarantee the atomic execution of a given block.
+
+   An instance can be used either as a decorator or as a context manager.
+
+   When it's used as a decorator, __call__ wraps the execution of the
+   decorated function in the instance itself, used as a context manager.
+
+   When it's used as a context manager, __enter__ creates a transaction or a
+   savepoint, depending on whether a transaction is already in progress, and
+   __exit__ commits the transaction or releases the savepoint on normal exit,
+   and rolls back the transaction or to the savepoint on exceptions.
+
+   It's possible to disable the creation of savepoints if the goal is to
+   ensure that some code runs within a transaction without creating overhead.
+
+   A stack of savepoints identifiers is maintained as an attribute of the
+   connection. None denotes the absence of a savepoint.
+
+   This allows reentrancy even if the same AtomicWrapper is reused. For
+   example, it's possible to define `oa = atomic('other')` and use `@oa` or
+   `with oa:` multiple times.
+
+   Since database connections are thread-local, this is thread-safe.
+
+   An atomic block can be tagged as durable. In this case, raise a
+   RuntimeError if it's nested within another atomic block. This guarantees
+   that database changes in a durable block are committed to the database when
+   the block exists without error.
+
+   This is a private API.
+
+
+   .. py:attribute:: using
+
+
+   .. py:attribute:: savepoint
+
+
+   .. py:attribute:: durable
+
+
+.. py:function:: atomic(using=None, savepoint=True, durable=False)
+
+.. py:function:: non_atomic_requests(using=None)
+

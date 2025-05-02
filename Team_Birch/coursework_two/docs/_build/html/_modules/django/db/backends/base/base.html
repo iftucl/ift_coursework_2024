@@ -1,0 +1,1194 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.db.backends.base.base &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../../../db.html">django.db</a></li>
+      <li class="breadcrumb-item active">django.db.backends.base.base</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.db.backends.base.base</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">_thread</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">copy</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">threading</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">deque</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">contextmanager</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">debug_transaction</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">zoneinfo</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">backports</span><span class="w"> </span><span class="kn">import</span> <span class="n">zoneinfo</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImproperlyConfigured</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">DEFAULT_DB_ALIAS</span><span class="p">,</span> <span class="n">DatabaseError</span><span class="p">,</span> <span class="n">NotSupportedError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends</span><span class="w"> </span><span class="kn">import</span> <span class="n">utils</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.base.validation</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseDatabaseValidation</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.signals</span><span class="w"> </span><span class="kn">import</span> <span class="n">connection_created</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.transaction</span><span class="w"> </span><span class="kn">import</span> <span class="n">TransactionManagementError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseErrorWrapper</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.asyncio</span><span class="w"> </span><span class="kn">import</span> <span class="n">async_unsafe</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">cached_property</span>
+
+<div class="viewcode-block" id="NO_DB_ALIAS">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.NO_DB_ALIAS">[docs]</a>
+<span class="n">NO_DB_ALIAS</span> <span class="o">=</span> <span class="s2">&quot;__no_db__&quot;</span></div>
+
+<div class="viewcode-block" id="RAN_DB_VERSION_CHECK">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.RAN_DB_VERSION_CHECK">[docs]</a>
+<span class="n">RAN_DB_VERSION_CHECK</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="logger">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.logger">[docs]</a>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;django.db.backends.base&quot;</span><span class="p">)</span></div>
+
+
+
+<span class="c1"># RemovedInDjango50Warning</span>
+<div class="viewcode-block" id="timezone_constructor">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.timezone_constructor">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">timezone_constructor</span><span class="p">(</span><span class="n">tzname</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">USE_DEPRECATED_PYTZ</span><span class="p">:</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">pytz</span>
+
+        <span class="k">return</span> <span class="n">pytz</span><span class="o">.</span><span class="n">timezone</span><span class="p">(</span><span class="n">tzname</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">zoneinfo</span><span class="o">.</span><span class="n">ZoneInfo</span><span class="p">(</span><span class="n">tzname</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BaseDatabaseWrapper</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Represent a database connection.&quot;&quot;&quot;</span>
+
+    <span class="c1"># Mapping of Field objects to their column types.</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.data_types">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.data_types">[docs]</a>
+    <span class="n">data_types</span> <span class="o">=</span> <span class="p">{}</span></div>
+
+    <span class="c1"># Mapping of Field objects to their SQL suffix such as AUTOINCREMENT.</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.data_types_suffix">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.data_types_suffix">[docs]</a>
+    <span class="n">data_types_suffix</span> <span class="o">=</span> <span class="p">{}</span></div>
+
+    <span class="c1"># Mapping of Field objects to their SQL for CHECK constraints.</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.data_type_check_constraints">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.data_type_check_constraints">[docs]</a>
+    <span class="n">data_type_check_constraints</span> <span class="o">=</span> <span class="p">{}</span></div>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.ops">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.ops">[docs]</a>
+    <span class="n">ops</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.vendor">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.vendor">[docs]</a>
+    <span class="n">vendor</span> <span class="o">=</span> <span class="s2">&quot;unknown&quot;</span></div>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.display_name">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.display_name">[docs]</a>
+    <span class="n">display_name</span> <span class="o">=</span> <span class="s2">&quot;unknown&quot;</span></div>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.SchemaEditorClass">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.SchemaEditorClass">[docs]</a>
+    <span class="n">SchemaEditorClass</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+    <span class="c1"># Classes instantiated in __init__().</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.client_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.client_class">[docs]</a>
+    <span class="n">client_class</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.creation_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.creation_class">[docs]</a>
+    <span class="n">creation_class</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.features_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.features_class">[docs]</a>
+    <span class="n">features_class</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.introspection_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.introspection_class">[docs]</a>
+    <span class="n">introspection_class</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.ops_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.ops_class">[docs]</a>
+    <span class="n">ops_class</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.validation_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.validation_class">[docs]</a>
+    <span class="n">validation_class</span> <span class="o">=</span> <span class="n">BaseDatabaseValidation</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.queries_limit">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.queries_limit">[docs]</a>
+    <span class="n">queries_limit</span> <span class="o">=</span> <span class="mi">9000</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">settings_dict</span><span class="p">,</span> <span class="n">alias</span><span class="o">=</span><span class="n">DEFAULT_DB_ALIAS</span><span class="p">):</span>
+        <span class="c1"># Connection related attributes.</span>
+        <span class="c1"># The underlying database connection.</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.connection">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.connection">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">connection</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+        <span class="c1"># `settings_dict` should be a dictionary containing keys such as</span>
+        <span class="c1"># NAME, USER, etc. It&#39;s called `settings_dict` instead of `settings`</span>
+        <span class="c1"># to disambiguate it from Django settings modules.</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.settings_dict">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.settings_dict">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">settings_dict</span> <span class="o">=</span> <span class="n">settings_dict</span></div>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.alias">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.alias">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">alias</span> <span class="o">=</span> <span class="n">alias</span></div>
+
+        <span class="c1"># Query logging in debug mode or when explicitly enabled.</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.queries_log">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.queries_log">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">queries_log</span> <span class="o">=</span> <span class="n">deque</span><span class="p">(</span><span class="n">maxlen</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">queries_limit</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.force_debug_cursor">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.force_debug_cursor">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">force_debug_cursor</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+
+        <span class="c1"># Transaction related attributes.</span>
+        <span class="c1"># Tracks if the connection is in autocommit mode. Per PEP 249, by</span>
+        <span class="c1"># default, it isn&#39;t.</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.autocommit">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.autocommit">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">autocommit</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+        <span class="c1"># Tracks if the connection is in a transaction managed by &#39;atomic&#39;.</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.in_atomic_block">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.in_atomic_block">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">in_atomic_block</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+        <span class="c1"># Increment to generate unique savepoint ids.</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.savepoint_state">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.savepoint_state">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">savepoint_state</span> <span class="o">=</span> <span class="mi">0</span></div>
+
+        <span class="c1"># List of savepoints created by &#39;atomic&#39;.</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.savepoint_ids">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.savepoint_ids">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">savepoint_ids</span> <span class="o">=</span> <span class="p">[]</span></div>
+
+        <span class="c1"># Stack of active &#39;atomic&#39; blocks.</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.atomic_blocks">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.atomic_blocks">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atomic_blocks</span> <span class="o">=</span> <span class="p">[]</span></div>
+
+        <span class="c1"># Tracks if the outermost &#39;atomic&#39; block should commit on exit,</span>
+        <span class="c1"># ie. if autocommit was active on entry.</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.commit_on_exit">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.commit_on_exit">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">commit_on_exit</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+        <span class="c1"># Tracks if the transaction should be rolled back to the next</span>
+        <span class="c1"># available savepoint because of an exception in an inner block.</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.needs_rollback">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.needs_rollback">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">needs_rollback</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.rollback_exc">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.rollback_exc">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rollback_exc</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+        <span class="c1"># Connection termination related attributes.</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.close_at">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.close_at">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">close_at</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.closed_in_transaction">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.closed_in_transaction">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">closed_in_transaction</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.errors_occurred">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.errors_occurred">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">errors_occurred</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.health_check_enabled">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.health_check_enabled">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">health_check_enabled</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.health_check_done">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.health_check_done">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">health_check_done</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+
+        <span class="c1"># Thread-safety related attributes.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_thread_sharing_lock</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Lock</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_thread_sharing_count</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_thread_ident</span> <span class="o">=</span> <span class="n">_thread</span><span class="o">.</span><span class="n">get_ident</span><span class="p">()</span>
+
+        <span class="c1"># A list of no-argument functions to run when the transaction commits.</span>
+        <span class="c1"># Each entry is an (sids, func, robust) tuple, where sids is a set of</span>
+        <span class="c1"># the active savepoint IDs when this function was registered and robust</span>
+        <span class="c1"># specifies whether it&#39;s allowed for the function to fail.</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.run_on_commit">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.run_on_commit">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">run_on_commit</span> <span class="o">=</span> <span class="p">[]</span></div>
+
+
+        <span class="c1"># Should we run the on-commit hooks the next time set_autocommit(True)</span>
+        <span class="c1"># is called?</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.run_commit_hooks_on_set_autocommit_on">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.run_commit_hooks_on_set_autocommit_on">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">run_commit_hooks_on_set_autocommit_on</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+
+        <span class="c1"># A stack of wrappers to be invoked around execute()/executemany()</span>
+        <span class="c1"># calls. Each entry is a function taking five arguments: execute, sql,</span>
+        <span class="c1"># params, many, and context. It&#39;s the function&#39;s responsibility to</span>
+        <span class="c1"># call execute(sql, params, many, context).</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.execute_wrappers">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.execute_wrappers">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">execute_wrappers</span> <span class="o">=</span> <span class="p">[]</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.client">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.client">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">client</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">client_class</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.creation">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.creation">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">creation</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">creation_class</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.features">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.features">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">features</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">features_class</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.introspection">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.introspection">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">introspection</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">introspection_class</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">ops</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ops_class</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.validation">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.validation">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">validation</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">validation_class</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;&lt;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__qualname__</span><span class="si">}</span><span class="s2"> &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;vendor=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">vendor</span><span class="si">!r}</span><span class="s2"> alias=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">alias</span><span class="si">!r}</span><span class="s2">&gt;&quot;</span>
+        <span class="p">)</span>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.ensure_timezone">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.ensure_timezone">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">ensure_timezone</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Ensure the connection&#39;s timezone is set to `self.timezone_name` and</span>
+<span class="sd">        return whether it changed or not.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.timezone">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.timezone">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">timezone</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a tzinfo of the database connection time zone.</span>
+
+<span class="sd">        This is only used when time zone support is enabled. When a datetime is</span>
+<span class="sd">        read from the database, it is always returned in this time zone.</span>
+
+<span class="sd">        When the database backend supports time zones, it doesn&#39;t matter which</span>
+<span class="sd">        time zone Django uses, as long as aware datetimes are used everywhere.</span>
+<span class="sd">        Other users connecting to the database can choose their own time zone.</span>
+
+<span class="sd">        When the database backend doesn&#39;t support time zones, the time zone</span>
+<span class="sd">        Django uses may be constrained by the requirements of other users of</span>
+<span class="sd">        the database.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">settings</span><span class="o">.</span><span class="n">USE_TZ</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;TIME_ZONE&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">datetime</span><span class="o">.</span><span class="n">timezone</span><span class="o">.</span><span class="n">utc</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">timezone_constructor</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;TIME_ZONE&quot;</span><span class="p">])</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.timezone_name">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.timezone_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">timezone_name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Name of the time zone of the database connection.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">settings</span><span class="o">.</span><span class="n">USE_TZ</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">settings</span><span class="o">.</span><span class="n">TIME_ZONE</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;TIME_ZONE&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;UTC&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;TIME_ZONE&quot;</span><span class="p">]</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.queries_logged">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.queries_logged">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">queries_logged</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">force_debug_cursor</span> <span class="ow">or</span> <span class="n">settings</span><span class="o">.</span><span class="n">DEBUG</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.queries">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.queries">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">queries</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">queries_log</span><span class="p">)</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">queries_log</span><span class="o">.</span><span class="n">maxlen</span><span class="p">:</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+                <span class="s2">&quot;Limit for query logging exceeded, only the last </span><span class="si">{}</span><span class="s2"> queries &quot;</span>
+                <span class="s2">&quot;will be returned.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">queries_log</span><span class="o">.</span><span class="n">maxlen</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">queries_log</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.get_database_version">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.get_database_version">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_database_version</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a tuple of the database&#39;s version.&quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of BaseDatabaseWrapper may require a get_database_version() &quot;</span>
+            <span class="s2">&quot;method.&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.check_database_version_supported">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.check_database_version_supported">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_database_version_supported</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Raise an error if the database version isn&#39;t supported by this</span>
+<span class="sd">        version of Django.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">minimum_database_version</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_database_version</span><span class="p">()</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">minimum_database_version</span>
+        <span class="p">):</span>
+            <span class="n">db_version</span> <span class="o">=</span> <span class="s2">&quot;.&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_database_version</span><span class="p">()))</span>
+            <span class="n">min_db_version</span> <span class="o">=</span> <span class="s2">&quot;.&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">minimum_database_version</span><span class="p">))</span>
+            <span class="k">raise</span> <span class="n">NotSupportedError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">display_name</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">min_db_version</span><span class="si">}</span><span class="s2"> or later is required &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;(found </span><span class="si">{</span><span class="n">db_version</span><span class="si">}</span><span class="s2">).&quot;</span>
+            <span class="p">)</span></div>
+
+
+    <span class="c1"># ##### Backend-specific methods for creating connections and cursors #####</span>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.get_connection_params">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.get_connection_params">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_connection_params</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a dict of parameters suitable for get_new_connection.&quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of BaseDatabaseWrapper may require a get_connection_params() &quot;</span>
+            <span class="s2">&quot;method&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.get_new_connection">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.get_new_connection">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_new_connection</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">conn_params</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Open a connection to the database.&quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of BaseDatabaseWrapper may require a get_new_connection() &quot;</span>
+            <span class="s2">&quot;method&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.init_connection_state">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.init_connection_state">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">init_connection_state</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize the database connection settings.&quot;&quot;&quot;</span>
+        <span class="k">global</span> <span class="n">RAN_DB_VERSION_CHECK</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">alias</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">RAN_DB_VERSION_CHECK</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">check_database_version_supported</span><span class="p">()</span>
+            <span class="n">RAN_DB_VERSION_CHECK</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">alias</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.create_cursor">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.create_cursor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_cursor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a cursor. Assume that a connection is established.&quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of BaseDatabaseWrapper may require a create_cursor() method&quot;</span>
+        <span class="p">)</span></div>
+
+
+    <span class="c1"># ##### Backend-specific methods for creating connections #####</span>
+
+    <span class="nd">@async_unsafe</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.connect">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.connect">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">connect</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Connect to the database. Assume that the connection is closed.&quot;&quot;&quot;</span>
+        <span class="c1"># Check for invalid configurations.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">check_settings</span><span class="p">()</span>
+        <span class="c1"># In case the previous connection was closed while in an atomic block</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">in_atomic_block</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">savepoint_ids</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atomic_blocks</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">needs_rollback</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="c1"># Reset parameters defining when to close/health-check the connection.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">health_check_enabled</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;CONN_HEALTH_CHECKS&quot;</span><span class="p">]</span>
+        <span class="n">max_age</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;CONN_MAX_AGE&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">close_at</span> <span class="o">=</span> <span class="kc">None</span> <span class="k">if</span> <span class="n">max_age</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span> <span class="o">+</span> <span class="n">max_age</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">closed_in_transaction</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">errors_occurred</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="c1"># New connections are healthy.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">health_check_done</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="c1"># Establish the connection</span>
+        <span class="n">conn_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_connection_params</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">connection</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_new_connection</span><span class="p">(</span><span class="n">conn_params</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">set_autocommit</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;AUTOCOMMIT&quot;</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">init_connection_state</span><span class="p">()</span>
+        <span class="n">connection_created</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">sender</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span> <span class="n">connection</span><span class="o">=</span><span class="bp">self</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">run_on_commit</span> <span class="o">=</span> <span class="p">[]</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.check_settings">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.check_settings">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_settings</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;TIME_ZONE&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">settings</span><span class="o">.</span><span class="n">USE_TZ</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+                <span class="s2">&quot;Connection &#39;</span><span class="si">%s</span><span class="s2">&#39; cannot set TIME_ZONE because USE_TZ is False.&quot;</span>
+                <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">alias</span>
+            <span class="p">)</span></div>
+
+
+    <span class="nd">@async_unsafe</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.ensure_connection">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.ensure_connection">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">ensure_connection</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Guarantee that a connection to the database is established.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">wrap_database_errors</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span></div>
+
+
+    <span class="c1"># ##### Backend-specific wrappers for PEP-249 connection methods #####</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_prepare_cursor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Validate the connection is usable and perform database cursor wrapping.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">validate_thread_sharing</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">queries_logged</span><span class="p">:</span>
+            <span class="n">wrapped_cursor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_debug_cursor</span><span class="p">(</span><span class="n">cursor</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">wrapped_cursor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_cursor</span><span class="p">(</span><span class="n">cursor</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">wrapped_cursor</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_cursor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">close_if_health_check_failed</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ensure_connection</span><span class="p">()</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">wrap_database_errors</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prepare_cursor</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">create_cursor</span><span class="p">(</span><span class="n">name</span><span class="p">))</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_commit</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">debug_transaction</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;COMMIT&quot;</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">wrap_database_errors</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_rollback</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">debug_transaction</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;ROLLBACK&quot;</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">wrap_database_errors</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">rollback</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">wrap_database_errors</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+    <span class="c1"># ##### Generic wrappers for PEP-249 connection methods #####</span>
+
+    <span class="nd">@async_unsafe</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.cursor">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.cursor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">cursor</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a cursor, opening a connection if necessary.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cursor</span><span class="p">()</span></div>
+
+
+    <span class="nd">@async_unsafe</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.commit">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.commit">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">commit</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Commit a transaction and reset the dirty flag.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">validate_thread_sharing</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">validate_no_atomic_block</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_commit</span><span class="p">()</span>
+        <span class="c1"># A successful commit means that the database connection works.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">errors_occurred</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">run_commit_hooks_on_set_autocommit_on</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+
+    <span class="nd">@async_unsafe</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.rollback">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.rollback">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">rollback</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Roll back a transaction and reset the dirty flag.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">validate_thread_sharing</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">validate_no_atomic_block</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rollback</span><span class="p">()</span>
+        <span class="c1"># A successful rollback means that the database connection works.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">errors_occurred</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">needs_rollback</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">run_on_commit</span> <span class="o">=</span> <span class="p">[]</span></div>
+
+
+    <span class="nd">@async_unsafe</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.close">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.close">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Close the connection to the database.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">validate_thread_sharing</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">run_on_commit</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="c1"># Don&#39;t call validate_no_atomic_block() to avoid making it difficult</span>
+        <span class="c1"># to get rid of a connection in an invalid state. The next connect()</span>
+        <span class="c1"># will reset the transaction state anyway.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">closed_in_transaction</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_close</span><span class="p">()</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">in_atomic_block</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">closed_in_transaction</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">needs_rollback</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">connection</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+    <span class="c1"># ##### Backend-specific savepoint management methods #####</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_savepoint</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sid</span><span class="p">):</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">savepoint_create_sql</span><span class="p">(</span><span class="n">sid</span><span class="p">))</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_savepoint_rollback</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sid</span><span class="p">):</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">savepoint_rollback_sql</span><span class="p">(</span><span class="n">sid</span><span class="p">))</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_savepoint_commit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sid</span><span class="p">):</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">savepoint_commit_sql</span><span class="p">(</span><span class="n">sid</span><span class="p">))</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_savepoint_allowed</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Savepoints cannot be created outside a transaction</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">uses_savepoints</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_autocommit</span><span class="p">()</span>
+
+    <span class="c1"># ##### Generic savepoint management methods #####</span>
+
+    <span class="nd">@async_unsafe</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.savepoint">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.savepoint">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">savepoint</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create a savepoint inside the current transaction. Return an</span>
+<span class="sd">        identifier for the savepoint that will be used for the subsequent</span>
+<span class="sd">        rollback or commit. Do nothing if savepoints are not supported.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_savepoint_allowed</span><span class="p">():</span>
+            <span class="k">return</span>
+
+        <span class="n">thread_ident</span> <span class="o">=</span> <span class="n">_thread</span><span class="o">.</span><span class="n">get_ident</span><span class="p">()</span>
+        <span class="n">tid</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">thread_ident</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">savepoint_state</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">sid</span> <span class="o">=</span> <span class="s2">&quot;s</span><span class="si">%s</span><span class="s2">_x</span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">tid</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">savepoint_state</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">validate_thread_sharing</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_savepoint</span><span class="p">(</span><span class="n">sid</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">sid</span></div>
+
+
+    <span class="nd">@async_unsafe</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.savepoint_rollback">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.savepoint_rollback">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">savepoint_rollback</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sid</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Roll back to a savepoint. Do nothing if savepoints are not supported.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_savepoint_allowed</span><span class="p">():</span>
+            <span class="k">return</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">validate_thread_sharing</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_savepoint_rollback</span><span class="p">(</span><span class="n">sid</span><span class="p">)</span>
+
+        <span class="c1"># Remove any callbacks registered while this savepoint was active.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">run_on_commit</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="p">(</span><span class="n">sids</span><span class="p">,</span> <span class="n">func</span><span class="p">,</span> <span class="n">robust</span><span class="p">)</span>
+            <span class="k">for</span> <span class="p">(</span><span class="n">sids</span><span class="p">,</span> <span class="n">func</span><span class="p">,</span> <span class="n">robust</span><span class="p">)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">run_on_commit</span>
+            <span class="k">if</span> <span class="n">sid</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">sids</span>
+        <span class="p">]</span></div>
+
+
+    <span class="nd">@async_unsafe</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.savepoint_commit">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.savepoint_commit">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">savepoint_commit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sid</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Release a savepoint. Do nothing if savepoints are not supported.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_savepoint_allowed</span><span class="p">():</span>
+            <span class="k">return</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">validate_thread_sharing</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_savepoint_commit</span><span class="p">(</span><span class="n">sid</span><span class="p">)</span></div>
+
+
+    <span class="nd">@async_unsafe</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.clean_savepoints">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.clean_savepoints">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clean_savepoints</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Reset the counter used to generate unique savepoint ids in this thread.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">savepoint_state</span> <span class="o">=</span> <span class="mi">0</span></div>
+
+
+    <span class="c1"># ##### Backend-specific transaction management methods #####</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_set_autocommit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">autocommit</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Backend-specific implementation to enable or disable autocommit.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of BaseDatabaseWrapper may require a _set_autocommit() method&quot;</span>
+        <span class="p">)</span>
+
+    <span class="c1"># ##### Generic transaction management methods #####</span>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.get_autocommit">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.get_autocommit">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_autocommit</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Get the autocommit state.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ensure_connection</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">autocommit</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.set_autocommit">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.set_autocommit">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_autocommit</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">autocommit</span><span class="p">,</span> <span class="n">force_begin_transaction_with_broken_autocommit</span><span class="o">=</span><span class="kc">False</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Enable or disable autocommit.</span>
+
+<span class="sd">        The usual way to start a transaction is to turn autocommit off.</span>
+<span class="sd">        SQLite does not properly start a transaction when disabling</span>
+<span class="sd">        autocommit. To avoid this buggy behavior and to actually enter a new</span>
+<span class="sd">        transaction, an explicit BEGIN is required. Using</span>
+<span class="sd">        force_begin_transaction_with_broken_autocommit=True will issue an</span>
+<span class="sd">        explicit BEGIN with SQLite. This option will be ignored for other</span>
+<span class="sd">        backends.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">validate_no_atomic_block</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">close_if_health_check_failed</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ensure_connection</span><span class="p">()</span>
+
+        <span class="n">start_transaction_under_autocommit</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">force_begin_transaction_with_broken_autocommit</span>
+            <span class="ow">and</span> <span class="ow">not</span> <span class="n">autocommit</span>
+            <span class="ow">and</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;_start_transaction_under_autocommit&quot;</span><span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">start_transaction_under_autocommit</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_start_transaction_under_autocommit</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="n">autocommit</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_set_autocommit</span><span class="p">(</span><span class="n">autocommit</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">debug_transaction</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;BEGIN&quot;</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_set_autocommit</span><span class="p">(</span><span class="n">autocommit</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">autocommit</span> <span class="o">=</span> <span class="n">autocommit</span>
+
+        <span class="k">if</span> <span class="n">autocommit</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">run_commit_hooks_on_set_autocommit_on</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">run_and_clear_commit_hooks</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">run_commit_hooks_on_set_autocommit_on</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.get_rollback">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.get_rollback">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_rollback</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Get the &quot;needs rollback&quot; flag -- for *advanced use* only.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">in_atomic_block</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TransactionManagementError</span><span class="p">(</span>
+                <span class="s2">&quot;The rollback flag doesn&#39;t work outside of an &#39;atomic&#39; block.&quot;</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">needs_rollback</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.set_rollback">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.set_rollback">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_rollback</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rollback</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Set or unset the &quot;needs rollback&quot; flag -- for *advanced use* only.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">in_atomic_block</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TransactionManagementError</span><span class="p">(</span>
+                <span class="s2">&quot;The rollback flag doesn&#39;t work outside of an &#39;atomic&#39; block.&quot;</span>
+            <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">needs_rollback</span> <span class="o">=</span> <span class="n">rollback</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.validate_no_atomic_block">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.validate_no_atomic_block">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">validate_no_atomic_block</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Raise an error if an atomic block is active.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">in_atomic_block</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TransactionManagementError</span><span class="p">(</span>
+                <span class="s2">&quot;This is forbidden when an &#39;atomic&#39; block is active.&quot;</span>
+            <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.validate_no_broken_transaction">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.validate_no_broken_transaction">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">validate_no_broken_transaction</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">needs_rollback</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TransactionManagementError</span><span class="p">(</span>
+                <span class="s2">&quot;An error occurred in the current transaction. You can&#39;t &quot;</span>
+                <span class="s2">&quot;execute queries until the end of the &#39;atomic&#39; block.&quot;</span>
+            <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">self.rollback_exc</span></div>
+
+
+    <span class="c1"># ##### Foreign key constraints checks handling #####</span>
+
+    <span class="nd">@contextmanager</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.constraint_checks_disabled">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.constraint_checks_disabled">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">constraint_checks_disabled</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Disable foreign key constraint checking.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">disabled</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">disable_constraint_checking</span><span class="p">()</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">yield</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">disabled</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">enable_constraint_checking</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.disable_constraint_checking">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.disable_constraint_checking">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">disable_constraint_checking</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Backends can implement as needed to temporarily disable foreign key</span>
+<span class="sd">        constraint checking. Should return True if the constraints were</span>
+<span class="sd">        disabled and will need to be reenabled.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.enable_constraint_checking">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.enable_constraint_checking">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">enable_constraint_checking</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Backends can implement as needed to re-enable foreign key constraint</span>
+<span class="sd">        checking.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.check_constraints">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.check_constraints">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_constraints</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table_names</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Backends can override this method if they can apply constraint</span>
+<span class="sd">        checking (e.g. via &quot;SET CONSTRAINTS ALL IMMEDIATE&quot;). Should raise an</span>
+<span class="sd">        IntegrityError if any invalid foreign key references are encountered.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+
+
+    <span class="c1"># ##### Connection termination handling #####</span>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.is_usable">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.is_usable">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_usable</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Test if the database connection is usable.</span>
+
+<span class="sd">        This method may assume that self.connection is not None.</span>
+
+<span class="sd">        Actual implementations should take care not to raise exceptions</span>
+<span class="sd">        as that may prevent Django from recycling unusable connections.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of BaseDatabaseWrapper may require an is_usable() method&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.close_if_health_check_failed">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.close_if_health_check_failed">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">close_if_health_check_failed</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Close existing connection if it fails a health check.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">connection</span> <span class="ow">is</span> <span class="kc">None</span>
+            <span class="ow">or</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">health_check_enabled</span>
+            <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">health_check_done</span>
+        <span class="p">):</span>
+            <span class="k">return</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_usable</span><span class="p">():</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">health_check_done</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.close_if_unusable_or_obsolete">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.close_if_unusable_or_obsolete">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">close_if_unusable_or_obsolete</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Close the current connection if unrecoverable errors have occurred</span>
+<span class="sd">        or if it outlived its maximum age.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">health_check_done</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="c1"># If the application didn&#39;t restore the original autocommit setting,</span>
+            <span class="c1"># don&#39;t take chances, drop the connection.</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_autocommit</span><span class="p">()</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;AUTOCOMMIT&quot;</span><span class="p">]:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+                <span class="k">return</span>
+
+            <span class="c1"># If an exception other than DataError or IntegrityError occurred</span>
+            <span class="c1"># since the last commit / rollback, check if the connection works.</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">errors_occurred</span><span class="p">:</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_usable</span><span class="p">():</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">errors_occurred</span> <span class="o">=</span> <span class="kc">False</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">health_check_done</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+                    <span class="k">return</span>
+
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">close_at</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">close_at</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+                <span class="k">return</span></div>
+
+
+    <span class="c1"># ##### Thread safety handling #####</span>
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.allow_thread_sharing">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.allow_thread_sharing">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">allow_thread_sharing</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">_thread_sharing_lock</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_thread_sharing_count</span> <span class="o">&gt;</span> <span class="mi">0</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.inc_thread_sharing">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.inc_thread_sharing">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">inc_thread_sharing</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">_thread_sharing_lock</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_thread_sharing_count</span> <span class="o">+=</span> <span class="mi">1</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.dec_thread_sharing">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.dec_thread_sharing">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">dec_thread_sharing</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">_thread_sharing_lock</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_thread_sharing_count</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+                    <span class="s2">&quot;Cannot decrement the thread sharing count below zero.&quot;</span>
+                <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_thread_sharing_count</span> <span class="o">-=</span> <span class="mi">1</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.validate_thread_sharing">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.validate_thread_sharing">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">validate_thread_sharing</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Validate that the connection isn&#39;t accessed by another thread than the</span>
+<span class="sd">        one which originally created it, unless the connection was explicitly</span>
+<span class="sd">        authorized to be shared between threads (via the `inc_thread_sharing()`</span>
+<span class="sd">        method). Raise an exception if the validation fails.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">allow_thread_sharing</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_thread_ident</span> <span class="o">==</span> <span class="n">_thread</span><span class="o">.</span><span class="n">get_ident</span><span class="p">()):</span>
+            <span class="k">raise</span> <span class="n">DatabaseError</span><span class="p">(</span>
+                <span class="s2">&quot;DatabaseWrapper objects created in a &quot;</span>
+                <span class="s2">&quot;thread can only be used in that same thread. The object &quot;</span>
+                <span class="s2">&quot;with alias &#39;</span><span class="si">%s</span><span class="s2">&#39; was created in thread id </span><span class="si">%s</span><span class="s2"> and this is &quot;</span>
+                <span class="s2">&quot;thread id </span><span class="si">%s</span><span class="s2">.&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">alias</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_thread_ident</span><span class="p">,</span> <span class="n">_thread</span><span class="o">.</span><span class="n">get_ident</span><span class="p">())</span>
+            <span class="p">)</span></div>
+
+
+    <span class="c1"># ##### Miscellaneous #####</span>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.prepare_database">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.prepare_database">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">prepare_database</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Hook to do any database check or preparation, generally called before</span>
+<span class="sd">        migrating a project or an app.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.wrap_database_errors">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.wrap_database_errors">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">wrap_database_errors</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Context manager and decorator that re-throws backend-specific database</span>
+<span class="sd">        exceptions using Django&#39;s common wrappers.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">DatabaseErrorWrapper</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.chunked_cursor">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.chunked_cursor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">chunked_cursor</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a cursor that tries to avoid caching in the database (if</span>
+<span class="sd">        supported by the database), otherwise return a regular cursor.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.make_debug_cursor">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.make_debug_cursor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">make_debug_cursor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a cursor that logs all queries in self.queries_log.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">utils</span><span class="o">.</span><span class="n">CursorDebugWrapper</span><span class="p">(</span><span class="n">cursor</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.make_cursor">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.make_cursor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">make_cursor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a cursor without debug logging.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">utils</span><span class="o">.</span><span class="n">CursorWrapper</span><span class="p">(</span><span class="n">cursor</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span></div>
+
+
+    <span class="nd">@contextmanager</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.temporary_connection">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.temporary_connection">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">temporary_connection</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Context manager that ensures that a connection is established, and</span>
+<span class="sd">        if it opened one, closes it to avoid leaving a dangling connection.</span>
+<span class="sd">        This is useful for operations outside of the request-response cycle.</span>
+
+<span class="sd">        Provide a cursor: with self.temporary_connection() as cursor: ...</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">must_close</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span> <span class="ow">is</span> <span class="kc">None</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+                <span class="k">yield</span> <span class="n">cursor</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">must_close</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></div>
+
+
+    <span class="nd">@contextmanager</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_nodb_cursor</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a cursor from an alternative connection to be used when there is</span>
+<span class="sd">        no need to access the main database, specifically for test db</span>
+<span class="sd">        creation/deletion. This also prevents the production database from</span>
+<span class="sd">        being exposed to potential child threads while (or after) the test</span>
+<span class="sd">        database is destroyed. Refs #10868, #17786, #16969.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">conn</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="p">({</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">,</span> <span class="s2">&quot;NAME&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">},</span> <span class="n">alias</span><span class="o">=</span><span class="n">NO_DB_ALIAS</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">conn</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+                <span class="k">yield</span> <span class="n">cursor</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="n">conn</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.schema_editor">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.schema_editor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">schema_editor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a new instance of this backend&#39;s SchemaEditor.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">SchemaEditorClass</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+                <span class="s2">&quot;The SchemaEditorClass attribute of this database wrapper is still None&quot;</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SchemaEditorClass</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.on_commit">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.on_commit">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_commit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">func</span><span class="p">,</span> <span class="n">robust</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">callable</span><span class="p">(</span><span class="n">func</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;on_commit()&#39;s callback must be a callable.&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">in_atomic_block</span><span class="p">:</span>
+            <span class="c1"># Transaction in progress; save for execution on commit.</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">run_on_commit</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="nb">set</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">savepoint_ids</span><span class="p">),</span> <span class="n">func</span><span class="p">,</span> <span class="n">robust</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_autocommit</span><span class="p">():</span>
+            <span class="k">raise</span> <span class="n">TransactionManagementError</span><span class="p">(</span>
+                <span class="s2">&quot;on_commit() cannot be used in manual transaction management&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># No transaction in progress and in autocommit mode; execute</span>
+            <span class="c1"># immediately.</span>
+            <span class="k">if</span> <span class="n">robust</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">func</span><span class="p">()</span>
+                <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;Error calling </span><span class="si">{</span><span class="n">func</span><span class="o">.</span><span class="vm">__qualname__</span><span class="si">}</span><span class="s2"> in on_commit() (%s).&quot;</span><span class="p">,</span>
+                        <span class="n">e</span><span class="p">,</span>
+                        <span class="n">exc_info</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                    <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">func</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.run_and_clear_commit_hooks">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.run_and_clear_commit_hooks">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">run_and_clear_commit_hooks</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">validate_no_atomic_block</span><span class="p">()</span>
+        <span class="n">current_run_on_commit</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">run_on_commit</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">run_on_commit</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">while</span> <span class="n">current_run_on_commit</span><span class="p">:</span>
+            <span class="n">_</span><span class="p">,</span> <span class="n">func</span><span class="p">,</span> <span class="n">robust</span> <span class="o">=</span> <span class="n">current_run_on_commit</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">robust</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">func</span><span class="p">()</span>
+                <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;Error calling </span><span class="si">{</span><span class="n">func</span><span class="o">.</span><span class="vm">__qualname__</span><span class="si">}</span><span class="s2"> in on_commit() during &quot;</span>
+                        <span class="sa">f</span><span class="s2">&quot;transaction (%s).&quot;</span><span class="p">,</span>
+                        <span class="n">e</span><span class="p">,</span>
+                        <span class="n">exc_info</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                    <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">func</span><span class="p">()</span></div>
+
+
+    <span class="nd">@contextmanager</span>
+<div class="viewcode-block" id="BaseDatabaseWrapper.execute_wrapper">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.execute_wrapper">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">execute_wrapper</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">wrapper</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a context manager under which the wrapper is applied to suitable</span>
+<span class="sd">        database query executions.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">execute_wrappers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">wrapper</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">yield</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">execute_wrappers</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseWrapper.copy">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/base/index.html#django.db.backends.base.base.BaseDatabaseWrapper.copy">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">copy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">alias</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a copy of this connection.</span>
+
+<span class="sd">        For tests that require two connections to the same database.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">settings_dict</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">alias</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">alias</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">alias</span>
+        <span class="k">return</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)(</span><span class="n">settings_dict</span><span class="p">,</span> <span class="n">alias</span><span class="p">)</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,672 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.db.models.fields.reverse_related &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../../../db.html">django.db</a></li>
+          <li class="breadcrumb-item"><a href="../fields.html">django.db.models.fields</a></li>
+      <li class="breadcrumb-item active">django.db.models.fields.reverse_related</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.db.models.fields.reverse_related</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">&quot;Rel objects&quot; for related fields.</span>
+
+<span class="sd">&quot;Rel objects&quot; (for lack of a better name) carry information about the relation</span>
+<span class="sd">modeled by a related field and provide some utility functions. They&#39;re stored</span>
+<span class="sd">in the ``remote_field`` attribute of the field.</span>
+
+<span class="sd">They also act as reverse fields for the purposes of the Meta API because</span>
+<span class="sd">they&#39;re the closest concept currently available.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">exceptions</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">cached_property</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.hashable</span><span class="w"> </span><span class="kn">import</span> <span class="n">make_hashable</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">BLANK_CHOICE_DASH</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.mixins</span><span class="w"> </span><span class="kn">import</span> <span class="n">FieldCacheMixin</span>
+
+
+<div class="viewcode-block" id="ForeignObjectRel">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ForeignObjectRel</span><span class="p">(</span><span class="n">FieldCacheMixin</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Used by ForeignObject to store information about the relation.</span>
+
+<span class="sd">    ``_meta.get_fields()`` returns this class to provide access to the field</span>
+<span class="sd">    flags for the reverse relation.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># Field flags</span>
+<div class="viewcode-block" id="ForeignObjectRel.auto_created">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.auto_created">[docs]</a>
+    <span class="n">auto_created</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+<div class="viewcode-block" id="ForeignObjectRel.concrete">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.concrete">[docs]</a>
+    <span class="n">concrete</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+<div class="viewcode-block" id="ForeignObjectRel.editable">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.editable">[docs]</a>
+    <span class="n">editable</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+<div class="viewcode-block" id="ForeignObjectRel.is_relation">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.is_relation">[docs]</a>
+    <span class="n">is_relation</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+
+    <span class="c1"># Reverse relations are always nullable (Django can&#39;t enforce that a</span>
+    <span class="c1"># foreign key on the related model points to this model).</span>
+<div class="viewcode-block" id="ForeignObjectRel.null">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.null">[docs]</a>
+    <span class="n">null</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+<div class="viewcode-block" id="ForeignObjectRel.empty_strings_allowed">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.empty_strings_allowed">[docs]</a>
+    <span class="n">empty_strings_allowed</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">field</span><span class="p">,</span>
+        <span class="n">to</span><span class="p">,</span>
+        <span class="n">related_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">related_query_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">limit_choices_to</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">parent_link</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">on_delete</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+<div class="viewcode-block" id="ForeignObjectRel.field">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.field">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">field</span> <span class="o">=</span> <span class="n">field</span></div>
+
+<div class="viewcode-block" id="ForeignObjectRel.model">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.model">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">to</span></div>
+
+<div class="viewcode-block" id="ForeignObjectRel.related_name">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.related_name">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">related_name</span> <span class="o">=</span> <span class="n">related_name</span></div>
+
+<div class="viewcode-block" id="ForeignObjectRel.related_query_name">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.related_query_name">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">related_query_name</span> <span class="o">=</span> <span class="n">related_query_name</span></div>
+
+<div class="viewcode-block" id="ForeignObjectRel.limit_choices_to">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.limit_choices_to">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">limit_choices_to</span> <span class="o">=</span> <span class="p">{}</span> <span class="k">if</span> <span class="n">limit_choices_to</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">limit_choices_to</span></div>
+
+<div class="viewcode-block" id="ForeignObjectRel.parent_link">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.parent_link">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">parent_link</span> <span class="o">=</span> <span class="n">parent_link</span></div>
+
+<div class="viewcode-block" id="ForeignObjectRel.on_delete">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.on_delete">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">on_delete</span> <span class="o">=</span> <span class="n">on_delete</span></div>
+
+
+<div class="viewcode-block" id="ForeignObjectRel.symmetrical">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.symmetrical">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">symmetrical</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+<div class="viewcode-block" id="ForeignObjectRel.multiple">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.multiple">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">multiple</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+
+    <span class="c1"># Some of the following cached_properties can&#39;t be initialized in</span>
+    <span class="c1"># __init__ as the field doesn&#39;t have its model yet. Calling these methods</span>
+    <span class="c1"># before field.contribute_to_class() has been called will result in</span>
+    <span class="c1"># AttributeError</span>
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="ForeignObjectRel.hidden">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.hidden">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">hidden</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_hidden</span><span class="p">()</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="ForeignObjectRel.name">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">related_query_name</span><span class="p">()</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="ForeignObjectRel.remote_field">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.remote_field">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">remote_field</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">field</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="ForeignObjectRel.target_field">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.target_field">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">target_field</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        When filtering against this relation, return the field on the remote</span>
+<span class="sd">        model against which the filtering should happen.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">target_fields</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">path_infos</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">target_fields</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">target_fields</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">exceptions</span><span class="o">.</span><span class="n">FieldError</span><span class="p">(</span>
+                <span class="s2">&quot;Can&#39;t use target_field for multicolumn relations.&quot;</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">target_fields</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="ForeignObjectRel.related_model">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.related_model">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">related_model</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">model</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span>
+                <span class="s2">&quot;This property can&#39;t be accessed before self.field.contribute_to_class &quot;</span>
+                <span class="s2">&quot;has been called.&quot;</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">model</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="ForeignObjectRel.many_to_many">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.many_to_many">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">many_to_many</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">many_to_many</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="ForeignObjectRel.many_to_one">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.many_to_one">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">many_to_one</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">one_to_many</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="ForeignObjectRel.one_to_many">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.one_to_many">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">one_to_many</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">many_to_one</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="ForeignObjectRel.one_to_one">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.one_to_one">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">one_to_one</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">one_to_one</span></div>
+
+
+<div class="viewcode-block" id="ForeignObjectRel.get_lookup">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.get_lookup">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_lookup</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_name</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">get_lookup</span><span class="p">(</span><span class="n">lookup_name</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ForeignObjectRel.get_lookups">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.get_lookups">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_lookups</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">get_lookups</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="ForeignObjectRel.get_transform">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.get_transform">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_transform</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">get_transform</span><span class="p">(</span><span class="n">name</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ForeignObjectRel.get_internal_type">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.get_internal_type">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_internal_type</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">get_internal_type</span><span class="p">()</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="ForeignObjectRel.db_type">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.db_type">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">db_type</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">db_type</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;&lt;</span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2">&gt;&quot;</span> <span class="o">%</span> <span class="p">(</span>
+            <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">related_model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">app_label</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">related_model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">model_name</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="ForeignObjectRel.identity">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.identity">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">identity</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">related_name</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">related_query_name</span><span class="p">,</span>
+            <span class="n">make_hashable</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">limit_choices_to</span><span class="p">),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">parent_link</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">on_delete</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">symmetrical</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">multiple</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">NotImplemented</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">identity</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">identity</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">hash</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">identity</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">__getstate__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">state</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__dict__</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="c1"># Delete the path_infos cached property because it can be recalculated</span>
+        <span class="c1"># at first invocation after deserialization. The attribute must be</span>
+        <span class="c1"># removed because subclasses like ManyToOneRel may have a PathInfo</span>
+        <span class="c1"># which contains an intermediate M2M table that&#39;s been dynamically</span>
+        <span class="c1"># created and doesn&#39;t exist in the .models module.</span>
+        <span class="c1"># This is a reverse relation, so there is no reverse_path_infos to</span>
+        <span class="c1"># delete.</span>
+        <span class="n">state</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;path_infos&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">state</span>
+
+<div class="viewcode-block" id="ForeignObjectRel.get_choices">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.get_choices">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_choices</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">include_blank</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">blank_choice</span><span class="o">=</span><span class="n">BLANK_CHOICE_DASH</span><span class="p">,</span>
+        <span class="n">limit_choices_to</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">ordering</span><span class="o">=</span><span class="p">(),</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return choices with a default blank choices included, for use</span>
+<span class="sd">        as &lt;select&gt; choices for this field.</span>
+
+<span class="sd">        Analog of django.db.models.fields.Field.get_choices(), provided</span>
+<span class="sd">        initially for utilization by RelatedFieldListFilter.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">limit_choices_to</span> <span class="o">=</span> <span class="n">limit_choices_to</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">limit_choices_to</span>
+        <span class="n">qs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">related_model</span><span class="o">.</span><span class="n">_default_manager</span><span class="o">.</span><span class="n">complex_filter</span><span class="p">(</span><span class="n">limit_choices_to</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">ordering</span><span class="p">:</span>
+            <span class="n">qs</span> <span class="o">=</span> <span class="n">qs</span><span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="o">*</span><span class="n">ordering</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">blank_choice</span> <span class="k">if</span> <span class="n">include_blank</span> <span class="k">else</span> <span class="p">[])</span> <span class="o">+</span> <span class="p">[(</span><span class="n">x</span><span class="o">.</span><span class="n">pk</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">x</span><span class="p">))</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">qs</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="ForeignObjectRel.is_hidden">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.is_hidden">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_hidden</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Should the related object be hidden?&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">related_name</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">related_name</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;+&quot;</span></div>
+
+
+<div class="viewcode-block" id="ForeignObjectRel.get_joining_columns">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.get_joining_columns">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_joining_columns</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">get_reverse_joining_columns</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="ForeignObjectRel.get_extra_restriction">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.get_extra_restriction">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_extra_restriction</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">alias</span><span class="p">,</span> <span class="n">related_alias</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">get_extra_restriction</span><span class="p">(</span><span class="n">related_alias</span><span class="p">,</span> <span class="n">alias</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ForeignObjectRel.set_field_name">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.set_field_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_field_name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Set the related field&#39;s name, this is not available until later stages</span>
+<span class="sd">        of app loading, so set_field_name is called from</span>
+<span class="sd">        set_attributes_from_rel()</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># By default foreign object doesn&#39;t relate to any remote field (for</span>
+        <span class="c1"># example custom multicolumn joins currently have no remote field).</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">field_name</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="ForeignObjectRel.get_accessor_name">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.get_accessor_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_accessor_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="c1"># This method encapsulates the logic that decides what name to give an</span>
+        <span class="c1"># accessor descriptor that retrieves related many-to-one or</span>
+        <span class="c1"># many-to-many objects. It uses the lowercased object_name + &quot;_set&quot;,</span>
+        <span class="c1"># but this can be overridden with the &quot;related_name&quot; option. Due to</span>
+        <span class="c1"># backwards compatibility ModelForms need to be able to provide an</span>
+        <span class="c1"># alternate model. See BaseInlineFormSet.get_default_prefix().</span>
+        <span class="n">opts</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span> <span class="k">if</span> <span class="n">model</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">related_model</span><span class="o">.</span><span class="n">_meta</span>
+        <span class="n">model</span> <span class="o">=</span> <span class="n">model</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">related_model</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">multiple</span><span class="p">:</span>
+            <span class="c1"># If this is a symmetrical m2m relation on self, there is no</span>
+            <span class="c1"># reverse accessor.</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">symmetrical</span> <span class="ow">and</span> <span class="n">model</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">related_name</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">related_name</span>
+        <span class="k">return</span> <span class="n">opts</span><span class="o">.</span><span class="n">model_name</span> <span class="o">+</span> <span class="p">(</span><span class="s2">&quot;_set&quot;</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">multiple</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ForeignObjectRel.get_path_info">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.get_path_info">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_path_info</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filtered_relation</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">filtered_relation</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">get_reverse_path_info</span><span class="p">(</span><span class="n">filtered_relation</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">reverse_path_infos</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="ForeignObjectRel.path_infos">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.path_infos">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">path_infos</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_path_info</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="ForeignObjectRel.get_cache_name">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ForeignObjectRel.get_cache_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_cache_name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the name of the cache key to use for storing an instance of the</span>
+<span class="sd">        forward model on the reverse model.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_accessor_name</span><span class="p">()</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="ManyToOneRel">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ManyToOneRel">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ManyToOneRel</span><span class="p">(</span><span class="n">ForeignObjectRel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Used by the ForeignKey field to store information about the relation.</span>
+
+<span class="sd">    ``_meta.get_fields()`` returns this class to provide access to the field</span>
+<span class="sd">    flags for the reverse relation.</span>
+
+<span class="sd">    Note: Because we somewhat abuse the Rel objects by using them as reverse</span>
+<span class="sd">    fields we get the funny situation where</span>
+<span class="sd">    ``ManyToOneRel.many_to_one == False`` and</span>
+<span class="sd">    ``ManyToOneRel.one_to_many == True``. This is unfortunate but the actual</span>
+<span class="sd">    ManyToOneRel class is a private API and there is work underway to turn</span>
+<span class="sd">    reverse relations into actual fields.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">field</span><span class="p">,</span>
+        <span class="n">to</span><span class="p">,</span>
+        <span class="n">field_name</span><span class="p">,</span>
+        <span class="n">related_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">related_query_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">limit_choices_to</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">parent_link</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">on_delete</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="n">field</span><span class="p">,</span>
+            <span class="n">to</span><span class="p">,</span>
+            <span class="n">related_name</span><span class="o">=</span><span class="n">related_name</span><span class="p">,</span>
+            <span class="n">related_query_name</span><span class="o">=</span><span class="n">related_query_name</span><span class="p">,</span>
+            <span class="n">limit_choices_to</span><span class="o">=</span><span class="n">limit_choices_to</span><span class="p">,</span>
+            <span class="n">parent_link</span><span class="o">=</span><span class="n">parent_link</span><span class="p">,</span>
+            <span class="n">on_delete</span><span class="o">=</span><span class="n">on_delete</span><span class="p">,</span>
+        <span class="p">)</span>
+
+<div class="viewcode-block" id="ManyToOneRel.field_name">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ManyToOneRel.field_name">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">field_name</span> <span class="o">=</span> <span class="n">field_name</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">__getstate__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">state</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">__getstate__</span><span class="p">()</span>
+        <span class="n">state</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;related_model&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">state</span>
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="ManyToOneRel.identity">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ManyToOneRel.identity">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">identity</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">identity</span> <span class="o">+</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">field_name</span><span class="p">,)</span></div>
+
+
+<div class="viewcode-block" id="ManyToOneRel.get_related_field">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ManyToOneRel.get_related_field">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_related_field</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the Field in the &#39;to&#39; object to which this relationship is tied.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">field</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">get_field</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">field_name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">field</span><span class="o">.</span><span class="n">concrete</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">exceptions</span><span class="o">.</span><span class="n">FieldDoesNotExist</span><span class="p">(</span>
+                <span class="s2">&quot;No related field named &#39;</span><span class="si">%s</span><span class="s2">&#39;&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">field_name</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">field</span></div>
+
+
+<div class="viewcode-block" id="ManyToOneRel.set_field_name">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ManyToOneRel.set_field_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_field_name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">field_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">field_name</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">pk</span><span class="o">.</span><span class="n">name</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="OneToOneRel">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.OneToOneRel">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">OneToOneRel</span><span class="p">(</span><span class="n">ManyToOneRel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Used by OneToOneField to store information about the relation.</span>
+
+<span class="sd">    ``_meta.get_fields()`` returns this class to provide access to the field</span>
+<span class="sd">    flags for the reverse relation.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">field</span><span class="p">,</span>
+        <span class="n">to</span><span class="p">,</span>
+        <span class="n">field_name</span><span class="p">,</span>
+        <span class="n">related_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">related_query_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">limit_choices_to</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">parent_link</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">on_delete</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="n">field</span><span class="p">,</span>
+            <span class="n">to</span><span class="p">,</span>
+            <span class="n">field_name</span><span class="p">,</span>
+            <span class="n">related_name</span><span class="o">=</span><span class="n">related_name</span><span class="p">,</span>
+            <span class="n">related_query_name</span><span class="o">=</span><span class="n">related_query_name</span><span class="p">,</span>
+            <span class="n">limit_choices_to</span><span class="o">=</span><span class="n">limit_choices_to</span><span class="p">,</span>
+            <span class="n">parent_link</span><span class="o">=</span><span class="n">parent_link</span><span class="p">,</span>
+            <span class="n">on_delete</span><span class="o">=</span><span class="n">on_delete</span><span class="p">,</span>
+        <span class="p">)</span>
+
+<div class="viewcode-block" id="OneToOneRel.multiple">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.OneToOneRel.multiple">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">multiple</span> <span class="o">=</span> <span class="kc">False</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="ManyToManyRel">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ManyToManyRel">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ManyToManyRel</span><span class="p">(</span><span class="n">ForeignObjectRel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Used by ManyToManyField to store information about the relation.</span>
+
+<span class="sd">    ``_meta.get_fields()`` returns this class to provide access to the field</span>
+<span class="sd">    flags for the reverse relation.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">field</span><span class="p">,</span>
+        <span class="n">to</span><span class="p">,</span>
+        <span class="n">related_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">related_query_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">limit_choices_to</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">symmetrical</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">through</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">through_fields</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">db_constraint</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="n">field</span><span class="p">,</span>
+            <span class="n">to</span><span class="p">,</span>
+            <span class="n">related_name</span><span class="o">=</span><span class="n">related_name</span><span class="p">,</span>
+            <span class="n">related_query_name</span><span class="o">=</span><span class="n">related_query_name</span><span class="p">,</span>
+            <span class="n">limit_choices_to</span><span class="o">=</span><span class="n">limit_choices_to</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">through</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">db_constraint</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Can&#39;t supply a through model and db_constraint=False&quot;</span><span class="p">)</span>
+<div class="viewcode-block" id="ManyToManyRel.through">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ManyToManyRel.through">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">through</span> <span class="o">=</span> <span class="n">through</span></div>
+
+
+        <span class="k">if</span> <span class="n">through_fields</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">through</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Cannot specify through_fields without a through model&quot;</span><span class="p">)</span>
+<div class="viewcode-block" id="ManyToManyRel.through_fields">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ManyToManyRel.through_fields">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">through_fields</span> <span class="o">=</span> <span class="n">through_fields</span></div>
+
+
+<div class="viewcode-block" id="ManyToManyRel.symmetrical">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ManyToManyRel.symmetrical">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">symmetrical</span> <span class="o">=</span> <span class="n">symmetrical</span></div>
+
+<div class="viewcode-block" id="ManyToManyRel.db_constraint">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ManyToManyRel.db_constraint">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">db_constraint</span> <span class="o">=</span> <span class="n">db_constraint</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="ManyToManyRel.identity">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ManyToManyRel.identity">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">identity</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">identity</span> <span class="o">+</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">through</span><span class="p">,</span>
+            <span class="n">make_hashable</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">through_fields</span><span class="p">),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">db_constraint</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ManyToManyRel.get_related_field">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/fields/reverse_related/index.html#django.db.models.fields.reverse_related.ManyToManyRel.get_related_field">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_related_field</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the field in the &#39;to&#39; object to which this relationship is tied.</span>
+<span class="sd">        Provided for symmetry with ManyToOneRel.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">opts</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">through</span><span class="o">.</span><span class="n">_meta</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">through_fields</span><span class="p">:</span>
+            <span class="n">field</span> <span class="o">=</span> <span class="n">opts</span><span class="o">.</span><span class="n">get_field</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">through_fields</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">opts</span><span class="o">.</span><span class="n">fields</span><span class="p">:</span>
+                <span class="n">rel</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="s2">&quot;remote_field&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">rel</span> <span class="ow">and</span> <span class="n">rel</span><span class="o">.</span><span class="n">model</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="p">:</span>
+                    <span class="k">break</span>
+        <span class="k">return</span> <span class="n">field</span><span class="o">.</span><span class="n">foreign_related_fields</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

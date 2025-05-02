@@ -1,0 +1,1145 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.db.backends.base.operations &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../../../db.html">django.db</a></li>
+      <li class="breadcrumb-item active">django.db.backends.base.operations</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.db.backends.base.operations</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">decimal</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">importlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">import_module</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">sqlparse</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">NotSupportedError</span><span class="p">,</span> <span class="n">transaction</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends</span><span class="w"> </span><span class="kn">import</span> <span class="n">utils</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">timezone</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.encoding</span><span class="w"> </span><span class="kn">import</span> <span class="n">force_str</span>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BaseDatabaseOperations</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Encapsulate backend-specific differences, such as the way a backend</span>
+<span class="sd">    performs ordering or calculates the ID of a recently-inserted row.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="BaseDatabaseOperations.compiler_module">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.compiler_module">[docs]</a>
+    <span class="n">compiler_module</span> <span class="o">=</span> <span class="s2">&quot;django.db.models.sql.compiler&quot;</span></div>
+
+
+    <span class="c1"># Integer field safe ranges by `internal_type` as documented</span>
+    <span class="c1"># in docs/ref/models/fields.txt.</span>
+<div class="viewcode-block" id="BaseDatabaseOperations.integer_field_ranges">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.integer_field_ranges">[docs]</a>
+    <span class="n">integer_field_ranges</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;SmallIntegerField&quot;</span><span class="p">:</span> <span class="p">(</span><span class="o">-</span><span class="mi">32768</span><span class="p">,</span> <span class="mi">32767</span><span class="p">),</span>
+        <span class="s2">&quot;IntegerField&quot;</span><span class="p">:</span> <span class="p">(</span><span class="o">-</span><span class="mi">2147483648</span><span class="p">,</span> <span class="mi">2147483647</span><span class="p">),</span>
+        <span class="s2">&quot;BigIntegerField&quot;</span><span class="p">:</span> <span class="p">(</span><span class="o">-</span><span class="mi">9223372036854775808</span><span class="p">,</span> <span class="mi">9223372036854775807</span><span class="p">),</span>
+        <span class="s2">&quot;PositiveBigIntegerField&quot;</span><span class="p">:</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">9223372036854775807</span><span class="p">),</span>
+        <span class="s2">&quot;PositiveSmallIntegerField&quot;</span><span class="p">:</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">32767</span><span class="p">),</span>
+        <span class="s2">&quot;PositiveIntegerField&quot;</span><span class="p">:</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2147483647</span><span class="p">),</span>
+        <span class="s2">&quot;SmallAutoField&quot;</span><span class="p">:</span> <span class="p">(</span><span class="o">-</span><span class="mi">32768</span><span class="p">,</span> <span class="mi">32767</span><span class="p">),</span>
+        <span class="s2">&quot;AutoField&quot;</span><span class="p">:</span> <span class="p">(</span><span class="o">-</span><span class="mi">2147483648</span><span class="p">,</span> <span class="mi">2147483647</span><span class="p">),</span>
+        <span class="s2">&quot;BigAutoField&quot;</span><span class="p">:</span> <span class="p">(</span><span class="o">-</span><span class="mi">9223372036854775808</span><span class="p">,</span> <span class="mi">9223372036854775807</span><span class="p">),</span>
+    <span class="p">}</span></div>
+
+<div class="viewcode-block" id="BaseDatabaseOperations.set_operators">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.set_operators">[docs]</a>
+    <span class="n">set_operators</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;union&quot;</span><span class="p">:</span> <span class="s2">&quot;UNION&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;intersection&quot;</span><span class="p">:</span> <span class="s2">&quot;INTERSECT&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;difference&quot;</span><span class="p">:</span> <span class="s2">&quot;EXCEPT&quot;</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+    <span class="c1"># Mapping of Field.get_internal_type() (typically the model field&#39;s class</span>
+    <span class="c1"># name) to the data type to use for the Cast() function, if different from</span>
+    <span class="c1"># DatabaseWrapper.data_types.</span>
+<div class="viewcode-block" id="BaseDatabaseOperations.cast_data_types">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.cast_data_types">[docs]</a>
+    <span class="n">cast_data_types</span> <span class="o">=</span> <span class="p">{}</span></div>
+
+    <span class="c1"># CharField data type if the max_length argument isn&#39;t provided.</span>
+<div class="viewcode-block" id="BaseDatabaseOperations.cast_char_field_without_max_length">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.cast_char_field_without_max_length">[docs]</a>
+    <span class="n">cast_char_field_without_max_length</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+    <span class="c1"># Start and end points for window expressions.</span>
+<div class="viewcode-block" id="BaseDatabaseOperations.PRECEDING">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.PRECEDING">[docs]</a>
+    <span class="n">PRECEDING</span> <span class="o">=</span> <span class="s2">&quot;PRECEDING&quot;</span></div>
+
+<div class="viewcode-block" id="BaseDatabaseOperations.FOLLOWING">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.FOLLOWING">[docs]</a>
+    <span class="n">FOLLOWING</span> <span class="o">=</span> <span class="s2">&quot;FOLLOWING&quot;</span></div>
+
+<div class="viewcode-block" id="BaseDatabaseOperations.UNBOUNDED_PRECEDING">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.UNBOUNDED_PRECEDING">[docs]</a>
+    <span class="n">UNBOUNDED_PRECEDING</span> <span class="o">=</span> <span class="s2">&quot;UNBOUNDED &quot;</span> <span class="o">+</span> <span class="n">PRECEDING</span></div>
+
+<div class="viewcode-block" id="BaseDatabaseOperations.UNBOUNDED_FOLLOWING">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.UNBOUNDED_FOLLOWING">[docs]</a>
+    <span class="n">UNBOUNDED_FOLLOWING</span> <span class="o">=</span> <span class="s2">&quot;UNBOUNDED &quot;</span> <span class="o">+</span> <span class="n">FOLLOWING</span></div>
+
+<div class="viewcode-block" id="BaseDatabaseOperations.CURRENT_ROW">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.CURRENT_ROW">[docs]</a>
+    <span class="n">CURRENT_ROW</span> <span class="o">=</span> <span class="s2">&quot;CURRENT ROW&quot;</span></div>
+
+
+    <span class="c1"># Prefix for EXPLAIN queries, or None EXPLAIN isn&#39;t supported.</span>
+<div class="viewcode-block" id="BaseDatabaseOperations.explain_prefix">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.explain_prefix">[docs]</a>
+    <span class="n">explain_prefix</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+<div class="viewcode-block" id="BaseDatabaseOperations.connection">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.connection">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">connection</span> <span class="o">=</span> <span class="n">connection</span></div>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_cache</span> <span class="o">=</span> <span class="kc">None</span>
+
+<div class="viewcode-block" id="BaseDatabaseOperations.autoinc_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.autoinc_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">autoinc_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table</span><span class="p">,</span> <span class="n">column</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return any SQL needed to support auto-incrementing primary keys, or</span>
+<span class="sd">        None if no SQL is necessary.</span>
+
+<span class="sd">        This SQL is executed when a table is created.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.bulk_batch_size">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.bulk_batch_size">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">bulk_batch_size</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">objs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the maximum allowed batch size for the backend. The fields</span>
+<span class="sd">        are the fields going to be inserted in the batch, the objs contains</span>
+<span class="sd">        all the objects to be inserted.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">objs</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.format_for_duration_arithmetic">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.format_for_duration_arithmetic">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">format_for_duration_arithmetic</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sql</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of BaseDatabaseOperations may require a &quot;</span>
+            <span class="s2">&quot;format_for_duration_arithmetic() method.&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.cache_key_culling_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.cache_key_culling_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">cache_key_culling_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return an SQL query that retrieves the first cache key greater than the</span>
+<span class="sd">        n smallest.</span>
+
+<span class="sd">        This is used by the &#39;db&#39; cache backend to determine where to start</span>
+<span class="sd">        culling.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">cache_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;cache_key&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;SELECT </span><span class="si">{</span><span class="n">cache_key</span><span class="si">}</span><span class="s2"> FROM %s ORDER BY </span><span class="si">{</span><span class="n">cache_key</span><span class="si">}</span><span class="s2"> LIMIT 1 OFFSET %%s&quot;</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.unification_cast_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.unification_cast_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">unification_cast_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">output_field</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Given a field instance, return the SQL that casts the result of a union</span>
+<span class="sd">        to that type. The resulting string should contain a &#39;%s&#39; placeholder</span>
+<span class="sd">        for the expression being cast.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">&quot;</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.date_extract_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.date_extract_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">date_extract_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Given a lookup_type of &#39;year&#39;, &#39;month&#39;, or &#39;day&#39;, return the SQL that</span>
+<span class="sd">        extracts a value from the given date field field_name.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of BaseDatabaseOperations may require a date_extract_sql() &quot;</span>
+            <span class="s2">&quot;method&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.date_trunc_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.date_trunc_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">date_trunc_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Given a lookup_type of &#39;year&#39;, &#39;month&#39;, or &#39;day&#39;, return the SQL that</span>
+<span class="sd">        truncates the given date or datetime field field_name to a date object</span>
+<span class="sd">        with only the given specificity.</span>
+
+<span class="sd">        If `tzname` is provided, the given value is truncated in a specific</span>
+<span class="sd">        timezone.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of BaseDatabaseOperations may require a date_trunc_sql() &quot;</span>
+            <span class="s2">&quot;method.&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.datetime_cast_date_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.datetime_cast_date_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">datetime_cast_date_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the SQL to cast a datetime value to date value.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of BaseDatabaseOperations may require a &quot;</span>
+            <span class="s2">&quot;datetime_cast_date_sql() method.&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.datetime_cast_time_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.datetime_cast_time_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">datetime_cast_time_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the SQL to cast a datetime value to time value.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of BaseDatabaseOperations may require a &quot;</span>
+            <span class="s2">&quot;datetime_cast_time_sql() method&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.datetime_extract_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.datetime_extract_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">datetime_extract_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Given a lookup_type of &#39;year&#39;, &#39;month&#39;, &#39;day&#39;, &#39;hour&#39;, &#39;minute&#39;, or</span>
+<span class="sd">        &#39;second&#39;, return the SQL that extracts a value from the given</span>
+<span class="sd">        datetime field field_name.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of BaseDatabaseOperations may require a datetime_extract_sql() &quot;</span>
+            <span class="s2">&quot;method&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.datetime_trunc_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.datetime_trunc_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">datetime_trunc_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Given a lookup_type of &#39;year&#39;, &#39;month&#39;, &#39;day&#39;, &#39;hour&#39;, &#39;minute&#39;, or</span>
+<span class="sd">        &#39;second&#39;, return the SQL that truncates the given datetime field</span>
+<span class="sd">        field_name to a datetime object with only the given specificity.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of BaseDatabaseOperations may require a datetime_trunc_sql() &quot;</span>
+            <span class="s2">&quot;method&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.time_trunc_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.time_trunc_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">time_trunc_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Given a lookup_type of &#39;hour&#39;, &#39;minute&#39; or &#39;second&#39;, return the SQL</span>
+<span class="sd">        that truncates the given time or datetime field field_name to a time</span>
+<span class="sd">        object with only the given specificity.</span>
+
+<span class="sd">        If `tzname` is provided, the given value is truncated in a specific</span>
+<span class="sd">        timezone.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of BaseDatabaseOperations may require a time_trunc_sql() method&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.time_extract_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.time_extract_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">time_extract_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Given a lookup_type of &#39;hour&#39;, &#39;minute&#39;, or &#39;second&#39;, return the SQL</span>
+<span class="sd">        that extracts a value from the given time field field_name.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">date_extract_sql</span><span class="p">(</span><span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.deferrable_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.deferrable_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">deferrable_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the SQL to make a constraint &quot;initially deferred&quot; during a</span>
+<span class="sd">        CREATE TABLE statement.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s2">&quot;&quot;</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.distinct_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.distinct_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">distinct_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return an SQL DISTINCT clause which removes duplicate rows from the</span>
+<span class="sd">        result set. If any fields are given, only check the given fields for</span>
+<span class="sd">        duplicates.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">fields</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">NotSupportedError</span><span class="p">(</span>
+                <span class="s2">&quot;DISTINCT ON fields is not supported by this database backend&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[</span><span class="s2">&quot;DISTINCT&quot;</span><span class="p">],</span> <span class="p">[]</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.fetch_returned_insert_columns">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.fetch_returned_insert_columns">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">fetch_returned_insert_columns</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">returning_params</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Given a cursor object that has just performed an INSERT...RETURNING</span>
+<span class="sd">        statement into a table, return the newly created data.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.field_cast_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.field_cast_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">field_cast_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">db_type</span><span class="p">,</span> <span class="n">internal_type</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Given a column type (e.g. &#39;BLOB&#39;, &#39;VARCHAR&#39;) and an internal type</span>
+<span class="sd">        (e.g. &#39;GenericIPAddressField&#39;), return the SQL to cast it before using</span>
+<span class="sd">        it in a WHERE statement. The resulting string should contain a &#39;%s&#39;</span>
+<span class="sd">        placeholder for the column being searched against.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">&quot;</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.force_no_ordering">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.force_no_ordering">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">force_no_ordering</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a list used in the &quot;ORDER BY&quot; clause to force no ordering at</span>
+<span class="sd">        all. Return an empty list to include nothing in the ordering.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">[]</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.for_update_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.for_update_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">for_update_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nowait</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">skip_locked</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">of</span><span class="o">=</span><span class="p">(),</span> <span class="n">no_key</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the FOR UPDATE SQL clause to lock rows for an update operation.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s2">&quot;FOR</span><span class="si">%s</span><span class="s2"> UPDATE</span><span class="si">%s%s%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span>
+            <span class="s2">&quot; NO KEY&quot;</span> <span class="k">if</span> <span class="n">no_key</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="s2">&quot; OF </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">of</span><span class="p">)</span> <span class="k">if</span> <span class="n">of</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="s2">&quot; NOWAIT&quot;</span> <span class="k">if</span> <span class="n">nowait</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="s2">&quot; SKIP LOCKED&quot;</span> <span class="k">if</span> <span class="n">skip_locked</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_limit_offset_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">low_mark</span><span class="p">,</span> <span class="n">high_mark</span><span class="p">):</span>
+        <span class="n">offset</span> <span class="o">=</span> <span class="n">low_mark</span> <span class="ow">or</span> <span class="mi">0</span>
+        <span class="k">if</span> <span class="n">high_mark</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">(</span><span class="n">high_mark</span> <span class="o">-</span> <span class="n">offset</span><span class="p">),</span> <span class="n">offset</span>
+        <span class="k">elif</span> <span class="n">offset</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">no_limit_value</span><span class="p">(),</span> <span class="n">offset</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="n">offset</span>
+
+<div class="viewcode-block" id="BaseDatabaseOperations.limit_offset_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.limit_offset_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">limit_offset_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">low_mark</span><span class="p">,</span> <span class="n">high_mark</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return LIMIT/OFFSET SQL clause.&quot;&quot;&quot;</span>
+        <span class="n">limit</span><span class="p">,</span> <span class="n">offset</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_limit_offset_params</span><span class="p">(</span><span class="n">low_mark</span><span class="p">,</span> <span class="n">high_mark</span><span class="p">)</span>
+        <span class="k">return</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+            <span class="n">sql</span>
+            <span class="k">for</span> <span class="n">sql</span> <span class="ow">in</span> <span class="p">(</span>
+                <span class="p">(</span><span class="s2">&quot;LIMIT </span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">limit</span><span class="p">)</span> <span class="k">if</span> <span class="n">limit</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="p">(</span><span class="s2">&quot;OFFSET </span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">offset</span><span class="p">)</span> <span class="k">if</span> <span class="n">offset</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">sql</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.last_executed_query">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.last_executed_query">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">last_executed_query</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a string of the query last executed by the given cursor, with</span>
+<span class="sd">        placeholders replaced with actual values.</span>
+
+<span class="sd">        `sql` is the raw query containing placeholders and `params` is the</span>
+<span class="sd">        sequence of parameters. These are used by default, but this method</span>
+<span class="sd">        exists for database backends to provide a better implementation</span>
+<span class="sd">        according to their own quoting schemes.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># Convert params to contain string values.</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">to_string</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">force_str</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">strings_only</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">errors</span><span class="o">=</span><span class="s2">&quot;replace&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="n">u_params</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">to_string</span><span class="p">(</span><span class="n">val</span><span class="p">)</span> <span class="k">for</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">params</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">params</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">u_params</span> <span class="o">=</span> <span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">u_params</span> <span class="o">=</span> <span class="p">{</span><span class="n">to_string</span><span class="p">(</span><span class="n">k</span><span class="p">):</span> <span class="n">to_string</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">params</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+
+        <span class="k">return</span> <span class="s2">&quot;QUERY = </span><span class="si">%r</span><span class="s2"> - PARAMS = </span><span class="si">%r</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">sql</span><span class="p">,</span> <span class="n">u_params</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.last_insert_id">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.last_insert_id">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">last_insert_id</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">,</span> <span class="n">pk_name</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Given a cursor object that has just performed an INSERT statement into</span>
+<span class="sd">        a table that has an auto-incrementing ID, return the newly created ID.</span>
+
+<span class="sd">        `pk_name` is the name of the primary-key column.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">cursor</span><span class="o">.</span><span class="n">lastrowid</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.lookup_cast">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.lookup_cast">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">lookup_cast</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">internal_type</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the string to use in a query when performing lookups</span>
+<span class="sd">        (&quot;contains&quot;, &quot;like&quot;, etc.). It should contain a &#39;%s&#39; placeholder for</span>
+<span class="sd">        the column being searched against.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">&quot;</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.max_in_list_size">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.max_in_list_size">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">max_in_list_size</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the maximum number of items that can be passed in a single &#39;IN&#39;</span>
+<span class="sd">        list condition, or None if the backend does not impose a limit.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.max_name_length">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.max_name_length">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">max_name_length</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the maximum length of table and column names, or None if there</span>
+<span class="sd">        is no limit.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.no_limit_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.no_limit_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">no_limit_value</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the value to use for the LIMIT when we are wanting &quot;LIMIT</span>
+<span class="sd">        infinity&quot;. Return None if the limit clause can be omitted in this case.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of BaseDatabaseOperations may require a no_limit_value() method&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.pk_default_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.pk_default_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">pk_default_value</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the value to use during an INSERT statement to specify that</span>
+<span class="sd">        the field should use its default value.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s2">&quot;DEFAULT&quot;</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.prepare_sql_script">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.prepare_sql_script">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">prepare_sql_script</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sql</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Take an SQL script that may contain multiple lines and return a list</span>
+<span class="sd">        of statements to feed to successive cursor.execute() calls.</span>
+
+<span class="sd">        Since few databases are able to process raw SQL scripts in a single</span>
+<span class="sd">        cursor.execute() call and PEP 249 doesn&#39;t talk about this use case,</span>
+<span class="sd">        the default implementation is conservative.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">[</span>
+            <span class="n">sqlparse</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">statement</span><span class="p">,</span> <span class="n">strip_comments</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">statement</span> <span class="ow">in</span> <span class="n">sqlparse</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">sql</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">statement</span>
+        <span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.process_clob">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.process_clob">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">process_clob</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the value of a CLOB column, for backends that return a locator</span>
+<span class="sd">        object that requires additional processing.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.return_insert_columns">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.return_insert_columns">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">return_insert_columns</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fields</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        For backends that support returning columns as part of an insert query,</span>
+<span class="sd">        return the SQL and params to append to the INSERT query. The returned</span>
+<span class="sd">        fragment should contain a format string to hold the appropriate column.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.compiler">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.compiler">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">compiler</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">compiler_name</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the SQLCompiler class corresponding to the given name,</span>
+<span class="sd">        in the namespace corresponding to the `compiler_module` attribute</span>
+<span class="sd">        on this backend.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cache</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_cache</span> <span class="o">=</span> <span class="n">import_module</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">compiler_module</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_cache</span><span class="p">,</span> <span class="n">compiler_name</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.quote_name">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.quote_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">quote_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a quoted version of the given table, index, or column name. Do</span>
+<span class="sd">        not quote the given name if it&#39;s already been quoted.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of BaseDatabaseOperations may require a quote_name() method&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.regex_lookup">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.regex_lookup">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">regex_lookup</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the string to use in a query when performing regular expression</span>
+<span class="sd">        lookups (using &quot;regex&quot; or &quot;iregex&quot;). It should contain a &#39;%s&#39;</span>
+<span class="sd">        placeholder for the column being searched against.</span>
+
+<span class="sd">        If the feature is not supported (or part of it is not supported), raise</span>
+<span class="sd">        NotImplementedError.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of BaseDatabaseOperations may require a regex_lookup() method&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.savepoint_create_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.savepoint_create_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">savepoint_create_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sid</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the SQL for starting a new savepoint. Only required if the</span>
+<span class="sd">        &quot;uses_savepoints&quot; feature is True. The &quot;sid&quot; parameter is a string</span>
+<span class="sd">        for the savepoint id.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s2">&quot;SAVEPOINT </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">sid</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.savepoint_commit_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.savepoint_commit_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">savepoint_commit_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sid</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the SQL for committing the given savepoint.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s2">&quot;RELEASE SAVEPOINT </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">sid</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.savepoint_rollback_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.savepoint_rollback_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">savepoint_rollback_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sid</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the SQL for rolling back the given savepoint.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s2">&quot;ROLLBACK TO SAVEPOINT </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">sid</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.set_time_zone_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.set_time_zone_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_time_zone_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the SQL that will set the connection&#39;s time zone.</span>
+
+<span class="sd">        Return &#39;&#39; if the backend doesn&#39;t support time zones.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s2">&quot;&quot;</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.sql_flush">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.sql_flush">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">sql_flush</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">style</span><span class="p">,</span> <span class="n">tables</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">reset_sequences</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">allow_cascade</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a list of SQL statements required to remove all data from</span>
+<span class="sd">        the given database tables (without actually removing the tables</span>
+<span class="sd">        themselves).</span>
+
+<span class="sd">        The `style` argument is a Style object as returned by either</span>
+<span class="sd">        color_style() or no_style() in django.core.management.color.</span>
+
+<span class="sd">        If `reset_sequences` is True, the list includes SQL statements required</span>
+<span class="sd">        to reset the sequences.</span>
+
+<span class="sd">        The `allow_cascade` argument determines whether truncation may cascade</span>
+<span class="sd">        to tables with foreign keys pointing the tables being truncated.</span>
+<span class="sd">        PostgreSQL requires a cascade even if these tables are empty.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of BaseDatabaseOperations must provide an sql_flush() method&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.execute_sql_flush">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.execute_sql_flush">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">execute_sql_flush</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sql_list</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Execute a list of SQL statements to flush the database.&quot;&quot;&quot;</span>
+        <span class="k">with</span> <span class="n">transaction</span><span class="o">.</span><span class="n">atomic</span><span class="p">(</span>
+            <span class="n">using</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">alias</span><span class="p">,</span>
+            <span class="n">savepoint</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">can_rollback_ddl</span><span class="p">,</span>
+        <span class="p">):</span>
+            <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">sql</span> <span class="ow">in</span> <span class="n">sql_list</span><span class="p">:</span>
+                    <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">sql</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.sequence_reset_by_name_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.sequence_reset_by_name_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">sequence_reset_by_name_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">style</span><span class="p">,</span> <span class="n">sequences</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a list of the SQL statements required to reset sequences</span>
+<span class="sd">        passed in `sequences`.</span>
+
+<span class="sd">        The `style` argument is a Style object as returned by either</span>
+<span class="sd">        color_style() or no_style() in django.core.management.color.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">[]</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.sequence_reset_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.sequence_reset_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">sequence_reset_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">style</span><span class="p">,</span> <span class="n">model_list</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a list of the SQL statements required to reset sequences for</span>
+<span class="sd">        the given models.</span>
+
+<span class="sd">        The `style` argument is a Style object as returned by either</span>
+<span class="sd">        color_style() or no_style() in django.core.management.color.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">[]</span>  <span class="c1"># No sequence reset required by default.</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.start_transaction_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.start_transaction_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">start_transaction_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the SQL statement required to start a transaction.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s2">&quot;BEGIN;&quot;</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.end_transaction_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.end_transaction_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">end_transaction_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">success</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the SQL statement required to end a transaction.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">success</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;ROLLBACK;&quot;</span>
+        <span class="k">return</span> <span class="s2">&quot;COMMIT;&quot;</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.tablespace_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.tablespace_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">tablespace_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tablespace</span><span class="p">,</span> <span class="n">inline</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the SQL that will be used in a query to define the tablespace.</span>
+
+<span class="sd">        Return &#39;&#39; if the backend doesn&#39;t support tablespaces.</span>
+
+<span class="sd">        If `inline` is True, append the SQL to a row; otherwise append it to</span>
+<span class="sd">        the entire CREATE TABLE or CREATE INDEX statement.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s2">&quot;&quot;</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.prep_for_like_query">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.prep_for_like_query">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">prep_for_like_query</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Prepare a value for use in a LIKE query.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\\</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="se">\\\\</span><span class="s2">&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;%&quot;</span><span class="p">,</span> <span class="sa">r</span><span class="s2">&quot;\%&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;_&quot;</span><span class="p">,</span> <span class="sa">r</span><span class="s2">&quot;\_&quot;</span><span class="p">)</span></div>
+
+
+    <span class="c1"># Same as prep_for_like_query(), but called for &quot;iexact&quot; matches, which</span>
+    <span class="c1"># need not necessarily be implemented using &quot;LIKE&quot; in the backend.</span>
+<div class="viewcode-block" id="BaseDatabaseOperations.prep_for_iexact_query">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.prep_for_iexact_query">[docs]</a>
+    <span class="n">prep_for_iexact_query</span> <span class="o">=</span> <span class="n">prep_for_like_query</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.validate_autopk_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.validate_autopk_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">validate_autopk_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Certain backends do not accept some values for &quot;serial&quot; fields</span>
+<span class="sd">        (for example zero in MySQL). Raise a ValueError if the value is</span>
+<span class="sd">        invalid, otherwise return the validated value.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.adapt_unknown_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.adapt_unknown_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">adapt_unknown_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Transform a value to something compatible with the backend driver.</span>
+
+<span class="sd">        This method only depends on the type of the value. It&#39;s designed for</span>
+<span class="sd">        cases where the target type isn&#39;t known, such as .raw() SQL queries.</span>
+<span class="sd">        As a consequence it may not work perfectly in all circumstances.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="p">):</span>  <span class="c1"># must be before date</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">adapt_datetimefield_value</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">datetime</span><span class="o">.</span><span class="n">date</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">adapt_datefield_value</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">datetime</span><span class="o">.</span><span class="n">time</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">adapt_timefield_value</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">decimal</span><span class="o">.</span><span class="n">Decimal</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">adapt_decimalfield_value</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">value</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.adapt_integerfield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.adapt_integerfield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">adapt_integerfield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">internal_type</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.adapt_datefield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.adapt_datefield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">adapt_datefield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Transform a date value to an object compatible with what is expected</span>
+<span class="sd">        by the backend driver for date columns.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.adapt_datetimefield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.adapt_datetimefield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">adapt_datetimefield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Transform a datetime value to an object compatible with what is expected</span>
+<span class="sd">        by the backend driver for datetime columns.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="c1"># Expression values are adapted by the database.</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;resolve_expression&quot;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">value</span>
+
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.adapt_timefield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.adapt_timefield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">adapt_timefield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Transform a time value to an object compatible with what is expected</span>
+<span class="sd">        by the backend driver for time columns.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="c1"># Expression values are adapted by the database.</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;resolve_expression&quot;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">value</span>
+
+        <span class="k">if</span> <span class="n">timezone</span><span class="o">.</span><span class="n">is_aware</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Django does not support timezone-aware times.&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.adapt_decimalfield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.adapt_decimalfield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">adapt_decimalfield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">max_digits</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">decimal_places</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Transform a decimal.Decimal value to an object compatible with what is</span>
+<span class="sd">        expected by the backend driver for decimal (numeric) columns.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">utils</span><span class="o">.</span><span class="n">format_number</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">max_digits</span><span class="p">,</span> <span class="n">decimal_places</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.adapt_ipaddressfield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.adapt_ipaddressfield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">adapt_ipaddressfield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Transform a string representation of an IP address into the expected</span>
+<span class="sd">        type for the backend driver.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">value</span> <span class="ow">or</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.adapt_json_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.adapt_json_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">adapt_json_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">encoder</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="bp">cls</span><span class="o">=</span><span class="n">encoder</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.year_lookup_bounds_for_date_field">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.year_lookup_bounds_for_date_field">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">year_lookup_bounds_for_date_field</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">iso_year</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a two-elements list with the lower and upper bound to be used</span>
+<span class="sd">        with a BETWEEN operator to query a DateField value using a year</span>
+<span class="sd">        lookup.</span>
+
+<span class="sd">        `value` is an int, containing the looked-up year.</span>
+<span class="sd">        If `iso_year` is True, return bounds for ISO-8601 week-numbering years.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">iso_year</span><span class="p">:</span>
+            <span class="n">first</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">date</span><span class="o">.</span><span class="n">fromisocalendar</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">second</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">date</span><span class="o">.</span><span class="n">fromisocalendar</span><span class="p">(</span>
+                <span class="n">value</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span>
+            <span class="p">)</span> <span class="o">-</span> <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span><span class="p">(</span><span class="n">days</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">first</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">date</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">second</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">date</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">31</span><span class="p">)</span>
+        <span class="n">first</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">adapt_datefield_value</span><span class="p">(</span><span class="n">first</span><span class="p">)</span>
+        <span class="n">second</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">adapt_datefield_value</span><span class="p">(</span><span class="n">second</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">first</span><span class="p">,</span> <span class="n">second</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.year_lookup_bounds_for_datetime_field">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.year_lookup_bounds_for_datetime_field">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">year_lookup_bounds_for_datetime_field</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">iso_year</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a two-elements list with the lower and upper bound to be used</span>
+<span class="sd">        with a BETWEEN operator to query a DateTimeField value using a year</span>
+<span class="sd">        lookup.</span>
+
+<span class="sd">        `value` is an int, containing the looked-up year.</span>
+<span class="sd">        If `iso_year` is True, return bounds for ISO-8601 week-numbering years.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">iso_year</span><span class="p">:</span>
+            <span class="n">first</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">fromisocalendar</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">second</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">fromisocalendar</span><span class="p">(</span>
+                <span class="n">value</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span>
+            <span class="p">)</span> <span class="o">-</span> <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span><span class="p">(</span><span class="n">microseconds</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">first</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">second</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">31</span><span class="p">,</span> <span class="mi">23</span><span class="p">,</span> <span class="mi">59</span><span class="p">,</span> <span class="mi">59</span><span class="p">,</span> <span class="mi">999999</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">USE_TZ</span><span class="p">:</span>
+            <span class="n">tz</span> <span class="o">=</span> <span class="n">timezone</span><span class="o">.</span><span class="n">get_current_timezone</span><span class="p">()</span>
+            <span class="n">first</span> <span class="o">=</span> <span class="n">timezone</span><span class="o">.</span><span class="n">make_aware</span><span class="p">(</span><span class="n">first</span><span class="p">,</span> <span class="n">tz</span><span class="p">)</span>
+            <span class="n">second</span> <span class="o">=</span> <span class="n">timezone</span><span class="o">.</span><span class="n">make_aware</span><span class="p">(</span><span class="n">second</span><span class="p">,</span> <span class="n">tz</span><span class="p">)</span>
+        <span class="n">first</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">adapt_datetimefield_value</span><span class="p">(</span><span class="n">first</span><span class="p">)</span>
+        <span class="n">second</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">adapt_datetimefield_value</span><span class="p">(</span><span class="n">second</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">first</span><span class="p">,</span> <span class="n">second</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.get_db_converters">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.get_db_converters">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_db_converters</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expression</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a list of functions needed to convert field data.</span>
+
+<span class="sd">        Some field types on some backends do not provide data in the correct</span>
+<span class="sd">        format, this is the hook for converter functions.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">[]</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.convert_durationfield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.convert_durationfield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">convert_durationfield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.check_expression_support">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.check_expression_support">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_expression_support</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expression</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Check that the backend supports the provided expression.</span>
+
+<span class="sd">        This is used on specific backends to rule out known expressions</span>
+<span class="sd">        that have problematic or nonexistent implementations. If the</span>
+<span class="sd">        expression has a known problem, the backend should raise</span>
+<span class="sd">        NotSupportedError.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.conditional_expression_supported_in_where_clause">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.conditional_expression_supported_in_where_clause">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">conditional_expression_supported_in_where_clause</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expression</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return True, if the conditional expression is supported in the WHERE</span>
+<span class="sd">        clause.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.combine_expression">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.combine_expression">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">combine_expression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">connector</span><span class="p">,</span> <span class="n">sub_expressions</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Combine a list of subexpressions into a single expression, using</span>
+<span class="sd">        the provided connecting operator. This is required because operators</span>
+<span class="sd">        can vary between backends (e.g., Oracle with %% and &amp;) and between</span>
+<span class="sd">        subexpression types (e.g., date expressions).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">conn</span> <span class="o">=</span> <span class="s2">&quot; </span><span class="si">%s</span><span class="s2"> &quot;</span> <span class="o">%</span> <span class="n">connector</span>
+        <span class="k">return</span> <span class="n">conn</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">sub_expressions</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.combine_duration_expression">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.combine_duration_expression">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">combine_duration_expression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">connector</span><span class="p">,</span> <span class="n">sub_expressions</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">combine_expression</span><span class="p">(</span><span class="n">connector</span><span class="p">,</span> <span class="n">sub_expressions</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.binary_placeholder_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.binary_placeholder_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">binary_placeholder_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Some backends require special syntax to insert binary content (MySQL</span>
+<span class="sd">        for example uses &#39;_binary %s&#39;).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">&quot;</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.modify_insert_params">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.modify_insert_params">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">modify_insert_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">placeholder</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Allow modification of insert parameters. Needed for Oracle Spatial</span>
+<span class="sd">        backend due to #10888.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">params</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.integer_field_range">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.integer_field_range">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">integer_field_range</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">internal_type</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Given an integer field internal type (e.g. &#39;PositiveIntegerField&#39;),</span>
+<span class="sd">        return a tuple of the (min_value, max_value) form representing the</span>
+<span class="sd">        range of the column type bound to the field.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">integer_field_ranges</span><span class="p">[</span><span class="n">internal_type</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.subtract_temporals">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.subtract_temporals">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">subtract_temporals</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">internal_type</span><span class="p">,</span> <span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">supports_temporal_subtraction</span><span class="p">:</span>
+            <span class="n">lhs_sql</span><span class="p">,</span> <span class="n">lhs_params</span> <span class="o">=</span> <span class="n">lhs</span>
+            <span class="n">rhs_sql</span><span class="p">,</span> <span class="n">rhs_params</span> <span class="o">=</span> <span class="n">rhs</span>
+            <span class="k">return</span> <span class="s2">&quot;(</span><span class="si">%s</span><span class="s2"> - </span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">lhs_sql</span><span class="p">,</span> <span class="n">rhs_sql</span><span class="p">),</span> <span class="p">(</span><span class="o">*</span><span class="n">lhs_params</span><span class="p">,</span> <span class="o">*</span><span class="n">rhs_params</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">NotSupportedError</span><span class="p">(</span>
+            <span class="s2">&quot;This backend does not support </span><span class="si">%s</span><span class="s2"> subtraction.&quot;</span> <span class="o">%</span> <span class="n">internal_type</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.window_frame_start">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.window_frame_start">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">window_frame_start</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">start</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%d</span><span class="s2"> </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">start</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">PRECEDING</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">start</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">CURRENT_ROW</span>
+        <span class="k">elif</span> <span class="n">start</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">UNBOUNDED_PRECEDING</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;start argument must be a negative integer, zero, or None, but got &#39;</span><span class="si">%s</span><span class="s2">&#39;.&quot;</span>
+            <span class="o">%</span> <span class="n">start</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.window_frame_end">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.window_frame_end">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">window_frame_end</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">end</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">end</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">end</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">CURRENT_ROW</span>
+            <span class="k">elif</span> <span class="n">end</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%d</span><span class="s2"> </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">end</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">FOLLOWING</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">end</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">UNBOUNDED_FOLLOWING</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;end argument must be a positive integer, zero, or None, but got &#39;</span><span class="si">%s</span><span class="s2">&#39;.&quot;</span>
+            <span class="o">%</span> <span class="n">end</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.window_frame_rows_start_end">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.window_frame_rows_start_end">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">window_frame_rows_start_end</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return SQL for start and end points in an OVER clause window frame.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">supports_over_clause</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">NotSupportedError</span><span class="p">(</span><span class="s2">&quot;This backend does not support window expressions.&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">window_frame_start</span><span class="p">(</span><span class="n">start</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">window_frame_end</span><span class="p">(</span><span class="n">end</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.window_frame_range_start_end">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.window_frame_range_start_end">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">window_frame_range_start_end</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="n">start_</span><span class="p">,</span> <span class="n">end_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">window_frame_rows_start_end</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">)</span>
+        <span class="n">features</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">features</span>
+        <span class="k">if</span> <span class="n">features</span><span class="o">.</span><span class="n">only_supports_unbounded_with_preceding_and_following</span> <span class="ow">and</span> <span class="p">(</span>
+            <span class="p">(</span><span class="n">start</span> <span class="ow">and</span> <span class="n">start</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">end</span> <span class="ow">and</span> <span class="n">end</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="p">):</span>
+            <span class="k">raise</span> <span class="n">NotSupportedError</span><span class="p">(</span>
+                <span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> only supports UNBOUNDED together with PRECEDING and &quot;</span>
+                <span class="s2">&quot;FOLLOWING.&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">display_name</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">start_</span><span class="p">,</span> <span class="n">end_</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.explain_query_prefix">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.explain_query_prefix">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">explain_query_prefix</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">options</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">supports_explaining_query_execution</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">NotSupportedError</span><span class="p">(</span>
+                <span class="s2">&quot;This backend does not support explaining query execution.&quot;</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="nb">format</span><span class="p">:</span>
+            <span class="n">supported_formats</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">supported_explain_formats</span>
+            <span class="n">normalized_format</span> <span class="o">=</span> <span class="nb">format</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">normalized_format</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">supported_formats</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> is not a recognized format.&quot;</span> <span class="o">%</span> <span class="n">normalized_format</span>
+                <span class="k">if</span> <span class="n">supported_formats</span><span class="p">:</span>
+                    <span class="n">msg</span> <span class="o">+=</span> <span class="s2">&quot; Allowed formats: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">supported_formats</span><span class="p">))</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">msg</span> <span class="o">+=</span> <span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot; </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">display_name</span><span class="si">}</span><span class="s2"> does not support any formats.&quot;</span>
+                    <span class="p">)</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">options</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Unknown options: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">options</span><span class="o">.</span><span class="n">keys</span><span class="p">())))</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">explain_prefix</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.insert_statement">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.insert_statement">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">insert_statement</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">on_conflict</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;INSERT INTO&quot;</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseOperations.on_conflict_suffix_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/operations/index.html#django.db.backends.base.operations.BaseDatabaseOperations.on_conflict_suffix_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_conflict_suffix_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">on_conflict</span><span class="p">,</span> <span class="n">update_fields</span><span class="p">,</span> <span class="n">unique_fields</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;&quot;</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

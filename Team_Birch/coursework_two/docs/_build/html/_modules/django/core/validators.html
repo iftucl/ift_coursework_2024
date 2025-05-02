@@ -1,0 +1,978 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.core.validators &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../django.html">django</a></li>
+      <li class="breadcrumb-item active">django.core.validators</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.core.validators</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">ipaddress</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">urllib.parse</span><span class="w"> </span><span class="kn">import</span> <span class="n">urlsplit</span><span class="p">,</span> <span class="n">urlunsplit</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ValidationError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.deconstruct</span><span class="w"> </span><span class="kn">import</span> <span class="n">deconstructible</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.encoding</span><span class="w"> </span><span class="kn">import</span> <span class="n">punycode</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.ipv6</span><span class="w"> </span><span class="kn">import</span> <span class="n">is_valid_ipv6_address</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.regex_helper</span><span class="w"> </span><span class="kn">import</span> <span class="n">_lazy_re_compile</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.translation</span><span class="w"> </span><span class="kn">import</span> <span class="n">gettext_lazy</span> <span class="k">as</span> <span class="n">_</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.translation</span><span class="w"> </span><span class="kn">import</span> <span class="n">ngettext_lazy</span>
+
+<span class="c1"># These values, if given to validate(), will trigger the self.required check.</span>
+<div class="viewcode-block" id="EMPTY_VALUES">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.EMPTY_VALUES">[docs]</a>
+<span class="n">EMPTY_VALUES</span> <span class="o">=</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="p">[],</span> <span class="p">(),</span> <span class="p">{})</span></div>
+
+
+
+<span class="nd">@deconstructible</span>
+<div class="viewcode-block" id="RegexValidator">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.RegexValidator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">RegexValidator</span><span class="p">:</span>
+<div class="viewcode-block" id="RegexValidator.regex">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.RegexValidator.regex">[docs]</a>
+    <span class="n">regex</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span></div>
+
+<div class="viewcode-block" id="RegexValidator.message">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.RegexValidator.message">[docs]</a>
+    <span class="n">message</span> <span class="o">=</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Enter a valid value.&quot;</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="RegexValidator.code">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.RegexValidator.code">[docs]</a>
+    <span class="n">code</span> <span class="o">=</span> <span class="s2">&quot;invalid&quot;</span></div>
+
+<div class="viewcode-block" id="RegexValidator.inverse_match">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.RegexValidator.inverse_match">[docs]</a>
+    <span class="n">inverse_match</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+<div class="viewcode-block" id="RegexValidator.flags">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.RegexValidator.flags">[docs]</a>
+    <span class="n">flags</span> <span class="o">=</span> <span class="mi">0</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">regex</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">message</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">code</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">inverse_match</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">flags</span><span class="o">=</span><span class="kc">None</span>
+    <span class="p">):</span>
+        <span class="k">if</span> <span class="n">regex</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">regex</span> <span class="o">=</span> <span class="n">regex</span>
+        <span class="k">if</span> <span class="n">message</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">message</span> <span class="o">=</span> <span class="n">message</span>
+        <span class="k">if</span> <span class="n">code</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">code</span> <span class="o">=</span> <span class="n">code</span>
+        <span class="k">if</span> <span class="n">inverse_match</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">inverse_match</span> <span class="o">=</span> <span class="n">inverse_match</span>
+        <span class="k">if</span> <span class="n">flags</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">flags</span> <span class="o">=</span> <span class="n">flags</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">flags</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">regex</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
+                <span class="s2">&quot;If the flags are set, regex must be a regular expression string.&quot;</span>
+            <span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">regex</span> <span class="o">=</span> <span class="n">_lazy_re_compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">regex</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">flags</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Validate that the input contains (or does *not* contain, if</span>
+<span class="sd">        inverse_match is True) a match for the regular expression.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">regex_matches</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">regex</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">))</span>
+        <span class="n">invalid_input</span> <span class="o">=</span> <span class="n">regex_matches</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">inverse_match</span> <span class="k">else</span> <span class="ow">not</span> <span class="n">regex_matches</span>
+        <span class="k">if</span> <span class="n">invalid_input</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">message</span><span class="p">,</span> <span class="n">code</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">code</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">})</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">RegexValidator</span><span class="p">)</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">regex</span><span class="o">.</span><span class="n">pattern</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">regex</span><span class="o">.</span><span class="n">pattern</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">regex</span><span class="o">.</span><span class="n">flags</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">regex</span><span class="o">.</span><span class="n">flags</span>
+            <span class="ow">and</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">message</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">message</span><span class="p">)</span>
+            <span class="ow">and</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">code</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">code</span><span class="p">)</span>
+            <span class="ow">and</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">inverse_match</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">inverse_match</span><span class="p">)</span>
+        <span class="p">)</span></div>
+
+
+
+<span class="nd">@deconstructible</span>
+<div class="viewcode-block" id="URLValidator">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.URLValidator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">URLValidator</span><span class="p">(</span><span class="n">RegexValidator</span><span class="p">):</span>
+<div class="viewcode-block" id="URLValidator.ul">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.URLValidator.ul">[docs]</a>
+    <span class="n">ul</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\u00a1</span><span class="s2">-</span><span class="se">\uffff</span><span class="s2">&quot;</span>  <span class="c1"># Unicode letters range (must not be a raw string).</span></div>
+
+
+    <span class="c1"># IP patterns</span>
+<div class="viewcode-block" id="URLValidator.ipv4_re">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.URLValidator.ipv4_re">[docs]</a>
+    <span class="n">ipv4_re</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="sa">r</span><span class="s2">&quot;(?:0|25[0-5]|2[0-4][0-9]|1[0-9]?[0-9]?|[1-9][0-9]?)&quot;</span>
+        <span class="sa">r</span><span class="s2">&quot;(?:\.(?:0|25[0-5]|2[0-4][0-9]|1[0-9]?[0-9]?|[1-9][0-9]?))</span><span class="si">{3}</span><span class="s2">&quot;</span>
+    <span class="p">)</span></div>
+
+<div class="viewcode-block" id="URLValidator.ipv6_re">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.URLValidator.ipv6_re">[docs]</a>
+    <span class="n">ipv6_re</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;\[[0-9a-f:.]+\]&quot;</span>  <span class="c1"># (simple regex, validated later)</span></div>
+
+
+    <span class="c1"># Host patterns</span>
+<div class="viewcode-block" id="URLValidator.hostname_re">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.URLValidator.hostname_re">[docs]</a>
+    <span class="n">hostname_re</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="sa">r</span><span class="s2">&quot;[a-z&quot;</span> <span class="o">+</span> <span class="n">ul</span> <span class="o">+</span> <span class="sa">r</span><span class="s2">&quot;0-9](?:[a-z&quot;</span> <span class="o">+</span> <span class="n">ul</span> <span class="o">+</span> <span class="sa">r</span><span class="s2">&quot;0-9-]{0,61}[a-z&quot;</span> <span class="o">+</span> <span class="n">ul</span> <span class="o">+</span> <span class="sa">r</span><span class="s2">&quot;0-9])?&quot;</span>
+    <span class="p">)</span></div>
+
+    <span class="c1"># Max length for domain name labels is 63 characters per RFC 1034 sec. 3.1</span>
+<div class="viewcode-block" id="URLValidator.domain_re">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.URLValidator.domain_re">[docs]</a>
+    <span class="n">domain_re</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;(?:\.(?!-)[a-z&quot;</span> <span class="o">+</span> <span class="n">ul</span> <span class="o">+</span> <span class="sa">r</span><span class="s2">&quot;0-9-]{1,63}(?&lt;!-))*&quot;</span></div>
+
+<div class="viewcode-block" id="URLValidator.tld_re">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.URLValidator.tld_re">[docs]</a>
+    <span class="n">tld_re</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="sa">r</span><span class="s2">&quot;\.&quot;</span>  <span class="c1"># dot</span>
+        <span class="sa">r</span><span class="s2">&quot;(?!-)&quot;</span>  <span class="c1"># can&#39;t start with a dash</span>
+        <span class="sa">r</span><span class="s2">&quot;(?:[a-z&quot;</span> <span class="o">+</span> <span class="n">ul</span> <span class="o">+</span> <span class="s2">&quot;-]{2,63}&quot;</span>  <span class="c1"># domain label</span>
+        <span class="sa">r</span><span class="s2">&quot;|xn--[a-z0-9]{1,59})&quot;</span>  <span class="c1"># or punycode label</span>
+        <span class="sa">r</span><span class="s2">&quot;(?&lt;!-)&quot;</span>  <span class="c1"># can&#39;t end with a dash</span>
+        <span class="sa">r</span><span class="s2">&quot;\.?&quot;</span>  <span class="c1"># may have a trailing dot</span>
+    <span class="p">)</span></div>
+
+<div class="viewcode-block" id="URLValidator.host_re">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.URLValidator.host_re">[docs]</a>
+    <span class="n">host_re</span> <span class="o">=</span> <span class="s2">&quot;(&quot;</span> <span class="o">+</span> <span class="n">hostname_re</span> <span class="o">+</span> <span class="n">domain_re</span> <span class="o">+</span> <span class="n">tld_re</span> <span class="o">+</span> <span class="s2">&quot;|localhost)&quot;</span></div>
+
+
+<div class="viewcode-block" id="URLValidator.regex">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.URLValidator.regex">[docs]</a>
+    <span class="n">regex</span> <span class="o">=</span> <span class="n">_lazy_re_compile</span><span class="p">(</span>
+        <span class="sa">r</span><span class="s2">&quot;^(?:[a-z0-9.+-]*)://&quot;</span>  <span class="c1"># scheme is validated separately</span>
+        <span class="sa">r</span><span class="s2">&quot;(?:[^\s:@/]+(?::[^\s:@/]*)?@)?&quot;</span>  <span class="c1"># user:pass authentication</span>
+        <span class="sa">r</span><span class="s2">&quot;(?:&quot;</span> <span class="o">+</span> <span class="n">ipv4_re</span> <span class="o">+</span> <span class="s2">&quot;|&quot;</span> <span class="o">+</span> <span class="n">ipv6_re</span> <span class="o">+</span> <span class="s2">&quot;|&quot;</span> <span class="o">+</span> <span class="n">host_re</span> <span class="o">+</span> <span class="s2">&quot;)&quot;</span>
+        <span class="sa">r</span><span class="s2">&quot;(?::[0-9]{1,5})?&quot;</span>  <span class="c1"># port</span>
+        <span class="sa">r</span><span class="s2">&quot;(?:[/?#][^\s]*)?&quot;</span>  <span class="c1"># resource path</span>
+        <span class="sa">r</span><span class="s2">&quot;\Z&quot;</span><span class="p">,</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+<div class="viewcode-block" id="URLValidator.message">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.URLValidator.message">[docs]</a>
+    <span class="n">message</span> <span class="o">=</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Enter a valid URL.&quot;</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="URLValidator.schemes">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.URLValidator.schemes">[docs]</a>
+    <span class="n">schemes</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;http&quot;</span><span class="p">,</span> <span class="s2">&quot;https&quot;</span><span class="p">,</span> <span class="s2">&quot;ftp&quot;</span><span class="p">,</span> <span class="s2">&quot;ftps&quot;</span><span class="p">]</span></div>
+
+<div class="viewcode-block" id="URLValidator.unsafe_chars">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.URLValidator.unsafe_chars">[docs]</a>
+    <span class="n">unsafe_chars</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\t\r\n</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="URLValidator.max_length">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.URLValidator.max_length">[docs]</a>
+    <span class="n">max_length</span> <span class="o">=</span> <span class="mi">2048</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">schemes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">schemes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">schemes</span> <span class="o">=</span> <span class="n">schemes</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_length</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">message</span><span class="p">,</span> <span class="n">code</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">code</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">})</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">unsafe_chars</span><span class="o">.</span><span class="n">intersection</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">message</span><span class="p">,</span> <span class="n">code</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">code</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">})</span>
+        <span class="c1"># Check if the scheme is valid.</span>
+        <span class="n">scheme</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;://&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">scheme</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">schemes</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">message</span><span class="p">,</span> <span class="n">code</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">code</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">})</span>
+
+        <span class="c1"># Then check full URL</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">splitted_url</span> <span class="o">=</span> <span class="n">urlsplit</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">message</span><span class="p">,</span> <span class="n">code</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">code</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">})</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__call__</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">ValidationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="c1"># Trivial case failed. Try for possible IDN domain</span>
+            <span class="k">if</span> <span class="n">value</span><span class="p">:</span>
+                <span class="n">scheme</span><span class="p">,</span> <span class="n">netloc</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="n">fragment</span> <span class="o">=</span> <span class="n">splitted_url</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">netloc</span> <span class="o">=</span> <span class="n">punycode</span><span class="p">(</span><span class="n">netloc</span><span class="p">)</span>  <span class="c1"># IDN -&gt; ACE</span>
+                <span class="k">except</span> <span class="ne">UnicodeError</span><span class="p">:</span>  <span class="c1"># invalid domain part</span>
+                    <span class="k">raise</span> <span class="n">e</span>
+                <span class="n">url</span> <span class="o">=</span> <span class="n">urlunsplit</span><span class="p">((</span><span class="n">scheme</span><span class="p">,</span> <span class="n">netloc</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="n">fragment</span><span class="p">))</span>
+                <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__call__</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Now verify IPv6 in the netloc part</span>
+            <span class="n">host_match</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;^\[(.+)\](?::[0-9]{1,5})?$&quot;</span><span class="p">,</span> <span class="n">splitted_url</span><span class="o">.</span><span class="n">netloc</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">host_match</span><span class="p">:</span>
+                <span class="n">potential_ip</span> <span class="o">=</span> <span class="n">host_match</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">validate_ipv6_address</span><span class="p">(</span><span class="n">potential_ip</span><span class="p">)</span>
+                <span class="k">except</span> <span class="n">ValidationError</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">message</span><span class="p">,</span> <span class="n">code</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">code</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">}</span>
+                    <span class="p">)</span>
+
+        <span class="c1"># The maximum length of a full host name is 253 characters per RFC 1034</span>
+        <span class="c1"># section 3.1. It&#39;s defined to be 255 bytes or less, but this includes</span>
+        <span class="c1"># one byte for the length of the name and one byte for the trailing dot</span>
+        <span class="c1"># that&#39;s used to indicate absolute names in DNS.</span>
+        <span class="k">if</span> <span class="n">splitted_url</span><span class="o">.</span><span class="n">hostname</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">splitted_url</span><span class="o">.</span><span class="n">hostname</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">253</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">message</span><span class="p">,</span> <span class="n">code</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">code</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">})</span></div>
+
+
+
+<div class="viewcode-block" id="integer_validator">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.integer_validator">[docs]</a>
+<span class="n">integer_validator</span> <span class="o">=</span> <span class="n">RegexValidator</span><span class="p">(</span>
+    <span class="n">_lazy_re_compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;^-?\d+\Z&quot;</span><span class="p">),</span>
+    <span class="n">message</span><span class="o">=</span><span class="n">_</span><span class="p">(</span><span class="s2">&quot;Enter a valid integer.&quot;</span><span class="p">),</span>
+    <span class="n">code</span><span class="o">=</span><span class="s2">&quot;invalid&quot;</span><span class="p">,</span>
+<span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_integer">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.validate_integer">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_integer</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">integer_validator</span><span class="p">(</span><span class="n">value</span><span class="p">)</span></div>
+
+
+
+<span class="nd">@deconstructible</span>
+<div class="viewcode-block" id="EmailValidator">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.EmailValidator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">EmailValidator</span><span class="p">:</span>
+<div class="viewcode-block" id="EmailValidator.message">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.EmailValidator.message">[docs]</a>
+    <span class="n">message</span> <span class="o">=</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Enter a valid email address.&quot;</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="EmailValidator.code">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.EmailValidator.code">[docs]</a>
+    <span class="n">code</span> <span class="o">=</span> <span class="s2">&quot;invalid&quot;</span></div>
+
+<div class="viewcode-block" id="EmailValidator.user_regex">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.EmailValidator.user_regex">[docs]</a>
+    <span class="n">user_regex</span> <span class="o">=</span> <span class="n">_lazy_re_compile</span><span class="p">(</span>
+        <span class="c1"># dot-atom</span>
+        <span class="sa">r</span><span class="s2">&quot;(^[-!#$%&amp;&#39;*+/=?^_`</span><span class="si">{}</span><span class="s2">|~0-9A-Z]+(\.[-!#$%&amp;&#39;*+/=?^_`</span><span class="si">{}</span><span class="s2">|~0-9A-Z]+)*\Z&quot;</span>
+        <span class="c1"># quoted-string</span>
+        <span class="sa">r</span><span class="s1">&#39;|^&quot;([\001-\010\013\014\016-\037!#-\[\]-\177]|</span><span class="se">\\</span><span class="s1">[\001-\011\013\014\016-\177])&#39;</span>
+        <span class="sa">r</span><span class="s1">&#39;*&quot;\Z)&#39;</span><span class="p">,</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+<div class="viewcode-block" id="EmailValidator.domain_regex">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.EmailValidator.domain_regex">[docs]</a>
+    <span class="n">domain_regex</span> <span class="o">=</span> <span class="n">_lazy_re_compile</span><span class="p">(</span>
+        <span class="c1"># max length for domain name labels is 63 characters per RFC 1034</span>
+        <span class="sa">r</span><span class="s2">&quot;((?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+)(?:[A-Z0-9-]{2,63}(?&lt;!-))\Z&quot;</span><span class="p">,</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+<div class="viewcode-block" id="EmailValidator.literal_regex">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.EmailValidator.literal_regex">[docs]</a>
+    <span class="n">literal_regex</span> <span class="o">=</span> <span class="n">_lazy_re_compile</span><span class="p">(</span>
+        <span class="c1"># literal form, ipv4 or ipv6 address (SMTP 4.1.3)</span>
+        <span class="sa">r</span><span class="s2">&quot;\[([A-F0-9:.]+)\]\Z&quot;</span><span class="p">,</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+<div class="viewcode-block" id="EmailValidator.domain_allowlist">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.EmailValidator.domain_allowlist">[docs]</a>
+    <span class="n">domain_allowlist</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;localhost&quot;</span><span class="p">]</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">code</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">allowlist</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">message</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">message</span> <span class="o">=</span> <span class="n">message</span>
+        <span class="k">if</span> <span class="n">code</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">code</span> <span class="o">=</span> <span class="n">code</span>
+        <span class="k">if</span> <span class="n">allowlist</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">domain_allowlist</span> <span class="o">=</span> <span class="n">allowlist</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="c1"># The maximum length of an email is 320 characters per RFC 3696</span>
+        <span class="c1"># section 3.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">value</span> <span class="ow">or</span> <span class="s2">&quot;@&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">value</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">320</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">message</span><span class="p">,</span> <span class="n">code</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">code</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">})</span>
+
+        <span class="n">user_part</span><span class="p">,</span> <span class="n">domain_part</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">rsplit</span><span class="p">(</span><span class="s2">&quot;@&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">user_regex</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">user_part</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">message</span><span class="p">,</span> <span class="n">code</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">code</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">})</span>
+
+        <span class="k">if</span> <span class="n">domain_part</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">domain_allowlist</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">validate_domain_part</span><span class="p">(</span>
+            <span class="n">domain_part</span>
+        <span class="p">):</span>
+            <span class="c1"># Try for possible IDN domain-part</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">domain_part</span> <span class="o">=</span> <span class="n">punycode</span><span class="p">(</span><span class="n">domain_part</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">UnicodeError</span><span class="p">:</span>
+                <span class="k">pass</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">validate_domain_part</span><span class="p">(</span><span class="n">domain_part</span><span class="p">):</span>
+                    <span class="k">return</span>
+            <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">message</span><span class="p">,</span> <span class="n">code</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">code</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">})</span>
+
+<div class="viewcode-block" id="EmailValidator.validate_domain_part">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.EmailValidator.validate_domain_part">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">validate_domain_part</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">domain_part</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">domain_regex</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">domain_part</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">True</span>
+
+        <span class="n">literal_match</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">literal_regex</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">domain_part</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">literal_match</span><span class="p">:</span>
+            <span class="n">ip_address</span> <span class="o">=</span> <span class="n">literal_match</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">validate_ipv46_address</span><span class="p">(</span><span class="n">ip_address</span><span class="p">)</span>
+                <span class="k">return</span> <span class="kc">True</span>
+            <span class="k">except</span> <span class="n">ValidationError</span><span class="p">:</span>
+                <span class="k">pass</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">EmailValidator</span><span class="p">)</span>
+            <span class="ow">and</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">domain_allowlist</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">domain_allowlist</span><span class="p">)</span>
+            <span class="ow">and</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">message</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">message</span><span class="p">)</span>
+            <span class="ow">and</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">code</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">code</span><span class="p">)</span>
+        <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_email">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.validate_email">[docs]</a>
+<span class="n">validate_email</span> <span class="o">=</span> <span class="n">EmailValidator</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="slug_re">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.slug_re">[docs]</a>
+<span class="n">slug_re</span> <span class="o">=</span> <span class="n">_lazy_re_compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;^[-a-zA-Z0-9_]+\Z&quot;</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="validate_slug">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.validate_slug">[docs]</a>
+<span class="n">validate_slug</span> <span class="o">=</span> <span class="n">RegexValidator</span><span class="p">(</span>
+    <span class="n">slug_re</span><span class="p">,</span>
+    <span class="c1"># Translators: &quot;letters&quot; means latin letters: a-z and A-Z.</span>
+    <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Enter a valid “slug” consisting of letters, numbers, underscores or hyphens.&quot;</span><span class="p">),</span>
+    <span class="s2">&quot;invalid&quot;</span><span class="p">,</span>
+<span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="slug_unicode_re">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.slug_unicode_re">[docs]</a>
+<span class="n">slug_unicode_re</span> <span class="o">=</span> <span class="n">_lazy_re_compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;^[-\w]+\Z&quot;</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="validate_unicode_slug">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.validate_unicode_slug">[docs]</a>
+<span class="n">validate_unicode_slug</span> <span class="o">=</span> <span class="n">RegexValidator</span><span class="p">(</span>
+    <span class="n">slug_unicode_re</span><span class="p">,</span>
+    <span class="n">_</span><span class="p">(</span>
+        <span class="s2">&quot;Enter a valid “slug” consisting of Unicode letters, numbers, underscores, or &quot;</span>
+        <span class="s2">&quot;hyphens.&quot;</span>
+    <span class="p">),</span>
+    <span class="s2">&quot;invalid&quot;</span><span class="p">,</span>
+<span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_ipv4_address">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.validate_ipv4_address">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_ipv4_address</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">ipaddress</span><span class="o">.</span><span class="n">IPv4Address</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span>
+            <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Enter a valid IPv4 address.&quot;</span><span class="p">),</span> <span class="n">code</span><span class="o">=</span><span class="s2">&quot;invalid&quot;</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">}</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># Leading zeros are forbidden to avoid ambiguity with the octal</span>
+        <span class="c1"># notation. This restriction is included in Python 3.9.5+.</span>
+        <span class="c1"># TODO: Remove when dropping support for PY39.</span>
+        <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">octet</span> <span class="o">!=</span> <span class="s2">&quot;0&quot;</span> <span class="ow">and</span> <span class="n">octet</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;0&quot;</span> <span class="k">for</span> <span class="n">octet</span> <span class="ow">in</span> <span class="n">value</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)):</span>
+            <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span>
+                <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Enter a valid IPv4 address.&quot;</span><span class="p">),</span>
+                <span class="n">code</span><span class="o">=</span><span class="s2">&quot;invalid&quot;</span><span class="p">,</span>
+                <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">},</span>
+            <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_ipv6_address">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.validate_ipv6_address">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_ipv6_address</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">is_valid_ipv6_address</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span>
+            <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Enter a valid IPv6 address.&quot;</span><span class="p">),</span> <span class="n">code</span><span class="o">=</span><span class="s2">&quot;invalid&quot;</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">}</span>
+        <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_ipv46_address">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.validate_ipv46_address">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_ipv46_address</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">validate_ipv4_address</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">ValidationError</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">validate_ipv6_address</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">ValidationError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span>
+                <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Enter a valid IPv4 or IPv6 address.&quot;</span><span class="p">),</span>
+                <span class="n">code</span><span class="o">=</span><span class="s2">&quot;invalid&quot;</span><span class="p">,</span>
+                <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">},</span>
+            <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="ip_address_validator_map">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.ip_address_validator_map">[docs]</a>
+<span class="n">ip_address_validator_map</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;both&quot;</span><span class="p">:</span> <span class="p">([</span><span class="n">validate_ipv46_address</span><span class="p">],</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Enter a valid IPv4 or IPv6 address.&quot;</span><span class="p">)),</span>
+    <span class="s2">&quot;ipv4&quot;</span><span class="p">:</span> <span class="p">([</span><span class="n">validate_ipv4_address</span><span class="p">],</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Enter a valid IPv4 address.&quot;</span><span class="p">)),</span>
+    <span class="s2">&quot;ipv6&quot;</span><span class="p">:</span> <span class="p">([</span><span class="n">validate_ipv6_address</span><span class="p">],</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Enter a valid IPv6 address.&quot;</span><span class="p">)),</span>
+<span class="p">}</span></div>
+
+
+
+<div class="viewcode-block" id="ip_address_validators">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.ip_address_validators">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">ip_address_validators</span><span class="p">(</span><span class="n">protocol</span><span class="p">,</span> <span class="n">unpack_ipv4</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Depending on the given parameters, return the appropriate validators for</span>
+<span class="sd">    the GenericIPAddressField.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">protocol</span> <span class="o">!=</span> <span class="s2">&quot;both&quot;</span> <span class="ow">and</span> <span class="n">unpack_ipv4</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;You can only use `unpack_ipv4` if `protocol` is set to &#39;both&#39;&quot;</span>
+        <span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">ip_address_validator_map</span><span class="p">[</span><span class="n">protocol</span><span class="o">.</span><span class="n">lower</span><span class="p">()]</span>
+    <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;The protocol &#39;</span><span class="si">%s</span><span class="s2">&#39; is unknown. Supported: </span><span class="si">%s</span><span class="s2">&quot;</span>
+            <span class="o">%</span> <span class="p">(</span><span class="n">protocol</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">ip_address_validator_map</span><span class="p">))</span>
+        <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="int_list_validator">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.int_list_validator">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">int_list_validator</span><span class="p">(</span><span class="n">sep</span><span class="o">=</span><span class="s2">&quot;,&quot;</span><span class="p">,</span> <span class="n">message</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">code</span><span class="o">=</span><span class="s2">&quot;invalid&quot;</span><span class="p">,</span> <span class="n">allow_negative</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="n">regexp</span> <span class="o">=</span> <span class="n">_lazy_re_compile</span><span class="p">(</span>
+        <span class="sa">r</span><span class="s2">&quot;^</span><span class="si">%(neg)s</span><span class="s2">\d+(?:</span><span class="si">%(sep)s%(neg)s</span><span class="s2">\d+)*\Z&quot;</span>
+        <span class="o">%</span> <span class="p">{</span>
+            <span class="s2">&quot;neg&quot;</span><span class="p">:</span> <span class="s2">&quot;(-)?&quot;</span> <span class="k">if</span> <span class="n">allow_negative</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;sep&quot;</span><span class="p">:</span> <span class="n">re</span><span class="o">.</span><span class="n">escape</span><span class="p">(</span><span class="n">sep</span><span class="p">),</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">RegexValidator</span><span class="p">(</span><span class="n">regexp</span><span class="p">,</span> <span class="n">message</span><span class="o">=</span><span class="n">message</span><span class="p">,</span> <span class="n">code</span><span class="o">=</span><span class="n">code</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_comma_separated_integer_list">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.validate_comma_separated_integer_list">[docs]</a>
+<span class="n">validate_comma_separated_integer_list</span> <span class="o">=</span> <span class="n">int_list_validator</span><span class="p">(</span>
+    <span class="n">message</span><span class="o">=</span><span class="n">_</span><span class="p">(</span><span class="s2">&quot;Enter only digits separated by commas.&quot;</span><span class="p">),</span>
+<span class="p">)</span></div>
+
+
+
+<span class="nd">@deconstructible</span>
+<div class="viewcode-block" id="BaseValidator">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.BaseValidator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BaseValidator</span><span class="p">:</span>
+<div class="viewcode-block" id="BaseValidator.message">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.BaseValidator.message">[docs]</a>
+    <span class="n">message</span> <span class="o">=</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Ensure this value is </span><span class="si">%(limit_value)s</span><span class="s2"> (it is </span><span class="si">%(show_value)s</span><span class="s2">).&quot;</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="BaseValidator.code">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.BaseValidator.code">[docs]</a>
+    <span class="n">code</span> <span class="o">=</span> <span class="s2">&quot;limit_value&quot;</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">limit_value</span><span class="p">,</span> <span class="n">message</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<div class="viewcode-block" id="BaseValidator.limit_value">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.BaseValidator.limit_value">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">limit_value</span> <span class="o">=</span> <span class="n">limit_value</span></div>
+
+        <span class="k">if</span> <span class="n">message</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">message</span> <span class="o">=</span> <span class="n">message</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="n">cleaned</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">clean</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="n">limit_value</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">limit_value</span><span class="p">()</span> <span class="k">if</span> <span class="nb">callable</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">limit_value</span><span class="p">)</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">limit_value</span>
+        <span class="p">)</span>
+        <span class="n">params</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;limit_value&quot;</span><span class="p">:</span> <span class="n">limit_value</span><span class="p">,</span> <span class="s2">&quot;show_value&quot;</span><span class="p">:</span> <span class="n">cleaned</span><span class="p">,</span> <span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">}</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">compare</span><span class="p">(</span><span class="n">cleaned</span><span class="p">,</span> <span class="n">limit_value</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">message</span><span class="p">,</span> <span class="n">code</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">code</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="n">params</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">NotImplemented</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">limit_value</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">limit_value</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">message</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">message</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">code</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">code</span>
+        <span class="p">)</span>
+
+<div class="viewcode-block" id="BaseValidator.compare">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.BaseValidator.compare">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">compare</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">a</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">b</span></div>
+
+
+<div class="viewcode-block" id="BaseValidator.clean">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.BaseValidator.clean">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clean</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">x</span></div>
+</div>
+
+
+
+<span class="nd">@deconstructible</span>
+<div class="viewcode-block" id="MaxValueValidator">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.MaxValueValidator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MaxValueValidator</span><span class="p">(</span><span class="n">BaseValidator</span><span class="p">):</span>
+<div class="viewcode-block" id="MaxValueValidator.message">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.MaxValueValidator.message">[docs]</a>
+    <span class="n">message</span> <span class="o">=</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Ensure this value is less than or equal to </span><span class="si">%(limit_value)s</span><span class="s2">.&quot;</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="MaxValueValidator.code">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.MaxValueValidator.code">[docs]</a>
+    <span class="n">code</span> <span class="o">=</span> <span class="s2">&quot;max_value&quot;</span></div>
+
+
+<div class="viewcode-block" id="MaxValueValidator.compare">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.MaxValueValidator.compare">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">compare</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">a</span> <span class="o">&gt;</span> <span class="n">b</span></div>
+</div>
+
+
+
+<span class="nd">@deconstructible</span>
+<div class="viewcode-block" id="MinValueValidator">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.MinValueValidator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MinValueValidator</span><span class="p">(</span><span class="n">BaseValidator</span><span class="p">):</span>
+<div class="viewcode-block" id="MinValueValidator.message">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.MinValueValidator.message">[docs]</a>
+    <span class="n">message</span> <span class="o">=</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Ensure this value is greater than or equal to </span><span class="si">%(limit_value)s</span><span class="s2">.&quot;</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="MinValueValidator.code">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.MinValueValidator.code">[docs]</a>
+    <span class="n">code</span> <span class="o">=</span> <span class="s2">&quot;min_value&quot;</span></div>
+
+
+<div class="viewcode-block" id="MinValueValidator.compare">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.MinValueValidator.compare">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">compare</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">a</span> <span class="o">&lt;</span> <span class="n">b</span></div>
+</div>
+
+
+
+<span class="nd">@deconstructible</span>
+<div class="viewcode-block" id="StepValueValidator">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.StepValueValidator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">StepValueValidator</span><span class="p">(</span><span class="n">BaseValidator</span><span class="p">):</span>
+<div class="viewcode-block" id="StepValueValidator.message">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.StepValueValidator.message">[docs]</a>
+    <span class="n">message</span> <span class="o">=</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Ensure this value is a multiple of step size </span><span class="si">%(limit_value)s</span><span class="s2">.&quot;</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="StepValueValidator.code">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.StepValueValidator.code">[docs]</a>
+    <span class="n">code</span> <span class="o">=</span> <span class="s2">&quot;step_size&quot;</span></div>
+
+
+<div class="viewcode-block" id="StepValueValidator.compare">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.StepValueValidator.compare">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">compare</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+        <span class="k">return</span> <span class="ow">not</span> <span class="n">math</span><span class="o">.</span><span class="n">isclose</span><span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">remainder</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="n">abs_tol</span><span class="o">=</span><span class="mf">1e-9</span><span class="p">)</span></div>
+</div>
+
+
+
+<span class="nd">@deconstructible</span>
+<div class="viewcode-block" id="MinLengthValidator">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.MinLengthValidator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MinLengthValidator</span><span class="p">(</span><span class="n">BaseValidator</span><span class="p">):</span>
+<div class="viewcode-block" id="MinLengthValidator.message">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.MinLengthValidator.message">[docs]</a>
+    <span class="n">message</span> <span class="o">=</span> <span class="n">ngettext_lazy</span><span class="p">(</span>
+        <span class="s2">&quot;Ensure this value has at least </span><span class="si">%(limit_value)d</span><span class="s2"> character (it has &quot;</span>
+        <span class="s2">&quot;</span><span class="si">%(show_value)d</span><span class="s2">).&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Ensure this value has at least </span><span class="si">%(limit_value)d</span><span class="s2"> characters (it has &quot;</span>
+        <span class="s2">&quot;</span><span class="si">%(show_value)d</span><span class="s2">).&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;limit_value&quot;</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+<div class="viewcode-block" id="MinLengthValidator.code">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.MinLengthValidator.code">[docs]</a>
+    <span class="n">code</span> <span class="o">=</span> <span class="s2">&quot;min_length&quot;</span></div>
+
+
+<div class="viewcode-block" id="MinLengthValidator.compare">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.MinLengthValidator.compare">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">compare</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">a</span> <span class="o">&lt;</span> <span class="n">b</span></div>
+
+
+<div class="viewcode-block" id="MinLengthValidator.clean">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.MinLengthValidator.clean">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clean</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span></div>
+</div>
+
+
+
+<span class="nd">@deconstructible</span>
+<div class="viewcode-block" id="MaxLengthValidator">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.MaxLengthValidator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MaxLengthValidator</span><span class="p">(</span><span class="n">BaseValidator</span><span class="p">):</span>
+<div class="viewcode-block" id="MaxLengthValidator.message">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.MaxLengthValidator.message">[docs]</a>
+    <span class="n">message</span> <span class="o">=</span> <span class="n">ngettext_lazy</span><span class="p">(</span>
+        <span class="s2">&quot;Ensure this value has at most </span><span class="si">%(limit_value)d</span><span class="s2"> character (it has &quot;</span>
+        <span class="s2">&quot;</span><span class="si">%(show_value)d</span><span class="s2">).&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Ensure this value has at most </span><span class="si">%(limit_value)d</span><span class="s2"> characters (it has &quot;</span>
+        <span class="s2">&quot;</span><span class="si">%(show_value)d</span><span class="s2">).&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;limit_value&quot;</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+<div class="viewcode-block" id="MaxLengthValidator.code">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.MaxLengthValidator.code">[docs]</a>
+    <span class="n">code</span> <span class="o">=</span> <span class="s2">&quot;max_length&quot;</span></div>
+
+
+<div class="viewcode-block" id="MaxLengthValidator.compare">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.MaxLengthValidator.compare">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">compare</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">a</span> <span class="o">&gt;</span> <span class="n">b</span></div>
+
+
+<div class="viewcode-block" id="MaxLengthValidator.clean">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.MaxLengthValidator.clean">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clean</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span></div>
+</div>
+
+
+
+<span class="nd">@deconstructible</span>
+<div class="viewcode-block" id="DecimalValidator">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.DecimalValidator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DecimalValidator</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Validate that the input does not exceed the maximum number of digits</span>
+<span class="sd">    expected, otherwise raise ValidationError.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="DecimalValidator.messages">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.DecimalValidator.messages">[docs]</a>
+    <span class="n">messages</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;invalid&quot;</span><span class="p">:</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Enter a number.&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;max_digits&quot;</span><span class="p">:</span> <span class="n">ngettext_lazy</span><span class="p">(</span>
+            <span class="s2">&quot;Ensure that there are no more than </span><span class="si">%(max)s</span><span class="s2"> digit in total.&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Ensure that there are no more than </span><span class="si">%(max)s</span><span class="s2"> digits in total.&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;max&quot;</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="s2">&quot;max_decimal_places&quot;</span><span class="p">:</span> <span class="n">ngettext_lazy</span><span class="p">(</span>
+            <span class="s2">&quot;Ensure that there are no more than </span><span class="si">%(max)s</span><span class="s2"> decimal place.&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Ensure that there are no more than </span><span class="si">%(max)s</span><span class="s2"> decimal places.&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;max&quot;</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="s2">&quot;max_whole_digits&quot;</span><span class="p">:</span> <span class="n">ngettext_lazy</span><span class="p">(</span>
+            <span class="s2">&quot;Ensure that there are no more than </span><span class="si">%(max)s</span><span class="s2"> digit before the decimal &quot;</span>
+            <span class="s2">&quot;point.&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Ensure that there are no more than </span><span class="si">%(max)s</span><span class="s2"> digits before the decimal &quot;</span>
+            <span class="s2">&quot;point.&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;max&quot;</span><span class="p">,</span>
+        <span class="p">),</span>
+    <span class="p">}</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">max_digits</span><span class="p">,</span> <span class="n">decimal_places</span><span class="p">):</span>
+<div class="viewcode-block" id="DecimalValidator.max_digits">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.DecimalValidator.max_digits">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_digits</span> <span class="o">=</span> <span class="n">max_digits</span></div>
+
+<div class="viewcode-block" id="DecimalValidator.decimal_places">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.DecimalValidator.decimal_places">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">decimal_places</span> <span class="o">=</span> <span class="n">decimal_places</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="n">digit_tuple</span><span class="p">,</span> <span class="n">exponent</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">as_tuple</span><span class="p">()[</span><span class="mi">1</span><span class="p">:]</span>
+        <span class="k">if</span> <span class="n">exponent</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;F&quot;</span><span class="p">,</span> <span class="s2">&quot;n&quot;</span><span class="p">,</span> <span class="s2">&quot;N&quot;</span><span class="p">}:</span>
+            <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">messages</span><span class="p">[</span><span class="s2">&quot;invalid&quot;</span><span class="p">],</span> <span class="n">code</span><span class="o">=</span><span class="s2">&quot;invalid&quot;</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">}</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">exponent</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">digits</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">digit_tuple</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">digit_tuple</span> <span class="o">!=</span> <span class="p">(</span><span class="mi">0</span><span class="p">,):</span>
+                <span class="c1"># A positive exponent adds that many trailing zeros.</span>
+                <span class="n">digits</span> <span class="o">+=</span> <span class="n">exponent</span>
+            <span class="n">decimals</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># If the absolute value of the negative exponent is larger than the</span>
+            <span class="c1"># number of digits, then it&#39;s the same as the number of digits,</span>
+            <span class="c1"># because it&#39;ll consume all of the digits in digit_tuple and then</span>
+            <span class="c1"># add abs(exponent) - len(digit_tuple) leading zeros after the</span>
+            <span class="c1"># decimal point.</span>
+            <span class="k">if</span> <span class="nb">abs</span><span class="p">(</span><span class="n">exponent</span><span class="p">)</span> <span class="o">&gt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">digit_tuple</span><span class="p">):</span>
+                <span class="n">digits</span> <span class="o">=</span> <span class="n">decimals</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">exponent</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">digits</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">digit_tuple</span><span class="p">)</span>
+                <span class="n">decimals</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">exponent</span><span class="p">)</span>
+        <span class="n">whole_digits</span> <span class="o">=</span> <span class="n">digits</span> <span class="o">-</span> <span class="n">decimals</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_digits</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">digits</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_digits</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">messages</span><span class="p">[</span><span class="s2">&quot;max_digits&quot;</span><span class="p">],</span>
+                <span class="n">code</span><span class="o">=</span><span class="s2">&quot;max_digits&quot;</span><span class="p">,</span>
+                <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;max&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_digits</span><span class="p">,</span> <span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">},</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">decimal_places</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">decimals</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">decimal_places</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">messages</span><span class="p">[</span><span class="s2">&quot;max_decimal_places&quot;</span><span class="p">],</span>
+                <span class="n">code</span><span class="o">=</span><span class="s2">&quot;max_decimal_places&quot;</span><span class="p">,</span>
+                <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;max&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">decimal_places</span><span class="p">,</span> <span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">},</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">max_digits</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">decimal_places</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="ow">and</span> <span class="n">whole_digits</span> <span class="o">&gt;</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_digits</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">decimal_places</span><span class="p">)</span>
+        <span class="p">):</span>
+            <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">messages</span><span class="p">[</span><span class="s2">&quot;max_whole_digits&quot;</span><span class="p">],</span>
+                <span class="n">code</span><span class="o">=</span><span class="s2">&quot;max_whole_digits&quot;</span><span class="p">,</span>
+                <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;max&quot;</span><span class="p">:</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_digits</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">decimal_places</span><span class="p">),</span> <span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">},</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="p">)</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_digits</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">max_digits</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">decimal_places</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">decimal_places</span>
+        <span class="p">)</span></div>
+
+
+
+<span class="nd">@deconstructible</span>
+<div class="viewcode-block" id="FileExtensionValidator">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.FileExtensionValidator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">FileExtensionValidator</span><span class="p">:</span>
+<div class="viewcode-block" id="FileExtensionValidator.message">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.FileExtensionValidator.message">[docs]</a>
+    <span class="n">message</span> <span class="o">=</span> <span class="n">_</span><span class="p">(</span>
+        <span class="s2">&quot;File extension “</span><span class="si">%(extension)s</span><span class="s2">” is not allowed. &quot;</span>
+        <span class="s2">&quot;Allowed extensions are: </span><span class="si">%(allowed_extensions)s</span><span class="s2">.&quot;</span>
+    <span class="p">)</span></div>
+
+<div class="viewcode-block" id="FileExtensionValidator.code">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.FileExtensionValidator.code">[docs]</a>
+    <span class="n">code</span> <span class="o">=</span> <span class="s2">&quot;invalid_extension&quot;</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">allowed_extensions</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">message</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">code</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">allowed_extensions</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">allowed_extensions</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="n">allowed_extension</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">allowed_extension</span> <span class="ow">in</span> <span class="n">allowed_extensions</span>
+            <span class="p">]</span>
+<div class="viewcode-block" id="FileExtensionValidator.allowed_extensions">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.FileExtensionValidator.allowed_extensions">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">allowed_extensions</span> <span class="o">=</span> <span class="n">allowed_extensions</span></div>
+
+        <span class="k">if</span> <span class="n">message</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">message</span> <span class="o">=</span> <span class="n">message</span>
+        <span class="k">if</span> <span class="n">code</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">code</span> <span class="o">=</span> <span class="n">code</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="n">extension</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">value</span><span class="o">.</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">suffix</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">allowed_extensions</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="ow">and</span> <span class="n">extension</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">allowed_extensions</span>
+        <span class="p">):</span>
+            <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">message</span><span class="p">,</span>
+                <span class="n">code</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">code</span><span class="p">,</span>
+                <span class="n">params</span><span class="o">=</span><span class="p">{</span>
+                    <span class="s2">&quot;extension&quot;</span><span class="p">:</span> <span class="n">extension</span><span class="p">,</span>
+                    <span class="s2">&quot;allowed_extensions&quot;</span><span class="p">:</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">allowed_extensions</span><span class="p">),</span>
+                    <span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">,</span>
+                <span class="p">},</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="p">)</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">allowed_extensions</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">allowed_extensions</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">message</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">message</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">code</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">code</span>
+        <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="get_available_image_extensions">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.get_available_image_extensions">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_available_image_extensions</span><span class="p">():</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">PIL</span><span class="w"> </span><span class="kn">import</span> <span class="n">Image</span>
+    <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">Image</span><span class="o">.</span><span class="n">init</span><span class="p">()</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">ext</span><span class="o">.</span><span class="n">lower</span><span class="p">()[</span><span class="mi">1</span><span class="p">:]</span> <span class="k">for</span> <span class="n">ext</span> <span class="ow">in</span> <span class="n">Image</span><span class="o">.</span><span class="n">EXTENSION</span><span class="p">]</span></div>
+
+
+
+<div class="viewcode-block" id="validate_image_file_extension">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.validate_image_file_extension">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_image_file_extension</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">FileExtensionValidator</span><span class="p">(</span><span class="n">allowed_extensions</span><span class="o">=</span><span class="n">get_available_image_extensions</span><span class="p">())(</span>
+        <span class="n">value</span>
+    <span class="p">)</span></div>
+
+
+
+<span class="nd">@deconstructible</span>
+<div class="viewcode-block" id="ProhibitNullCharactersValidator">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.ProhibitNullCharactersValidator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ProhibitNullCharactersValidator</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that the string doesn&#39;t contain the null character.&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="ProhibitNullCharactersValidator.message">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.ProhibitNullCharactersValidator.message">[docs]</a>
+    <span class="n">message</span> <span class="o">=</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Null characters are not allowed.&quot;</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="ProhibitNullCharactersValidator.code">
+<a class="viewcode-back" href="../../../autoapi/django/core/validators/index.html#django.core.validators.ProhibitNullCharactersValidator.code">[docs]</a>
+    <span class="n">code</span> <span class="o">=</span> <span class="s2">&quot;null_characters_not_allowed&quot;</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">code</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">message</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">message</span> <span class="o">=</span> <span class="n">message</span>
+        <span class="k">if</span> <span class="n">code</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">code</span> <span class="o">=</span> <span class="n">code</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="k">if</span> <span class="s2">&quot;</span><span class="se">\x00</span><span class="s2">&quot;</span> <span class="ow">in</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">message</span><span class="p">,</span> <span class="n">code</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">code</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">})</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="p">)</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">message</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">message</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">code</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">code</span>
+        <span class="p">)</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

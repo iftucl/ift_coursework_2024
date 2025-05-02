@@ -1,0 +1,598 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gunicorn.http.message &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../gunicorn.html">gunicorn</a></li>
+      <li class="breadcrumb-item active">gunicorn.http.message</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gunicorn.http.message</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -</span>
+<span class="c1">#</span>
+<span class="c1"># This file is part of gunicorn released under the MIT license.</span>
+<span class="c1"># See the NOTICE for more information.</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">io</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">socket</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">gunicorn.http.body</span><span class="w"> </span><span class="kn">import</span> <span class="n">Body</span><span class="p">,</span> <span class="n">ChunkedReader</span><span class="p">,</span> <span class="n">EOFReader</span><span class="p">,</span> <span class="n">LengthReader</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">gunicorn.http.errors</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">ForbiddenProxyRequest</span><span class="p">,</span>
+    <span class="n">InvalidHeader</span><span class="p">,</span>
+    <span class="n">InvalidHeaderName</span><span class="p">,</span>
+    <span class="n">InvalidHTTPVersion</span><span class="p">,</span>
+    <span class="n">InvalidProxyLine</span><span class="p">,</span>
+    <span class="n">InvalidRequestLine</span><span class="p">,</span>
+    <span class="n">InvalidRequestMethod</span><span class="p">,</span>
+    <span class="n">InvalidSchemeHeaders</span><span class="p">,</span>
+    <span class="n">LimitRequestHeaders</span><span class="p">,</span>
+    <span class="n">LimitRequestLine</span><span class="p">,</span>
+    <span class="n">NoMoreData</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">gunicorn.util</span><span class="w"> </span><span class="kn">import</span> <span class="n">bytes_to_str</span><span class="p">,</span> <span class="n">split_request_uri</span>
+
+<div class="viewcode-block" id="MAX_REQUEST_LINE">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.MAX_REQUEST_LINE">[docs]</a>
+<span class="n">MAX_REQUEST_LINE</span> <span class="o">=</span> <span class="mi">8190</span></div>
+
+<div class="viewcode-block" id="MAX_HEADERS">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.MAX_HEADERS">[docs]</a>
+<span class="n">MAX_HEADERS</span> <span class="o">=</span> <span class="mi">32768</span></div>
+
+<div class="viewcode-block" id="DEFAULT_MAX_HEADERFIELD_SIZE">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.DEFAULT_MAX_HEADERFIELD_SIZE">[docs]</a>
+<span class="n">DEFAULT_MAX_HEADERFIELD_SIZE</span> <span class="o">=</span> <span class="mi">8190</span></div>
+
+
+<div class="viewcode-block" id="HEADER_RE">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.HEADER_RE">[docs]</a>
+<span class="n">HEADER_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;[\x00-\x1F\x7F()&lt;&gt;@,;:\[\]=</span><span class="si">{}</span><span class="s2"> \t</span><span class="se">\\\&quot;</span><span class="s2">]&quot;</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="METH_RE">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.METH_RE">[docs]</a>
+<span class="n">METH_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;[A-Z0-9$-_.]{3,20}&quot;</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="VERSION_RE">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.VERSION_RE">[docs]</a>
+<span class="n">VERSION_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;HTTP/(\d+)\.(\d+)&quot;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="Message">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Message">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Message</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cfg</span><span class="p">,</span> <span class="n">unreader</span><span class="p">,</span> <span class="n">peer_addr</span><span class="p">):</span>
+<div class="viewcode-block" id="Message.cfg">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Message.cfg">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span> <span class="o">=</span> <span class="n">cfg</span></div>
+
+<div class="viewcode-block" id="Message.unreader">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Message.unreader">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">unreader</span> <span class="o">=</span> <span class="n">unreader</span></div>
+
+<div class="viewcode-block" id="Message.peer_addr">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Message.peer_addr">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">peer_addr</span> <span class="o">=</span> <span class="n">peer_addr</span></div>
+
+<div class="viewcode-block" id="Message.remote_addr">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Message.remote_addr">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">remote_addr</span> <span class="o">=</span> <span class="n">peer_addr</span></div>
+
+<div class="viewcode-block" id="Message.version">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Message.version">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">version</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="Message.headers">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Message.headers">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">headers</span> <span class="o">=</span> <span class="p">[]</span></div>
+
+<div class="viewcode-block" id="Message.trailers">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Message.trailers">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">trailers</span> <span class="o">=</span> <span class="p">[]</span></div>
+
+<div class="viewcode-block" id="Message.body">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Message.body">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">body</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="Message.scheme">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Message.scheme">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scheme</span> <span class="o">=</span> <span class="s2">&quot;https&quot;</span> <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">is_ssl</span> <span class="k">else</span> <span class="s2">&quot;http&quot;</span></div>
+
+
+        <span class="c1"># set headers limits</span>
+<div class="viewcode-block" id="Message.limit_request_fields">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Message.limit_request_fields">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">limit_request_fields</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">limit_request_fields</span></div>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">limit_request_fields</span> <span class="o">&lt;=</span> <span class="mi">0</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">limit_request_fields</span> <span class="o">&gt;</span> <span class="n">MAX_HEADERS</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">limit_request_fields</span> <span class="o">=</span> <span class="n">MAX_HEADERS</span>
+<div class="viewcode-block" id="Message.limit_request_field_size">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Message.limit_request_field_size">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">limit_request_field_size</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">limit_request_field_size</span></div>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">limit_request_field_size</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">limit_request_field_size</span> <span class="o">=</span> <span class="n">DEFAULT_MAX_HEADERFIELD_SIZE</span>
+
+        <span class="c1"># set max header buffer size</span>
+        <span class="n">max_header_field_size</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">limit_request_field_size</span> <span class="ow">or</span> <span class="n">DEFAULT_MAX_HEADERFIELD_SIZE</span>
+        <span class="p">)</span>
+<div class="viewcode-block" id="Message.max_buffer_headers">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Message.max_buffer_headers">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_buffer_headers</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">limit_request_fields</span> <span class="o">*</span> <span class="p">(</span><span class="n">max_header_field_size</span> <span class="o">+</span> <span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="mi">4</span>
+        <span class="p">)</span></div>
+
+
+        <span class="n">unused</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">unreader</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">unreader</span><span class="o">.</span><span class="n">unread</span><span class="p">(</span><span class="n">unused</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">set_body_reader</span><span class="p">()</span>
+
+<div class="viewcode-block" id="Message.parse">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Message.parse">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">parse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">unreader</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="Message.parse_headers">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Message.parse_headers">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">parse_headers</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="n">cfg</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span>
+        <span class="n">headers</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="c1"># Split lines on \r\n keeping the \r\n on each line</span>
+        <span class="n">lines</span> <span class="o">=</span> <span class="p">[</span><span class="n">bytes_to_str</span><span class="p">(</span><span class="n">line</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\r\n</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="sa">b</span><span class="s2">&quot;</span><span class="se">\r\n</span><span class="s2">&quot;</span><span class="p">)]</span>
+
+        <span class="c1"># handle scheme headers</span>
+        <span class="n">scheme_header</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">secure_scheme_headers</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="s2">&quot;*&quot;</span> <span class="ow">in</span> <span class="n">cfg</span><span class="o">.</span><span class="n">forwarded_allow_ips</span>
+            <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">peer_addr</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)</span>
+            <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">peer_addr</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">in</span> <span class="n">cfg</span><span class="o">.</span><span class="n">forwarded_allow_ips</span>
+        <span class="p">):</span>
+            <span class="n">secure_scheme_headers</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">secure_scheme_headers</span>
+
+        <span class="c1"># Parse headers into key/value pairs paying attention</span>
+        <span class="c1"># to continuation lines.</span>
+        <span class="k">while</span> <span class="n">lines</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">headers</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">limit_request_fields</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">LimitRequestHeaders</span><span class="p">(</span><span class="s2">&quot;limit request headers fields&quot;</span><span class="p">)</span>
+
+            <span class="c1"># Parse initial header name : value pair.</span>
+            <span class="n">curr</span> <span class="o">=</span> <span class="n">lines</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">header_length</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">curr</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">curr</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">InvalidHeader</span><span class="p">(</span><span class="n">curr</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span>
+            <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="o">=</span> <span class="n">curr</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">strip_header_spaces</span><span class="p">:</span>
+                <span class="n">name</span> <span class="o">=</span> <span class="n">name</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s2">&quot; </span><span class="se">\t</span><span class="s2">&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">name</span> <span class="o">=</span> <span class="n">name</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">HEADER_RE</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="n">InvalidHeaderName</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+
+            <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="o">=</span> <span class="n">name</span><span class="o">.</span><span class="n">strip</span><span class="p">(),</span> <span class="p">[</span><span class="n">value</span><span class="o">.</span><span class="n">lstrip</span><span class="p">()]</span>
+
+            <span class="c1"># Consume value continuation lines</span>
+            <span class="k">while</span> <span class="n">lines</span> <span class="ow">and</span> <span class="n">lines</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">startswith</span><span class="p">((</span><span class="s2">&quot; &quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="se">\t</span><span class="s2">&quot;</span><span class="p">)):</span>
+                <span class="n">curr</span> <span class="o">=</span> <span class="n">lines</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                <span class="n">header_length</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">curr</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">header_length</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">limit_request_field_size</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">LimitRequestHeaders</span><span class="p">(</span><span class="s2">&quot;limit request headers &quot;</span> <span class="s2">&quot;fields size&quot;</span><span class="p">)</span>
+                <span class="n">value</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">curr</span><span class="p">)</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span>
+
+            <span class="k">if</span> <span class="n">header_length</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">limit_request_field_size</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">LimitRequestHeaders</span><span class="p">(</span><span class="s2">&quot;limit request headers fields size&quot;</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">secure_scheme_headers</span><span class="p">:</span>
+                <span class="n">secure</span> <span class="o">=</span> <span class="n">value</span> <span class="o">==</span> <span class="n">secure_scheme_headers</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
+                <span class="n">scheme</span> <span class="o">=</span> <span class="s2">&quot;https&quot;</span> <span class="k">if</span> <span class="n">secure</span> <span class="k">else</span> <span class="s2">&quot;http&quot;</span>
+                <span class="k">if</span> <span class="n">scheme_header</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">scheme</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scheme</span><span class="p">:</span>
+                        <span class="k">raise</span> <span class="n">InvalidSchemeHeaders</span><span class="p">()</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">scheme_header</span> <span class="o">=</span> <span class="kc">True</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">scheme</span> <span class="o">=</span> <span class="n">scheme</span>
+
+            <span class="n">headers</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="n">headers</span></div>
+
+
+<div class="viewcode-block" id="Message.set_body_reader">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Message.set_body_reader">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_body_reader</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">chunked</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">content_length</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">headers</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;CONTENT-LENGTH&quot;</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">content_length</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">InvalidHeader</span><span class="p">(</span><span class="s2">&quot;CONTENT-LENGTH&quot;</span><span class="p">,</span> <span class="n">req</span><span class="o">=</span><span class="bp">self</span><span class="p">)</span>
+                <span class="n">content_length</span> <span class="o">=</span> <span class="n">value</span>
+            <span class="k">elif</span> <span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;TRANSFER-ENCODING&quot;</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">value</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;chunked&quot;</span><span class="p">:</span>
+                    <span class="n">chunked</span> <span class="o">=</span> <span class="kc">True</span>
+
+        <span class="k">if</span> <span class="n">chunked</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">body</span> <span class="o">=</span> <span class="n">Body</span><span class="p">(</span><span class="n">ChunkedReader</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">unreader</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="n">content_length</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">str</span><span class="p">(</span><span class="n">content_length</span><span class="p">)</span><span class="o">.</span><span class="n">isnumeric</span><span class="p">():</span>
+                    <span class="n">content_length</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">content_length</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">InvalidHeader</span><span class="p">(</span><span class="s2">&quot;CONTENT-LENGTH&quot;</span><span class="p">,</span> <span class="n">req</span><span class="o">=</span><span class="bp">self</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">InvalidHeader</span><span class="p">(</span><span class="s2">&quot;CONTENT-LENGTH&quot;</span><span class="p">,</span> <span class="n">req</span><span class="o">=</span><span class="bp">self</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">content_length</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">InvalidHeader</span><span class="p">(</span><span class="s2">&quot;CONTENT-LENGTH&quot;</span><span class="p">,</span> <span class="n">req</span><span class="o">=</span><span class="bp">self</span><span class="p">)</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">body</span> <span class="o">=</span> <span class="n">Body</span><span class="p">(</span><span class="n">LengthReader</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">unreader</span><span class="p">,</span> <span class="n">content_length</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">body</span> <span class="o">=</span> <span class="n">Body</span><span class="p">(</span><span class="n">EOFReader</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">unreader</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="Message.should_close">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Message.should_close">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">should_close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">h</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">headers</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">h</span> <span class="o">==</span> <span class="s2">&quot;CONNECTION&quot;</span><span class="p">:</span>
+                <span class="n">v</span> <span class="o">=</span> <span class="n">v</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">v</span> <span class="o">==</span> <span class="s2">&quot;close&quot;</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="kc">True</span>
+                <span class="k">elif</span> <span class="n">v</span> <span class="o">==</span> <span class="s2">&quot;keep-alive&quot;</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="kc">False</span>
+                <span class="k">break</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">version</span> <span class="o">&lt;=</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="Request">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Request">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Request</span><span class="p">(</span><span class="n">Message</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cfg</span><span class="p">,</span> <span class="n">unreader</span><span class="p">,</span> <span class="n">peer_addr</span><span class="p">,</span> <span class="n">req_number</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+<div class="viewcode-block" id="Request.method">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Request.method">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="Request.uri">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Request.uri">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">uri</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="Request.path">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Request.path">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">path</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="Request.query">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Request.query">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">query</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="Request.fragment">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Request.fragment">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fragment</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+        <span class="c1"># get max request line size</span>
+<div class="viewcode-block" id="Request.limit_request_line">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Request.limit_request_line">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">limit_request_line</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">limit_request_line</span></div>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">limit_request_line</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">limit_request_line</span> <span class="o">&gt;=</span> <span class="n">MAX_REQUEST_LINE</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">limit_request_line</span> <span class="o">=</span> <span class="n">MAX_REQUEST_LINE</span>
+
+<div class="viewcode-block" id="Request.req_number">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Request.req_number">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">req_number</span> <span class="o">=</span> <span class="n">req_number</span></div>
+
+<div class="viewcode-block" id="Request.proxy_protocol_info">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Request.proxy_protocol_info">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">proxy_protocol_info</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">cfg</span><span class="p">,</span> <span class="n">unreader</span><span class="p">,</span> <span class="n">peer_addr</span><span class="p">)</span>
+
+<div class="viewcode-block" id="Request.get_data">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Request.get_data">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">unreader</span><span class="p">,</span> <span class="n">buf</span><span class="p">,</span> <span class="n">stop</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">unreader</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">data</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">stop</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">StopIteration</span><span class="p">()</span>
+            <span class="k">raise</span> <span class="n">NoMoreData</span><span class="p">(</span><span class="n">buf</span><span class="o">.</span><span class="n">getvalue</span><span class="p">())</span>
+        <span class="n">buf</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">data</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Request.parse">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Request.parse">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">parse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">unreader</span><span class="p">):</span>
+        <span class="n">buf</span> <span class="o">=</span> <span class="n">io</span><span class="o">.</span><span class="n">BytesIO</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">get_data</span><span class="p">(</span><span class="n">unreader</span><span class="p">,</span> <span class="n">buf</span><span class="p">,</span> <span class="n">stop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+        <span class="c1"># get request line</span>
+        <span class="n">line</span><span class="p">,</span> <span class="n">rbuf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">read_line</span><span class="p">(</span><span class="n">unreader</span><span class="p">,</span> <span class="n">buf</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">limit_request_line</span><span class="p">)</span>
+
+        <span class="c1"># proxy protocol</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">proxy_protocol</span><span class="p">(</span><span class="n">bytes_to_str</span><span class="p">(</span><span class="n">line</span><span class="p">)):</span>
+            <span class="c1"># get next request line</span>
+            <span class="n">buf</span> <span class="o">=</span> <span class="n">io</span><span class="o">.</span><span class="n">BytesIO</span><span class="p">()</span>
+            <span class="n">buf</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">rbuf</span><span class="p">)</span>
+            <span class="n">line</span><span class="p">,</span> <span class="n">rbuf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">read_line</span><span class="p">(</span><span class="n">unreader</span><span class="p">,</span> <span class="n">buf</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">limit_request_line</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">parse_request_line</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+        <span class="n">buf</span> <span class="o">=</span> <span class="n">io</span><span class="o">.</span><span class="n">BytesIO</span><span class="p">()</span>
+        <span class="n">buf</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">rbuf</span><span class="p">)</span>
+
+        <span class="c1"># Headers</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">buf</span><span class="o">.</span><span class="n">getvalue</span><span class="p">()</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="sa">b</span><span class="s2">&quot;</span><span class="se">\r\n\r\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="n">done</span> <span class="o">=</span> <span class="n">data</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="sa">b</span><span class="s2">&quot;</span><span class="se">\r\n</span><span class="s2">&quot;</span>
+        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="sa">b</span><span class="s2">&quot;</span><span class="se">\r\n\r\n</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">done</span> <span class="o">=</span> <span class="n">data</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="sa">b</span><span class="s2">&quot;</span><span class="se">\r\n</span><span class="s2">&quot;</span>
+
+            <span class="k">if</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">done</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">get_data</span><span class="p">(</span><span class="n">unreader</span><span class="p">,</span> <span class="n">buf</span><span class="p">)</span>
+                <span class="n">data</span> <span class="o">=</span> <span class="n">buf</span><span class="o">.</span><span class="n">getvalue</span><span class="p">()</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_buffer_headers</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">LimitRequestHeaders</span><span class="p">(</span><span class="s2">&quot;max buffer headers&quot;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">break</span>
+
+        <span class="k">if</span> <span class="n">done</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">unreader</span><span class="o">.</span><span class="n">unread</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="mi">2</span><span class="p">:])</span>
+            <span class="k">return</span> <span class="sa">b</span><span class="s2">&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">headers</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_headers</span><span class="p">(</span><span class="n">data</span><span class="p">[:</span><span class="n">idx</span><span class="p">])</span>
+
+        <span class="n">ret</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="n">idx</span> <span class="o">+</span> <span class="mi">4</span> <span class="p">:]</span>
+        <span class="n">buf</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">return</span> <span class="n">ret</span></div>
+
+
+<div class="viewcode-block" id="Request.read_line">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Request.read_line">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">read_line</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">unreader</span><span class="p">,</span> <span class="n">buf</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">buf</span><span class="o">.</span><span class="n">getvalue</span><span class="p">()</span>
+
+        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="sa">b</span><span class="s2">&quot;</span><span class="se">\r\n</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">idx</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="c1"># check if the request line is too large</span>
+                <span class="k">if</span> <span class="n">idx</span> <span class="o">&gt;</span> <span class="n">limit</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">LimitRequestLine</span><span class="p">(</span><span class="n">idx</span><span class="p">,</span> <span class="n">limit</span><span class="p">)</span>
+                <span class="k">break</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">&gt;</span> <span class="n">limit</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">LimitRequestLine</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">),</span> <span class="n">limit</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">get_data</span><span class="p">(</span><span class="n">unreader</span><span class="p">,</span> <span class="n">buf</span><span class="p">)</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="n">buf</span><span class="o">.</span><span class="n">getvalue</span><span class="p">()</span>
+
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="n">data</span><span class="p">[:</span><span class="n">idx</span><span class="p">],</span>  <span class="c1"># request line,</span>
+            <span class="n">data</span><span class="p">[</span><span class="n">idx</span> <span class="o">+</span> <span class="mi">2</span> <span class="p">:],</span>
+        <span class="p">)</span>  <span class="c1"># residue in the buffer, skip \r\n</span></div>
+
+
+<div class="viewcode-block" id="Request.proxy_protocol">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Request.proxy_protocol">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">proxy_protocol</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">line</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;\</span>
+<span class="sd">        Detect, check and parse proxy protocol.</span>
+
+<span class="sd">        :raises: ForbiddenProxyRequest, InvalidProxyLine.</span>
+<span class="sd">        :return: True for proxy protocol line else False</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">proxy_protocol</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">req_number</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;PROXY&quot;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">proxy_protocol_access_check</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">parse_proxy_protocol</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="Request.proxy_protocol_access_check">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Request.proxy_protocol_access_check">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">proxy_protocol_access_check</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># check in allow list</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="s2">&quot;*&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">proxy_allow_ips</span>
+            <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">peer_addr</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">peer_addr</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">proxy_allow_ips</span>
+        <span class="p">):</span>
+            <span class="k">raise</span> <span class="n">ForbiddenProxyRequest</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">peer_addr</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span></div>
+
+
+<div class="viewcode-block" id="Request.parse_proxy_protocol">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Request.parse_proxy_protocol">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">parse_proxy_protocol</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">line</span><span class="p">):</span>
+        <span class="n">bits</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">bits</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">6</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">InvalidProxyLine</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+
+        <span class="c1"># Extract data</span>
+        <span class="n">proto</span> <span class="o">=</span> <span class="n">bits</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">s_addr</span> <span class="o">=</span> <span class="n">bits</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+        <span class="n">d_addr</span> <span class="o">=</span> <span class="n">bits</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
+
+        <span class="c1"># Validation</span>
+        <span class="k">if</span> <span class="n">proto</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;TCP4&quot;</span><span class="p">,</span> <span class="s2">&quot;TCP6&quot;</span><span class="p">]:</span>
+            <span class="k">raise</span> <span class="n">InvalidProxyLine</span><span class="p">(</span><span class="s2">&quot;protocol &#39;</span><span class="si">%s</span><span class="s2">&#39; not supported&quot;</span> <span class="o">%</span> <span class="n">proto</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">proto</span> <span class="o">==</span> <span class="s2">&quot;TCP4&quot;</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">socket</span><span class="o">.</span><span class="n">inet_pton</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">s_addr</span><span class="p">)</span>
+                <span class="n">socket</span><span class="o">.</span><span class="n">inet_pton</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">d_addr</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">socket</span><span class="o">.</span><span class="n">error</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">InvalidProxyLine</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">proto</span> <span class="o">==</span> <span class="s2">&quot;TCP6&quot;</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">socket</span><span class="o">.</span><span class="n">inet_pton</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET6</span><span class="p">,</span> <span class="n">s_addr</span><span class="p">)</span>
+                <span class="n">socket</span><span class="o">.</span><span class="n">inet_pton</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET6</span><span class="p">,</span> <span class="n">d_addr</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">socket</span><span class="o">.</span><span class="n">error</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">InvalidProxyLine</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">s_port</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">bits</span><span class="p">[</span><span class="mi">4</span><span class="p">])</span>
+            <span class="n">d_port</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">bits</span><span class="p">[</span><span class="mi">5</span><span class="p">])</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">InvalidProxyLine</span><span class="p">(</span><span class="s2">&quot;invalid port </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">line</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">((</span><span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">s_port</span> <span class="o">&lt;=</span> <span class="mi">65535</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">d_port</span> <span class="o">&lt;=</span> <span class="mi">65535</span><span class="p">)):</span>
+            <span class="k">raise</span> <span class="n">InvalidProxyLine</span><span class="p">(</span><span class="s2">&quot;invalid port </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">line</span><span class="p">)</span>
+
+        <span class="c1"># Set data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">proxy_protocol_info</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;proxy_protocol&quot;</span><span class="p">:</span> <span class="n">proto</span><span class="p">,</span>
+            <span class="s2">&quot;client_addr&quot;</span><span class="p">:</span> <span class="n">s_addr</span><span class="p">,</span>
+            <span class="s2">&quot;client_port&quot;</span><span class="p">:</span> <span class="n">s_port</span><span class="p">,</span>
+            <span class="s2">&quot;proxy_addr&quot;</span><span class="p">:</span> <span class="n">d_addr</span><span class="p">,</span>
+            <span class="s2">&quot;proxy_port&quot;</span><span class="p">:</span> <span class="n">d_port</span><span class="p">,</span>
+        <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="Request.parse_request_line">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Request.parse_request_line">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">parse_request_line</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">line_bytes</span><span class="p">):</span>
+        <span class="n">bits</span> <span class="o">=</span> <span class="p">[</span><span class="n">bytes_to_str</span><span class="p">(</span><span class="n">bit</span><span class="p">)</span> <span class="k">for</span> <span class="n">bit</span> <span class="ow">in</span> <span class="n">line_bytes</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="mi">2</span><span class="p">)]</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">bits</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">InvalidRequestLine</span><span class="p">(</span><span class="n">bytes_to_str</span><span class="p">(</span><span class="n">line_bytes</span><span class="p">))</span>
+
+        <span class="c1"># Method</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">METH_RE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">bits</span><span class="p">[</span><span class="mi">0</span><span class="p">]):</span>
+            <span class="k">raise</span> <span class="n">InvalidRequestMethod</span><span class="p">(</span><span class="n">bits</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="o">=</span> <span class="n">bits</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+
+        <span class="c1"># URI</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">uri</span> <span class="o">=</span> <span class="n">bits</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">parts</span> <span class="o">=</span> <span class="n">split_request_uri</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">uri</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">InvalidRequestLine</span><span class="p">(</span><span class="n">bytes_to_str</span><span class="p">(</span><span class="n">line_bytes</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">path</span> <span class="o">=</span> <span class="n">parts</span><span class="o">.</span><span class="n">path</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">query</span> <span class="o">=</span> <span class="n">parts</span><span class="o">.</span><span class="n">query</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fragment</span> <span class="o">=</span> <span class="n">parts</span><span class="o">.</span><span class="n">fragment</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span>
+
+        <span class="c1"># Version</span>
+        <span class="n">match</span> <span class="o">=</span> <span class="n">VERSION_RE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">bits</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+        <span class="k">if</span> <span class="n">match</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">InvalidHTTPVersion</span><span class="p">(</span><span class="n">bits</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">version</span> <span class="o">=</span> <span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)),</span> <span class="nb">int</span><span class="p">(</span><span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">2</span><span class="p">)))</span></div>
+
+
+<div class="viewcode-block" id="Request.set_body_reader">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/message/index.html#gunicorn.http.message.Request.set_body_reader">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_body_reader</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">set_body_reader</span><span class="p">()</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">body</span><span class="o">.</span><span class="n">reader</span><span class="p">,</span> <span class="n">EOFReader</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">body</span> <span class="o">=</span> <span class="n">Body</span><span class="p">(</span><span class="n">LengthReader</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">unreader</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

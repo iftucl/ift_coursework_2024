@@ -1,0 +1,472 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.core.cache.backends.db &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../../cache.html">django.core.cache</a></li>
+      <li class="breadcrumb-item active">django.core.cache.backends.db</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.core.cache.backends.db</h1><div class="highlight"><pre>
+<span></span><span class="s2">&quot;Database cache backend.&quot;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">base64</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pickle</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">datetime</span><span class="p">,</span> <span class="n">timezone</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.cache.backends.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">DEFAULT_TIMEOUT</span><span class="p">,</span> <span class="n">BaseCache</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseError</span><span class="p">,</span> <span class="n">connections</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">router</span><span class="p">,</span> <span class="n">transaction</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.timezone</span><span class="w"> </span><span class="kn">import</span> <span class="n">now</span> <span class="k">as</span> <span class="n">tz_now</span>
+
+
+<div class="viewcode-block" id="Options">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/db/index.html#django.core.cache.backends.db.Options">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Options</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A class that will quack like a Django model _meta class.</span>
+
+<span class="sd">    This allows cache operations to be controlled by the router</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table</span><span class="p">):</span>
+<div class="viewcode-block" id="Options.db_table">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/db/index.html#django.core.cache.backends.db.Options.db_table">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">db_table</span> <span class="o">=</span> <span class="n">table</span></div>
+
+<div class="viewcode-block" id="Options.app_label">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/db/index.html#django.core.cache.backends.db.Options.app_label">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">app_label</span> <span class="o">=</span> <span class="s2">&quot;django_cache&quot;</span></div>
+
+<div class="viewcode-block" id="Options.model_name">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/db/index.html#django.core.cache.backends.db.Options.model_name">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model_name</span> <span class="o">=</span> <span class="s2">&quot;cacheentry&quot;</span></div>
+
+<div class="viewcode-block" id="Options.verbose_name">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/db/index.html#django.core.cache.backends.db.Options.verbose_name">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">verbose_name</span> <span class="o">=</span> <span class="s2">&quot;cache entry&quot;</span></div>
+
+<div class="viewcode-block" id="Options.verbose_name_plural">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/db/index.html#django.core.cache.backends.db.Options.verbose_name_plural">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">verbose_name_plural</span> <span class="o">=</span> <span class="s2">&quot;cache entries&quot;</span></div>
+
+<div class="viewcode-block" id="Options.object_name">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/db/index.html#django.core.cache.backends.db.Options.object_name">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">object_name</span> <span class="o">=</span> <span class="s2">&quot;CacheEntry&quot;</span></div>
+
+<div class="viewcode-block" id="Options.abstract">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/db/index.html#django.core.cache.backends.db.Options.abstract">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">abstract</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+<div class="viewcode-block" id="Options.managed">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/db/index.html#django.core.cache.backends.db.Options.managed">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">managed</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+<div class="viewcode-block" id="Options.proxy">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/db/index.html#django.core.cache.backends.db.Options.proxy">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">proxy</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+<div class="viewcode-block" id="Options.swapped">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/db/index.html#django.core.cache.backends.db.Options.swapped">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">swapped</span> <span class="o">=</span> <span class="kc">False</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="BaseDatabaseCache">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/db/index.html#django.core.cache.backends.db.BaseDatabaseCache">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BaseDatabaseCache</span><span class="p">(</span><span class="n">BaseCache</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_table</span> <span class="o">=</span> <span class="n">table</span>
+
+        <span class="k">class</span><span class="w"> </span><span class="nc">CacheEntry</span><span class="p">:</span>
+            <span class="n">_meta</span> <span class="o">=</span> <span class="n">Options</span><span class="p">(</span><span class="n">table</span><span class="p">)</span>
+
+<div class="viewcode-block" id="BaseDatabaseCache.cache_model_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/db/index.html#django.core.cache.backends.db.BaseDatabaseCache.cache_model_class">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cache_model_class</span> <span class="o">=</span> <span class="n">CacheEntry</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="DatabaseCache">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/db/index.html#django.core.cache.backends.db.DatabaseCache">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DatabaseCache</span><span class="p">(</span><span class="n">BaseDatabaseCache</span><span class="p">):</span>
+    <span class="c1"># This class uses cursors provided by the database connection. This means</span>
+    <span class="c1"># it reads expiration values as aware or naive datetimes, depending on the</span>
+    <span class="c1"># value of USE_TZ and whether the database supports time zones. The ORM&#39;s</span>
+    <span class="c1"># conversion and adaptation infrastructure is then used to avoid comparing</span>
+    <span class="c1"># aware and naive datetimes accidentally.</span>
+
+<div class="viewcode-block" id="DatabaseCache.pickle_protocol">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/db/index.html#django.core.cache.backends.db.DatabaseCache.pickle_protocol">[docs]</a>
+    <span class="n">pickle_protocol</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">HIGHEST_PROTOCOL</span></div>
+
+
+<div class="viewcode-block" id="DatabaseCache.get">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/db/index.html#django.core.cache.backends.db.DatabaseCache.get">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_many</span><span class="p">([</span><span class="n">key</span><span class="p">],</span> <span class="n">version</span><span class="p">)</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">default</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseCache.get_many">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/db/index.html#django.core.cache.backends.db.DatabaseCache.get_many">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_many</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">keys</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">keys</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{}</span>
+
+        <span class="n">key_map</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">make_and_validate_key</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">):</span> <span class="n">key</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">keys</span>
+        <span class="p">}</span>
+
+        <span class="n">db</span> <span class="o">=</span> <span class="n">router</span><span class="o">.</span><span class="n">db_for_read</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cache_model_class</span><span class="p">)</span>
+        <span class="n">connection</span> <span class="o">=</span> <span class="n">connections</span><span class="p">[</span><span class="n">db</span><span class="p">]</span>
+        <span class="n">quote_name</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span>
+        <span class="n">table</span> <span class="o">=</span> <span class="n">quote_name</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_table</span><span class="p">)</span>
+
+        <span class="k">with</span> <span class="n">connection</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+                <span class="s2">&quot;SELECT </span><span class="si">%s</span><span class="s2">, </span><span class="si">%s</span><span class="s2">, </span><span class="si">%s</span><span class="s2"> FROM </span><span class="si">%s</span><span class="s2"> WHERE </span><span class="si">%s</span><span class="s2"> IN (</span><span class="si">%s</span><span class="s2">)&quot;</span>
+                <span class="o">%</span> <span class="p">(</span>
+                    <span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;cache_key&quot;</span><span class="p">),</span>
+                    <span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;value&quot;</span><span class="p">),</span>
+                    <span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;expires&quot;</span><span class="p">),</span>
+                    <span class="n">table</span><span class="p">,</span>
+                    <span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;cache_key&quot;</span><span class="p">),</span>
+                    <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">key_map</span><span class="p">)),</span>
+                <span class="p">),</span>
+                <span class="nb">list</span><span class="p">(</span><span class="n">key_map</span><span class="p">),</span>
+            <span class="p">)</span>
+            <span class="n">rows</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+
+        <span class="n">result</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">expired_keys</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">expression</span> <span class="o">=</span> <span class="n">models</span><span class="o">.</span><span class="n">Expression</span><span class="p">(</span><span class="n">output_field</span><span class="o">=</span><span class="n">models</span><span class="o">.</span><span class="n">DateTimeField</span><span class="p">())</span>
+        <span class="n">converters</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">get_db_converters</span><span class="p">(</span>
+            <span class="n">expression</span>
+        <span class="p">)</span> <span class="o">+</span> <span class="n">expression</span><span class="o">.</span><span class="n">get_db_converters</span><span class="p">(</span><span class="n">connection</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">expires</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">converter</span> <span class="ow">in</span> <span class="n">converters</span><span class="p">:</span>
+                <span class="n">expires</span> <span class="o">=</span> <span class="n">converter</span><span class="p">(</span><span class="n">expires</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">connection</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">expires</span> <span class="o">&lt;</span> <span class="n">tz_now</span><span class="p">():</span>
+                <span class="n">expired_keys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">process_clob</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">base64</span><span class="o">.</span><span class="n">b64decode</span><span class="p">(</span><span class="n">value</span><span class="o">.</span><span class="n">encode</span><span class="p">()))</span>
+                <span class="n">result</span><span class="p">[</span><span class="n">key_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">)]</span> <span class="o">=</span> <span class="n">value</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_base_delete_many</span><span class="p">(</span><span class="n">expired_keys</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span></div>
+
+
+<div class="viewcode-block" id="DatabaseCache.set">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/db/index.html#django.core.cache.backends.db.DatabaseCache.set">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">DEFAULT_TIMEOUT</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_and_validate_key</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_base_set</span><span class="p">(</span><span class="s2">&quot;set&quot;</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">timeout</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseCache.add">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/db/index.html#django.core.cache.backends.db.DatabaseCache.add">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">DEFAULT_TIMEOUT</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_and_validate_key</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_base_set</span><span class="p">(</span><span class="s2">&quot;add&quot;</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">timeout</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseCache.touch">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/db/index.html#django.core.cache.backends.db.DatabaseCache.touch">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">touch</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">DEFAULT_TIMEOUT</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_and_validate_key</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_base_set</span><span class="p">(</span><span class="s2">&quot;touch&quot;</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="n">timeout</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_base_set</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mode</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">DEFAULT_TIMEOUT</span><span class="p">):</span>
+        <span class="n">timeout</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_backend_timeout</span><span class="p">(</span><span class="n">timeout</span><span class="p">)</span>
+        <span class="n">db</span> <span class="o">=</span> <span class="n">router</span><span class="o">.</span><span class="n">db_for_write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cache_model_class</span><span class="p">)</span>
+        <span class="n">connection</span> <span class="o">=</span> <span class="n">connections</span><span class="p">[</span><span class="n">db</span><span class="p">]</span>
+        <span class="n">quote_name</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span>
+        <span class="n">table</span> <span class="o">=</span> <span class="n">quote_name</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_table</span><span class="p">)</span>
+
+        <span class="k">with</span> <span class="n">connection</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;SELECT COUNT(*) FROM </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">table</span><span class="p">)</span>
+            <span class="n">num</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">now</span> <span class="o">=</span> <span class="n">tz_now</span><span class="p">()</span>
+            <span class="n">now</span> <span class="o">=</span> <span class="n">now</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">microsecond</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">timeout</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">exp</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">max</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">tz</span> <span class="o">=</span> <span class="n">timezone</span><span class="o">.</span><span class="n">utc</span> <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">USE_TZ</span> <span class="k">else</span> <span class="kc">None</span>
+                <span class="n">exp</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">fromtimestamp</span><span class="p">(</span><span class="n">timeout</span><span class="p">,</span> <span class="n">tz</span><span class="o">=</span><span class="n">tz</span><span class="p">)</span>
+            <span class="n">exp</span> <span class="o">=</span> <span class="n">exp</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">microsecond</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">num</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">_max_entries</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_cull</span><span class="p">(</span><span class="n">db</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">now</span><span class="p">,</span> <span class="n">num</span><span class="p">)</span>
+            <span class="n">pickled</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">pickle_protocol</span><span class="p">)</span>
+            <span class="c1"># The DB column is expecting a string, so make sure the value is a</span>
+            <span class="c1"># string, not bytes. Refs #19274.</span>
+            <span class="n">b64encoded</span> <span class="o">=</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64encode</span><span class="p">(</span><span class="n">pickled</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;latin1&quot;</span><span class="p">)</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="c1"># Note: typecasting for datetimes is needed by some 3rd party</span>
+                <span class="c1"># database backends. All core backends work without typecasting,</span>
+                <span class="c1"># so be careful about changes here - test suite will NOT pick</span>
+                <span class="c1"># regressions.</span>
+                <span class="k">with</span> <span class="n">transaction</span><span class="o">.</span><span class="n">atomic</span><span class="p">(</span><span class="n">using</span><span class="o">=</span><span class="n">db</span><span class="p">):</span>
+                    <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+                        <span class="s2">&quot;SELECT </span><span class="si">%s</span><span class="s2">, </span><span class="si">%s</span><span class="s2"> FROM </span><span class="si">%s</span><span class="s2"> WHERE </span><span class="si">%s</span><span class="s2"> = </span><span class="si">%%</span><span class="s2">s&quot;</span>
+                        <span class="o">%</span> <span class="p">(</span>
+                            <span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;cache_key&quot;</span><span class="p">),</span>
+                            <span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;expires&quot;</span><span class="p">),</span>
+                            <span class="n">table</span><span class="p">,</span>
+                            <span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;cache_key&quot;</span><span class="p">),</span>
+                        <span class="p">),</span>
+                        <span class="p">[</span><span class="n">key</span><span class="p">],</span>
+                    <span class="p">)</span>
+                    <span class="n">result</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+
+                    <span class="k">if</span> <span class="n">result</span><span class="p">:</span>
+                        <span class="n">current_expires</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+                        <span class="n">expression</span> <span class="o">=</span> <span class="n">models</span><span class="o">.</span><span class="n">Expression</span><span class="p">(</span>
+                            <span class="n">output_field</span><span class="o">=</span><span class="n">models</span><span class="o">.</span><span class="n">DateTimeField</span><span class="p">()</span>
+                        <span class="p">)</span>
+                        <span class="k">for</span> <span class="n">converter</span> <span class="ow">in</span> <span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">get_db_converters</span><span class="p">(</span>
+                            <span class="n">expression</span>
+                        <span class="p">)</span> <span class="o">+</span> <span class="n">expression</span><span class="o">.</span><span class="n">get_db_converters</span><span class="p">(</span><span class="n">connection</span><span class="p">):</span>
+                            <span class="n">current_expires</span> <span class="o">=</span> <span class="n">converter</span><span class="p">(</span>
+                                <span class="n">current_expires</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">connection</span>
+                            <span class="p">)</span>
+
+                    <span class="n">exp</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">adapt_datetimefield_value</span><span class="p">(</span><span class="n">exp</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">result</span> <span class="ow">and</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;touch&quot;</span><span class="p">:</span>
+                        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+                            <span class="s2">&quot;UPDATE </span><span class="si">%s</span><span class="s2"> SET </span><span class="si">%s</span><span class="s2"> = </span><span class="si">%%</span><span class="s2">s WHERE </span><span class="si">%s</span><span class="s2"> = </span><span class="si">%%</span><span class="s2">s&quot;</span>
+                            <span class="o">%</span> <span class="p">(</span><span class="n">table</span><span class="p">,</span> <span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;expires&quot;</span><span class="p">),</span> <span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;cache_key&quot;</span><span class="p">)),</span>
+                            <span class="p">[</span><span class="n">exp</span><span class="p">,</span> <span class="n">key</span><span class="p">],</span>
+                        <span class="p">)</span>
+                    <span class="k">elif</span> <span class="n">result</span> <span class="ow">and</span> <span class="p">(</span>
+                        <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;set&quot;</span> <span class="ow">or</span> <span class="p">(</span><span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;add&quot;</span> <span class="ow">and</span> <span class="n">current_expires</span> <span class="o">&lt;</span> <span class="n">now</span><span class="p">)</span>
+                    <span class="p">):</span>
+                        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+                            <span class="s2">&quot;UPDATE </span><span class="si">%s</span><span class="s2"> SET </span><span class="si">%s</span><span class="s2"> = </span><span class="si">%%</span><span class="s2">s, </span><span class="si">%s</span><span class="s2"> = </span><span class="si">%%</span><span class="s2">s WHERE </span><span class="si">%s</span><span class="s2"> = </span><span class="si">%%</span><span class="s2">s&quot;</span>
+                            <span class="o">%</span> <span class="p">(</span>
+                                <span class="n">table</span><span class="p">,</span>
+                                <span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;value&quot;</span><span class="p">),</span>
+                                <span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;expires&quot;</span><span class="p">),</span>
+                                <span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;cache_key&quot;</span><span class="p">),</span>
+                            <span class="p">),</span>
+                            <span class="p">[</span><span class="n">b64encoded</span><span class="p">,</span> <span class="n">exp</span><span class="p">,</span> <span class="n">key</span><span class="p">],</span>
+                        <span class="p">)</span>
+                    <span class="k">elif</span> <span class="n">mode</span> <span class="o">!=</span> <span class="s2">&quot;touch&quot;</span><span class="p">:</span>
+                        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+                            <span class="s2">&quot;INSERT INTO </span><span class="si">%s</span><span class="s2"> (</span><span class="si">%s</span><span class="s2">, </span><span class="si">%s</span><span class="s2">, </span><span class="si">%s</span><span class="s2">) VALUES (</span><span class="si">%%</span><span class="s2">s, </span><span class="si">%%</span><span class="s2">s, </span><span class="si">%%</span><span class="s2">s)&quot;</span>
+                            <span class="o">%</span> <span class="p">(</span>
+                                <span class="n">table</span><span class="p">,</span>
+                                <span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;cache_key&quot;</span><span class="p">),</span>
+                                <span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;value&quot;</span><span class="p">),</span>
+                                <span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;expires&quot;</span><span class="p">),</span>
+                            <span class="p">),</span>
+                            <span class="p">[</span><span class="n">key</span><span class="p">,</span> <span class="n">b64encoded</span><span class="p">,</span> <span class="n">exp</span><span class="p">],</span>
+                        <span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="k">return</span> <span class="kc">False</span>  <span class="c1"># touch failed.</span>
+            <span class="k">except</span> <span class="n">DatabaseError</span><span class="p">:</span>
+                <span class="c1"># To be threadsafe, updates/inserts are allowed to fail silently</span>
+                <span class="k">return</span> <span class="kc">False</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">True</span>
+
+<div class="viewcode-block" id="DatabaseCache.delete">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/db/index.html#django.core.cache.backends.db.DatabaseCache.delete">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">delete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_and_validate_key</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_base_delete_many</span><span class="p">([</span><span class="n">key</span><span class="p">])</span></div>
+
+
+<div class="viewcode-block" id="DatabaseCache.delete_many">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/db/index.html#django.core.cache.backends.db.DatabaseCache.delete_many">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">delete_many</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">keys</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="n">keys</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">make_and_validate_key</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_base_delete_many</span><span class="p">(</span><span class="n">keys</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_base_delete_many</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">keys</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">keys</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="n">db</span> <span class="o">=</span> <span class="n">router</span><span class="o">.</span><span class="n">db_for_write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cache_model_class</span><span class="p">)</span>
+        <span class="n">connection</span> <span class="o">=</span> <span class="n">connections</span><span class="p">[</span><span class="n">db</span><span class="p">]</span>
+        <span class="n">quote_name</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span>
+        <span class="n">table</span> <span class="o">=</span> <span class="n">quote_name</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_table</span><span class="p">)</span>
+
+        <span class="k">with</span> <span class="n">connection</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+                <span class="s2">&quot;DELETE FROM </span><span class="si">%s</span><span class="s2"> WHERE </span><span class="si">%s</span><span class="s2"> IN (</span><span class="si">%s</span><span class="s2">)&quot;</span>
+                <span class="o">%</span> <span class="p">(</span>
+                    <span class="n">table</span><span class="p">,</span>
+                    <span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;cache_key&quot;</span><span class="p">),</span>
+                    <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">keys</span><span class="p">)),</span>
+                <span class="p">),</span>
+                <span class="n">keys</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">cursor</span><span class="o">.</span><span class="n">rowcount</span><span class="p">)</span>
+
+<div class="viewcode-block" id="DatabaseCache.has_key">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/db/index.html#django.core.cache.backends.db.DatabaseCache.has_key">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">has_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_and_validate_key</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">)</span>
+
+        <span class="n">db</span> <span class="o">=</span> <span class="n">router</span><span class="o">.</span><span class="n">db_for_read</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cache_model_class</span><span class="p">)</span>
+        <span class="n">connection</span> <span class="o">=</span> <span class="n">connections</span><span class="p">[</span><span class="n">db</span><span class="p">]</span>
+        <span class="n">quote_name</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span>
+
+        <span class="n">now</span> <span class="o">=</span> <span class="n">tz_now</span><span class="p">()</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">microsecond</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">tzinfo</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+
+        <span class="k">with</span> <span class="n">connection</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+                <span class="s2">&quot;SELECT </span><span class="si">%s</span><span class="s2"> FROM </span><span class="si">%s</span><span class="s2"> WHERE </span><span class="si">%s</span><span class="s2"> = </span><span class="si">%%</span><span class="s2">s and </span><span class="si">%s</span><span class="s2"> &gt; </span><span class="si">%%</span><span class="s2">s&quot;</span>
+                <span class="o">%</span> <span class="p">(</span>
+                    <span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;cache_key&quot;</span><span class="p">),</span>
+                    <span class="n">quote_name</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_table</span><span class="p">),</span>
+                    <span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;cache_key&quot;</span><span class="p">),</span>
+                    <span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;expires&quot;</span><span class="p">),</span>
+                <span class="p">),</span>
+                <span class="p">[</span><span class="n">key</span><span class="p">,</span> <span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">adapt_datetimefield_value</span><span class="p">(</span><span class="n">now</span><span class="p">)],</span>
+            <span class="p">)</span>
+            <span class="k">return</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_cull</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">db</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">now</span><span class="p">,</span> <span class="n">num</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cull_frequency</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">connection</span> <span class="o">=</span> <span class="n">connections</span><span class="p">[</span><span class="n">db</span><span class="p">]</span>
+            <span class="n">table</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_table</span><span class="p">)</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+                <span class="s2">&quot;DELETE FROM </span><span class="si">%s</span><span class="s2"> WHERE </span><span class="si">%s</span><span class="s2"> &lt; </span><span class="si">%%</span><span class="s2">s&quot;</span>
+                <span class="o">%</span> <span class="p">(</span>
+                    <span class="n">table</span><span class="p">,</span>
+                    <span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;expires&quot;</span><span class="p">),</span>
+                <span class="p">),</span>
+                <span class="p">[</span><span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">adapt_datetimefield_value</span><span class="p">(</span><span class="n">now</span><span class="p">)],</span>
+            <span class="p">)</span>
+            <span class="n">deleted_count</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">rowcount</span>
+            <span class="n">remaining_num</span> <span class="o">=</span> <span class="n">num</span> <span class="o">-</span> <span class="n">deleted_count</span>
+            <span class="k">if</span> <span class="n">remaining_num</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">_max_entries</span><span class="p">:</span>
+                <span class="n">cull_num</span> <span class="o">=</span> <span class="n">remaining_num</span> <span class="o">//</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cull_frequency</span>
+                <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+                    <span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">cache_key_culling_sql</span><span class="p">()</span> <span class="o">%</span> <span class="n">table</span><span class="p">,</span> <span class="p">[</span><span class="n">cull_num</span><span class="p">]</span>
+                <span class="p">)</span>
+                <span class="n">last_cache_key</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">last_cache_key</span><span class="p">:</span>
+                    <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+                        <span class="s2">&quot;DELETE FROM </span><span class="si">%s</span><span class="s2"> WHERE </span><span class="si">%s</span><span class="s2"> &lt; </span><span class="si">%%</span><span class="s2">s&quot;</span>
+                        <span class="o">%</span> <span class="p">(</span>
+                            <span class="n">table</span><span class="p">,</span>
+                            <span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;cache_key&quot;</span><span class="p">),</span>
+                        <span class="p">),</span>
+                        <span class="p">[</span><span class="n">last_cache_key</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span>
+                    <span class="p">)</span>
+
+<div class="viewcode-block" id="DatabaseCache.clear">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/cache/backends/db/index.html#django.core.cache.backends.db.DatabaseCache.clear">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clear</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">db</span> <span class="o">=</span> <span class="n">router</span><span class="o">.</span><span class="n">db_for_write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cache_model_class</span><span class="p">)</span>
+        <span class="n">connection</span> <span class="o">=</span> <span class="n">connections</span><span class="p">[</span><span class="n">db</span><span class="p">]</span>
+        <span class="n">table</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_table</span><span class="p">)</span>
+        <span class="k">with</span> <span class="n">connection</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;DELETE FROM </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">table</span><span class="p">)</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

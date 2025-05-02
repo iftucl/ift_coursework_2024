@@ -1,0 +1,236 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.core.files.locks &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../django.html">django</a></li>
+      <li class="breadcrumb-item active">django.core.files.locks</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.core.files.locks</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Portable file locking utilities.</span>
+
+<span class="sd">Based partially on an example by Jonathan Feignberg in the Python</span>
+<span class="sd">Cookbook [1] (licensed under the Python Software License) and a ctypes port by</span>
+<span class="sd">Anatoly Techtonik for Roundup [2] (license [3]).</span>
+
+<span class="sd">[1] https://code.activestate.com/recipes/65203/</span>
+<span class="sd">[2] https://sourceforge.net/p/roundup/code/ci/default/tree/roundup/backends/portalocker.py  # NOQA</span>
+<span class="sd">[3] https://sourceforge.net/p/roundup/code/ci/default/tree/COPYING.txt</span>
+
+<span class="sd">Example Usage::</span>
+
+<span class="sd">    &gt;&gt;&gt; from django.core.files import locks</span>
+<span class="sd">    &gt;&gt;&gt; with open(&#39;./file&#39;, &#39;wb&#39;) as f:</span>
+<span class="sd">    ...     locks.lock(f, locks.LOCK_EX)</span>
+<span class="sd">    ...     f.write(&#39;Django&#39;)</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;LOCK_EX&quot;</span><span class="p">,</span> <span class="s2">&quot;LOCK_SH&quot;</span><span class="p">,</span> <span class="s2">&quot;LOCK_NB&quot;</span><span class="p">,</span> <span class="s2">&quot;lock&quot;</span><span class="p">,</span> <span class="s2">&quot;unlock&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_fd</span><span class="p">(</span><span class="n">f</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get a filedescriptor from something which could be a file or an fd.&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">f</span><span class="o">.</span><span class="n">fileno</span><span class="p">()</span> <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="s2">&quot;fileno&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="n">f</span>
+
+
+<span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;nt&quot;</span><span class="p">:</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">msvcrt</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">ctypes</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+        <span class="n">POINTER</span><span class="p">,</span>
+        <span class="n">Structure</span><span class="p">,</span>
+        <span class="n">Union</span><span class="p">,</span>
+        <span class="n">WinDLL</span><span class="p">,</span>
+        <span class="n">byref</span><span class="p">,</span>
+        <span class="n">c_int64</span><span class="p">,</span>
+        <span class="n">c_ulong</span><span class="p">,</span>
+        <span class="n">c_void_p</span><span class="p">,</span>
+        <span class="n">sizeof</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">ctypes.wintypes</span><span class="w"> </span><span class="kn">import</span> <span class="n">BOOL</span><span class="p">,</span> <span class="n">DWORD</span><span class="p">,</span> <span class="n">HANDLE</span>
+
+<div class="viewcode-block" id="LOCK_SH">
+<a class="viewcode-back" href="../../../../autoapi/django/core/files/locks/index.html#django.core.files.locks.LOCK_SH">[docs]</a>
+    <span class="n">LOCK_SH</span> <span class="o">=</span> <span class="mi">0</span>  <span class="c1"># the default</span></div>
+
+    <span class="n">LOCK_NB</span> <span class="o">=</span> <span class="mh">0x1</span>  <span class="c1"># LOCKFILE_FAIL_IMMEDIATELY</span>
+    <span class="n">LOCK_EX</span> <span class="o">=</span> <span class="mh">0x2</span>  <span class="c1"># LOCKFILE_EXCLUSIVE_LOCK</span>
+
+    <span class="c1"># --- Adapted from the pyserial project ---</span>
+    <span class="c1"># detect size of ULONG_PTR</span>
+    <span class="k">if</span> <span class="n">sizeof</span><span class="p">(</span><span class="n">c_ulong</span><span class="p">)</span> <span class="o">!=</span> <span class="n">sizeof</span><span class="p">(</span><span class="n">c_void_p</span><span class="p">):</span>
+        <span class="n">ULONG_PTR</span> <span class="o">=</span> <span class="n">c_int64</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">ULONG_PTR</span> <span class="o">=</span> <span class="n">c_ulong</span>
+    <span class="n">PVOID</span> <span class="o">=</span> <span class="n">c_void_p</span>
+
+    <span class="c1"># --- Union inside Structure by stackoverflow:3480240 ---</span>
+    <span class="k">class</span><span class="w"> </span><span class="nc">_OFFSET</span><span class="p">(</span><span class="n">Structure</span><span class="p">):</span>
+        <span class="n">_fields_</span> <span class="o">=</span> <span class="p">[(</span><span class="s2">&quot;Offset&quot;</span><span class="p">,</span> <span class="n">DWORD</span><span class="p">),</span> <span class="p">(</span><span class="s2">&quot;OffsetHigh&quot;</span><span class="p">,</span> <span class="n">DWORD</span><span class="p">)]</span>
+
+    <span class="k">class</span><span class="w"> </span><span class="nc">_OFFSET_UNION</span><span class="p">(</span><span class="n">Union</span><span class="p">):</span>
+        <span class="n">_anonymous_</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;_offset&quot;</span><span class="p">]</span>
+        <span class="n">_fields_</span> <span class="o">=</span> <span class="p">[(</span><span class="s2">&quot;_offset&quot;</span><span class="p">,</span> <span class="n">_OFFSET</span><span class="p">),</span> <span class="p">(</span><span class="s2">&quot;Pointer&quot;</span><span class="p">,</span> <span class="n">PVOID</span><span class="p">)]</span>
+
+    <span class="k">class</span><span class="w"> </span><span class="nc">OVERLAPPED</span><span class="p">(</span><span class="n">Structure</span><span class="p">):</span>
+        <span class="n">_anonymous_</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;_offset_union&quot;</span><span class="p">]</span>
+        <span class="n">_fields_</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="p">(</span><span class="s2">&quot;Internal&quot;</span><span class="p">,</span> <span class="n">ULONG_PTR</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;InternalHigh&quot;</span><span class="p">,</span> <span class="n">ULONG_PTR</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;_offset_union&quot;</span><span class="p">,</span> <span class="n">_OFFSET_UNION</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;hEvent&quot;</span><span class="p">,</span> <span class="n">HANDLE</span><span class="p">),</span>
+        <span class="p">]</span>
+
+    <span class="n">LPOVERLAPPED</span> <span class="o">=</span> <span class="n">POINTER</span><span class="p">(</span><span class="n">OVERLAPPED</span><span class="p">)</span>
+
+    <span class="c1"># --- Define function prototypes for extra safety ---</span>
+    <span class="n">kernel32</span> <span class="o">=</span> <span class="n">WinDLL</span><span class="p">(</span><span class="s2">&quot;kernel32&quot;</span><span class="p">)</span>
+    <span class="n">LockFileEx</span> <span class="o">=</span> <span class="n">kernel32</span><span class="o">.</span><span class="n">LockFileEx</span>
+    <span class="n">LockFileEx</span><span class="o">.</span><span class="n">restype</span> <span class="o">=</span> <span class="n">BOOL</span>
+    <span class="n">LockFileEx</span><span class="o">.</span><span class="n">argtypes</span> <span class="o">=</span> <span class="p">[</span><span class="n">HANDLE</span><span class="p">,</span> <span class="n">DWORD</span><span class="p">,</span> <span class="n">DWORD</span><span class="p">,</span> <span class="n">DWORD</span><span class="p">,</span> <span class="n">DWORD</span><span class="p">,</span> <span class="n">LPOVERLAPPED</span><span class="p">]</span>
+    <span class="n">UnlockFileEx</span> <span class="o">=</span> <span class="n">kernel32</span><span class="o">.</span><span class="n">UnlockFileEx</span>
+    <span class="n">UnlockFileEx</span><span class="o">.</span><span class="n">restype</span> <span class="o">=</span> <span class="n">BOOL</span>
+    <span class="n">UnlockFileEx</span><span class="o">.</span><span class="n">argtypes</span> <span class="o">=</span> <span class="p">[</span><span class="n">HANDLE</span><span class="p">,</span> <span class="n">DWORD</span><span class="p">,</span> <span class="n">DWORD</span><span class="p">,</span> <span class="n">DWORD</span><span class="p">,</span> <span class="n">LPOVERLAPPED</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">lock</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">flags</span><span class="p">):</span>
+        <span class="n">hfile</span> <span class="o">=</span> <span class="n">msvcrt</span><span class="o">.</span><span class="n">get_osfhandle</span><span class="p">(</span><span class="n">_fd</span><span class="p">(</span><span class="n">f</span><span class="p">))</span>
+        <span class="n">overlapped</span> <span class="o">=</span> <span class="n">OVERLAPPED</span><span class="p">()</span>
+        <span class="n">ret</span> <span class="o">=</span> <span class="n">LockFileEx</span><span class="p">(</span><span class="n">hfile</span><span class="p">,</span> <span class="n">flags</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mh">0xFFFF0000</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">overlapped</span><span class="p">))</span>
+        <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">ret</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">unlock</span><span class="p">(</span><span class="n">f</span><span class="p">):</span>
+        <span class="n">hfile</span> <span class="o">=</span> <span class="n">msvcrt</span><span class="o">.</span><span class="n">get_osfhandle</span><span class="p">(</span><span class="n">_fd</span><span class="p">(</span><span class="n">f</span><span class="p">))</span>
+        <span class="n">overlapped</span> <span class="o">=</span> <span class="n">OVERLAPPED</span><span class="p">()</span>
+        <span class="n">ret</span> <span class="o">=</span> <span class="n">UnlockFileEx</span><span class="p">(</span><span class="n">hfile</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mh">0xFFFF0000</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">overlapped</span><span class="p">))</span>
+        <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">ret</span><span class="p">)</span>
+
+<span class="k">else</span><span class="p">:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">fcntl</span>
+
+        <span class="n">LOCK_SH</span> <span class="o">=</span> <span class="n">fcntl</span><span class="o">.</span><span class="n">LOCK_SH</span>  <span class="c1"># shared lock</span>
+        <span class="n">LOCK_NB</span> <span class="o">=</span> <span class="n">fcntl</span><span class="o">.</span><span class="n">LOCK_NB</span>  <span class="c1"># non-blocking</span>
+        <span class="n">LOCK_EX</span> <span class="o">=</span> <span class="n">fcntl</span><span class="o">.</span><span class="n">LOCK_EX</span>
+    <span class="k">except</span> <span class="p">(</span><span class="ne">ImportError</span><span class="p">,</span> <span class="ne">AttributeError</span><span class="p">):</span>
+        <span class="c1"># File locking is not supported.</span>
+        <span class="n">LOCK_EX</span> <span class="o">=</span> <span class="n">LOCK_SH</span> <span class="o">=</span> <span class="n">LOCK_NB</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="c1"># Dummy functions that don&#39;t do anything.</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">lock</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">flags</span><span class="p">):</span>
+            <span class="c1"># File is not locked</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">unlock</span><span class="p">(</span><span class="n">f</span><span class="p">):</span>
+            <span class="c1"># File is unlocked</span>
+            <span class="k">return</span> <span class="kc">True</span>
+
+    <span class="k">else</span><span class="p">:</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">lock</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">flags</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">fcntl</span><span class="o">.</span><span class="n">flock</span><span class="p">(</span><span class="n">_fd</span><span class="p">(</span><span class="n">f</span><span class="p">),</span> <span class="n">flags</span><span class="p">)</span>
+                <span class="k">return</span> <span class="kc">True</span>
+            <span class="k">except</span> <span class="ne">BlockingIOError</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">unlock</span><span class="p">(</span><span class="n">f</span><span class="p">):</span>
+            <span class="n">fcntl</span><span class="o">.</span><span class="n">flock</span><span class="p">(</span><span class="n">_fd</span><span class="p">(</span><span class="n">f</span><span class="p">),</span> <span class="n">fcntl</span><span class="o">.</span><span class="n">LOCK_UN</span><span class="p">)</span>
+            <span class="k">return</span> <span class="kc">True</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,397 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.template.engine &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../template.html">django.template</a></li>
+      <li class="breadcrumb-item active">django.template.engine</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.template.engine</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">functools</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImproperlyConfigured</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">cached_property</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.module_loading</span><span class="w"> </span><span class="kn">import</span> <span class="n">import_string</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">Template</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.context</span><span class="w"> </span><span class="kn">import</span> <span class="n">Context</span><span class="p">,</span> <span class="n">_builtin_context_processors</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">TemplateDoesNotExist</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.library</span><span class="w"> </span><span class="kn">import</span> <span class="n">import_library</span>
+
+
+<div class="viewcode-block" id="Engine">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Engine</span><span class="p">:</span>
+<div class="viewcode-block" id="Engine.default_builtins">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.default_builtins">[docs]</a>
+    <span class="n">default_builtins</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s2">&quot;django.template.defaulttags&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;django.template.defaultfilters&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;django.template.loader_tags&quot;</span><span class="p">,</span>
+    <span class="p">]</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">dirs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">app_dirs</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">context_processors</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">debug</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">loaders</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">string_if_invalid</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+        <span class="n">file_charset</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">,</span>
+        <span class="n">libraries</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">builtins</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">autoescape</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="k">if</span> <span class="n">dirs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">dirs</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="n">context_processors</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">context_processors</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="n">loaders</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">loaders</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;django.template.loaders.filesystem.Loader&quot;</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">app_dirs</span><span class="p">:</span>
+                <span class="n">loaders</span> <span class="o">+=</span> <span class="p">[</span><span class="s2">&quot;django.template.loaders.app_directories.Loader&quot;</span><span class="p">]</span>
+            <span class="n">loaders</span> <span class="o">=</span> <span class="p">[(</span><span class="s2">&quot;django.template.loaders.cached.Loader&quot;</span><span class="p">,</span> <span class="n">loaders</span><span class="p">)]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">app_dirs</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+                    <span class="s2">&quot;app_dirs must not be set when loaders is defined.&quot;</span>
+                <span class="p">)</span>
+        <span class="k">if</span> <span class="n">libraries</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">libraries</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">if</span> <span class="n">builtins</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">builtins</span> <span class="o">=</span> <span class="p">[]</span>
+
+<div class="viewcode-block" id="Engine.dirs">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.dirs">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dirs</span> <span class="o">=</span> <span class="n">dirs</span></div>
+
+<div class="viewcode-block" id="Engine.app_dirs">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.app_dirs">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">app_dirs</span> <span class="o">=</span> <span class="n">app_dirs</span></div>
+
+<div class="viewcode-block" id="Engine.autoescape">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.autoescape">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">autoescape</span> <span class="o">=</span> <span class="n">autoescape</span></div>
+
+<div class="viewcode-block" id="Engine.context_processors">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.context_processors">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">context_processors</span> <span class="o">=</span> <span class="n">context_processors</span></div>
+
+<div class="viewcode-block" id="Engine.debug">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.debug">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">debug</span> <span class="o">=</span> <span class="n">debug</span></div>
+
+<div class="viewcode-block" id="Engine.loaders">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.loaders">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">loaders</span> <span class="o">=</span> <span class="n">loaders</span></div>
+
+<div class="viewcode-block" id="Engine.string_if_invalid">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.string_if_invalid">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">string_if_invalid</span> <span class="o">=</span> <span class="n">string_if_invalid</span></div>
+
+<div class="viewcode-block" id="Engine.file_charset">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.file_charset">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">file_charset</span> <span class="o">=</span> <span class="n">file_charset</span></div>
+
+<div class="viewcode-block" id="Engine.libraries">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.libraries">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">libraries</span> <span class="o">=</span> <span class="n">libraries</span></div>
+
+<div class="viewcode-block" id="Engine.template_libraries">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.template_libraries">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">template_libraries</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_template_libraries</span><span class="p">(</span><span class="n">libraries</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="Engine.builtins">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.builtins">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">builtins</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">default_builtins</span> <span class="o">+</span> <span class="n">builtins</span></div>
+
+<div class="viewcode-block" id="Engine.template_builtins">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.template_builtins">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">template_builtins</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_template_builtins</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">builtins</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="s2">&quot;&lt;</span><span class="si">%s</span><span class="s2">:</span><span class="si">%s</span><span class="s2"> app_dirs=</span><span class="si">%s%s</span><span class="s2"> debug=</span><span class="si">%s</span><span class="s2"> loaders=</span><span class="si">%s</span><span class="s2"> string_if_invalid=</span><span class="si">%s</span><span class="s2"> &quot;</span>
+            <span class="s2">&quot;file_charset=</span><span class="si">%s%s%s</span><span class="s2"> autoescape=</span><span class="si">%s</span><span class="s2">&gt;&quot;</span>
+        <span class="p">)</span> <span class="o">%</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__qualname__</span><span class="p">,</span>
+            <span class="s2">&quot;&quot;</span> <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">dirs</span> <span class="k">else</span> <span class="s2">&quot; dirs=</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="nb">repr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dirs</span><span class="p">),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">app_dirs</span><span class="p">,</span>
+            <span class="s2">&quot;&quot;</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">context_processors</span>
+            <span class="k">else</span> <span class="s2">&quot; context_processors=</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="nb">repr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">context_processors</span><span class="p">),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">debug</span><span class="p">,</span>
+            <span class="nb">repr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">loaders</span><span class="p">),</span>
+            <span class="nb">repr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">string_if_invalid</span><span class="p">),</span>
+            <span class="nb">repr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">file_charset</span><span class="p">),</span>
+            <span class="s2">&quot;&quot;</span> <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">libraries</span> <span class="k">else</span> <span class="s2">&quot; libraries=</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="nb">repr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">libraries</span><span class="p">),</span>
+            <span class="s2">&quot;&quot;</span> <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">builtins</span> <span class="k">else</span> <span class="s2">&quot; builtins=</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="nb">repr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">builtins</span><span class="p">),</span>
+            <span class="nb">repr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">autoescape</span><span class="p">),</span>
+        <span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="nd">@functools</span><span class="o">.</span><span class="n">lru_cache</span>
+<div class="viewcode-block" id="Engine.get_default">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.get_default">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_default</span><span class="p">():</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the first DjangoTemplates backend that&#39;s configured, or raise</span>
+<span class="sd">        ImproperlyConfigured if none are configured.</span>
+
+<span class="sd">        This is required for preserving historical APIs that rely on a</span>
+<span class="sd">        globally available, implicitly configured engine such as:</span>
+
+<span class="sd">        &gt;&gt;&gt; from django.template import Context, Template</span>
+<span class="sd">        &gt;&gt;&gt; template = Template(&quot;Hello {{ name }}!&quot;)</span>
+<span class="sd">        &gt;&gt;&gt; context = Context({&#39;name&#39;: &quot;world&quot;})</span>
+<span class="sd">        &gt;&gt;&gt; template.render(context)</span>
+<span class="sd">        &#39;Hello world!&#39;</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Since Engine is imported in django.template and since</span>
+        <span class="c1"># DjangoTemplates is a wrapper around this Engine class,</span>
+        <span class="c1"># local imports are required to avoid import loops.</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">django.template</span><span class="w"> </span><span class="kn">import</span> <span class="n">engines</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">django.template.backends.django</span><span class="w"> </span><span class="kn">import</span> <span class="n">DjangoTemplates</span>
+
+        <span class="k">for</span> <span class="n">engine</span> <span class="ow">in</span> <span class="n">engines</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">engine</span><span class="p">,</span> <span class="n">DjangoTemplates</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">engine</span><span class="o">.</span><span class="n">engine</span>
+        <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span><span class="s2">&quot;No DjangoTemplates backend is configured.&quot;</span><span class="p">)</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="Engine.template_context_processors">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.template_context_processors">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">template_context_processors</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">context_processors</span> <span class="o">=</span> <span class="n">_builtin_context_processors</span>
+        <span class="n">context_processors</span> <span class="o">+=</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">context_processors</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">import_string</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">context_processors</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Engine.get_template_builtins">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.get_template_builtins">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_template_builtins</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">builtins</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">import_library</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">builtins</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="Engine.get_template_libraries">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.get_template_libraries">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_template_libraries</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">libraries</span><span class="p">):</span>
+        <span class="n">loaded</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">libraries</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">loaded</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">import_library</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">loaded</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="Engine.template_loaders">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.template_loaders">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">template_loaders</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_template_loaders</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">loaders</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Engine.get_template_loaders">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.get_template_loaders">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_template_loaders</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">template_loaders</span><span class="p">):</span>
+        <span class="n">loaders</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">template_loader</span> <span class="ow">in</span> <span class="n">template_loaders</span><span class="p">:</span>
+            <span class="n">loader</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">find_template_loader</span><span class="p">(</span><span class="n">template_loader</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">loader</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">loaders</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">loader</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">loaders</span></div>
+
+
+<div class="viewcode-block" id="Engine.find_template_loader">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.find_template_loader">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">find_template_loader</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">loader</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">loader</span><span class="p">,</span> <span class="p">(</span><span class="nb">tuple</span><span class="p">,</span> <span class="nb">list</span><span class="p">)):</span>
+            <span class="n">loader</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span> <span class="o">=</span> <span class="n">loader</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">args</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">loader</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">loader_class</span> <span class="o">=</span> <span class="n">import_string</span><span class="p">(</span><span class="n">loader</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">loader_class</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+                <span class="s2">&quot;Invalid value in template loaders configuration: </span><span class="si">%r</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">loader</span>
+            <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Engine.find_template">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.find_template">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">find_template</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">dirs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">skip</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="n">tried</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">loader</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">template_loaders</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">template</span> <span class="o">=</span> <span class="n">loader</span><span class="o">.</span><span class="n">get_template</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">skip</span><span class="o">=</span><span class="n">skip</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">template</span><span class="p">,</span> <span class="n">template</span><span class="o">.</span><span class="n">origin</span>
+            <span class="k">except</span> <span class="n">TemplateDoesNotExist</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="n">tried</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">tried</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">TemplateDoesNotExist</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">tried</span><span class="o">=</span><span class="n">tried</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Engine.from_string">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.from_string">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">from_string</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">template_code</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a compiled Template object for the given template code,</span>
+<span class="sd">        handling template inheritance recursively.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">Template</span><span class="p">(</span><span class="n">template_code</span><span class="p">,</span> <span class="n">engine</span><span class="o">=</span><span class="bp">self</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Engine.get_template">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.get_template">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_template</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">template_name</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a compiled Template object for the given template name,</span>
+<span class="sd">        handling template inheritance recursively.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">template</span><span class="p">,</span> <span class="n">origin</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">find_template</span><span class="p">(</span><span class="n">template_name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">template</span><span class="p">,</span> <span class="s2">&quot;render&quot;</span><span class="p">):</span>
+            <span class="c1"># template needs to be compiled</span>
+            <span class="n">template</span> <span class="o">=</span> <span class="n">Template</span><span class="p">(</span><span class="n">template</span><span class="p">,</span> <span class="n">origin</span><span class="p">,</span> <span class="n">template_name</span><span class="p">,</span> <span class="n">engine</span><span class="o">=</span><span class="bp">self</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">template</span></div>
+
+
+<div class="viewcode-block" id="Engine.render_to_string">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.render_to_string">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">render_to_string</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">template_name</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Render the template specified by template_name with the given context.</span>
+<span class="sd">        For use in Django&#39;s test suite.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">template_name</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="n">t</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">select_template</span><span class="p">(</span><span class="n">template_name</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">t</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_template</span><span class="p">(</span><span class="n">template_name</span><span class="p">)</span>
+        <span class="c1"># Django &lt; 1.8 accepted a Context in `context` even though that&#39;s</span>
+        <span class="c1"># unintended. Preserve this ability but don&#39;t rewrap `context`.</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">context</span><span class="p">,</span> <span class="n">Context</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">t</span><span class="o">.</span><span class="n">render</span><span class="p">(</span><span class="n">context</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">t</span><span class="o">.</span><span class="n">render</span><span class="p">(</span><span class="n">Context</span><span class="p">(</span><span class="n">context</span><span class="p">,</span> <span class="n">autoescape</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">autoescape</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="Engine.select_template">
+<a class="viewcode-back" href="../../../autoapi/django/template/engine/index.html#django.template.engine.Engine.select_template">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">select_template</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">template_name_list</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Given a list of template names, return the first that can be loaded.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">template_name_list</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TemplateDoesNotExist</span><span class="p">(</span><span class="s2">&quot;No template names provided&quot;</span><span class="p">)</span>
+        <span class="n">not_found</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">template_name</span> <span class="ow">in</span> <span class="n">template_name_list</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_template</span><span class="p">(</span><span class="n">template_name</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">TemplateDoesNotExist</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">exc</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">not_found</span><span class="p">:</span>
+                    <span class="n">not_found</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">exc</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                <span class="k">continue</span>
+        <span class="c1"># If we get here, none of the templates could be loaded</span>
+        <span class="k">raise</span> <span class="n">TemplateDoesNotExist</span><span class="p">(</span><span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">not_found</span><span class="p">))</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

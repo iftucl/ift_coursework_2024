@@ -1,0 +1,556 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.db.backends.sqlite3.base &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../../../db.html">django.db</a></li>
+      <li class="breadcrumb-item active">django.db.backends.sqlite3.base</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.db.backends.sqlite3.base</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">SQLite backend for the sqlite3 module in the standard library.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">decimal</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Mapping</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">itertools</span><span class="w"> </span><span class="kn">import</span> <span class="n">chain</span><span class="p">,</span> <span class="n">tee</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sqlite3</span><span class="w"> </span><span class="kn">import</span> <span class="n">dbapi2</span> <span class="k">as</span> <span class="n">Database</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImproperlyConfigured</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">IntegrityError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.base.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseDatabaseWrapper</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.asyncio</span><span class="w"> </span><span class="kn">import</span> <span class="n">async_unsafe</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.dateparse</span><span class="w"> </span><span class="kn">import</span> <span class="n">parse_date</span><span class="p">,</span> <span class="n">parse_datetime</span><span class="p">,</span> <span class="n">parse_time</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.regex_helper</span><span class="w"> </span><span class="kn">import</span> <span class="n">_lazy_re_compile</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">._functions</span><span class="w"> </span><span class="kn">import</span> <span class="n">register</span> <span class="k">as</span> <span class="n">register_functions</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.client</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseClient</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.creation</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseCreation</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.features</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseFeatures</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.introspection</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseIntrospection</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.operations</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseOperations</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.schema</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseSchemaEditor</span>
+
+
+<div class="viewcode-block" id="decoder">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.decoder">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">decoder</span><span class="p">(</span><span class="n">conv_func</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert bytestrings from Python&#39;s sqlite3 interface to a regular string.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="k">lambda</span> <span class="n">s</span><span class="p">:</span> <span class="n">conv_func</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">decode</span><span class="p">())</span></div>
+
+
+
+<div class="viewcode-block" id="adapt_date">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.adapt_date">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">adapt_date</span><span class="p">(</span><span class="n">val</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">val</span><span class="o">.</span><span class="n">isoformat</span><span class="p">()</span></div>
+
+
+
+<div class="viewcode-block" id="adapt_datetime">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.adapt_datetime">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">adapt_datetime</span><span class="p">(</span><span class="n">val</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">val</span><span class="o">.</span><span class="n">isoformat</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">)</span></div>
+
+
+
+<span class="n">Database</span><span class="o">.</span><span class="n">register_converter</span><span class="p">(</span><span class="s2">&quot;bool&quot;</span><span class="p">,</span> <span class="sa">b</span><span class="s2">&quot;1&quot;</span><span class="o">.</span><span class="fm">__eq__</span><span class="p">)</span>
+<span class="n">Database</span><span class="o">.</span><span class="n">register_converter</span><span class="p">(</span><span class="s2">&quot;date&quot;</span><span class="p">,</span> <span class="n">decoder</span><span class="p">(</span><span class="n">parse_date</span><span class="p">))</span>
+<span class="n">Database</span><span class="o">.</span><span class="n">register_converter</span><span class="p">(</span><span class="s2">&quot;time&quot;</span><span class="p">,</span> <span class="n">decoder</span><span class="p">(</span><span class="n">parse_time</span><span class="p">))</span>
+<span class="n">Database</span><span class="o">.</span><span class="n">register_converter</span><span class="p">(</span><span class="s2">&quot;datetime&quot;</span><span class="p">,</span> <span class="n">decoder</span><span class="p">(</span><span class="n">parse_datetime</span><span class="p">))</span>
+<span class="n">Database</span><span class="o">.</span><span class="n">register_converter</span><span class="p">(</span><span class="s2">&quot;timestamp&quot;</span><span class="p">,</span> <span class="n">decoder</span><span class="p">(</span><span class="n">parse_datetime</span><span class="p">))</span>
+
+<span class="n">Database</span><span class="o">.</span><span class="n">register_adapter</span><span class="p">(</span><span class="n">decimal</span><span class="o">.</span><span class="n">Decimal</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span>
+<span class="n">Database</span><span class="o">.</span><span class="n">register_adapter</span><span class="p">(</span><span class="n">datetime</span><span class="o">.</span><span class="n">date</span><span class="p">,</span> <span class="n">adapt_date</span><span class="p">)</span>
+<span class="n">Database</span><span class="o">.</span><span class="n">register_adapter</span><span class="p">(</span><span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="p">,</span> <span class="n">adapt_datetime</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="DatabaseWrapper">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DatabaseWrapper</span><span class="p">(</span><span class="n">BaseDatabaseWrapper</span><span class="p">):</span>
+<div class="viewcode-block" id="DatabaseWrapper.vendor">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.vendor">[docs]</a>
+    <span class="n">vendor</span> <span class="o">=</span> <span class="s2">&quot;sqlite&quot;</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.display_name">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.display_name">[docs]</a>
+    <span class="n">display_name</span> <span class="o">=</span> <span class="s2">&quot;SQLite&quot;</span></div>
+
+    <span class="c1"># SQLite doesn&#39;t actually support most of these types, but it &quot;does the right</span>
+    <span class="c1"># thing&quot; given more verbose field definitions, so leave them as is so that</span>
+    <span class="c1"># schema inspection is more useful.</span>
+<div class="viewcode-block" id="DatabaseWrapper.data_types">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.data_types">[docs]</a>
+    <span class="n">data_types</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;AutoField&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;BigAutoField&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;BinaryField&quot;</span><span class="p">:</span> <span class="s2">&quot;BLOB&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;BooleanField&quot;</span><span class="p">:</span> <span class="s2">&quot;bool&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;CharField&quot;</span><span class="p">:</span> <span class="s2">&quot;varchar(</span><span class="si">%(max_length)s</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;DateField&quot;</span><span class="p">:</span> <span class="s2">&quot;date&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;DateTimeField&quot;</span><span class="p">:</span> <span class="s2">&quot;datetime&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;DecimalField&quot;</span><span class="p">:</span> <span class="s2">&quot;decimal&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;DurationField&quot;</span><span class="p">:</span> <span class="s2">&quot;bigint&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;FileField&quot;</span><span class="p">:</span> <span class="s2">&quot;varchar(</span><span class="si">%(max_length)s</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;FilePathField&quot;</span><span class="p">:</span> <span class="s2">&quot;varchar(</span><span class="si">%(max_length)s</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;FloatField&quot;</span><span class="p">:</span> <span class="s2">&quot;real&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;IntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;BigIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;bigint&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;IPAddressField&quot;</span><span class="p">:</span> <span class="s2">&quot;char(15)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;GenericIPAddressField&quot;</span><span class="p">:</span> <span class="s2">&quot;char(39)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;JSONField&quot;</span><span class="p">:</span> <span class="s2">&quot;text&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;OneToOneField&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;PositiveBigIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;bigint unsigned&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;PositiveIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;integer unsigned&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;PositiveSmallIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;smallint unsigned&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;SlugField&quot;</span><span class="p">:</span> <span class="s2">&quot;varchar(</span><span class="si">%(max_length)s</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;SmallAutoField&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;SmallIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;smallint&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;TextField&quot;</span><span class="p">:</span> <span class="s2">&quot;text&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;TimeField&quot;</span><span class="p">:</span> <span class="s2">&quot;time&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;UUIDField&quot;</span><span class="p">:</span> <span class="s2">&quot;char(32)&quot;</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.data_type_check_constraints">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.data_type_check_constraints">[docs]</a>
+    <span class="n">data_type_check_constraints</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;PositiveBigIntegerField&quot;</span><span class="p">:</span> <span class="s1">&#39;&quot;</span><span class="si">%(column)s</span><span class="s1">&quot; &gt;= 0&#39;</span><span class="p">,</span>
+        <span class="s2">&quot;JSONField&quot;</span><span class="p">:</span> <span class="s1">&#39;(JSON_VALID(&quot;</span><span class="si">%(column)s</span><span class="s1">&quot;) OR &quot;</span><span class="si">%(column)s</span><span class="s1">&quot; IS NULL)&#39;</span><span class="p">,</span>
+        <span class="s2">&quot;PositiveIntegerField&quot;</span><span class="p">:</span> <span class="s1">&#39;&quot;</span><span class="si">%(column)s</span><span class="s1">&quot; &gt;= 0&#39;</span><span class="p">,</span>
+        <span class="s2">&quot;PositiveSmallIntegerField&quot;</span><span class="p">:</span> <span class="s1">&#39;&quot;</span><span class="si">%(column)s</span><span class="s1">&quot; &gt;= 0&#39;</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.data_types_suffix">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.data_types_suffix">[docs]</a>
+    <span class="n">data_types_suffix</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;AutoField&quot;</span><span class="p">:</span> <span class="s2">&quot;AUTOINCREMENT&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;BigAutoField&quot;</span><span class="p">:</span> <span class="s2">&quot;AUTOINCREMENT&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;SmallAutoField&quot;</span><span class="p">:</span> <span class="s2">&quot;AUTOINCREMENT&quot;</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+    <span class="c1"># SQLite requires LIKE statements to include an ESCAPE clause if the value</span>
+    <span class="c1"># being escaped has a percent or underscore in it.</span>
+    <span class="c1"># See https://www.sqlite.org/lang_expr.html for an explanation.</span>
+<div class="viewcode-block" id="DatabaseWrapper.operators">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.operators">[docs]</a>
+    <span class="n">operators</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;exact&quot;</span><span class="p">:</span> <span class="s2">&quot;= </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;iexact&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE </span><span class="si">%s</span><span class="s2"> ESCAPE &#39;</span><span class="se">\\</span><span class="s2">&#39;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;contains&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE </span><span class="si">%s</span><span class="s2"> ESCAPE &#39;</span><span class="se">\\</span><span class="s2">&#39;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;icontains&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE </span><span class="si">%s</span><span class="s2"> ESCAPE &#39;</span><span class="se">\\</span><span class="s2">&#39;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;regex&quot;</span><span class="p">:</span> <span class="s2">&quot;REGEXP </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;iregex&quot;</span><span class="p">:</span> <span class="s2">&quot;REGEXP &#39;(?i)&#39; || </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;gt&quot;</span><span class="p">:</span> <span class="s2">&quot;&gt; </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;gte&quot;</span><span class="p">:</span> <span class="s2">&quot;&gt;= </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;lt&quot;</span><span class="p">:</span> <span class="s2">&quot;&lt; </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;lte&quot;</span><span class="p">:</span> <span class="s2">&quot;&lt;= </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;startswith&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE </span><span class="si">%s</span><span class="s2"> ESCAPE &#39;</span><span class="se">\\</span><span class="s2">&#39;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;endswith&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE </span><span class="si">%s</span><span class="s2"> ESCAPE &#39;</span><span class="se">\\</span><span class="s2">&#39;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;istartswith&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE </span><span class="si">%s</span><span class="s2"> ESCAPE &#39;</span><span class="se">\\</span><span class="s2">&#39;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;iendswith&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE </span><span class="si">%s</span><span class="s2"> ESCAPE &#39;</span><span class="se">\\</span><span class="s2">&#39;&quot;</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+
+    <span class="c1"># The patterns below are used to generate SQL pattern lookup clauses when</span>
+    <span class="c1"># the right-hand side of the lookup isn&#39;t a raw string (it might be an expression</span>
+    <span class="c1"># or the result of a bilateral transformation).</span>
+    <span class="c1"># In those cases, special characters for LIKE operators (e.g. \, *, _) should be</span>
+    <span class="c1"># escaped on database side.</span>
+    <span class="c1">#</span>
+    <span class="c1"># Note: we use str.format() here for readability as &#39;%&#39; is used as a wildcard for</span>
+    <span class="c1"># the LIKE operator.</span>
+<div class="viewcode-block" id="DatabaseWrapper.pattern_esc">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.pattern_esc">[docs]</a>
+    <span class="n">pattern_esc</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;REPLACE(REPLACE(REPLACE(</span><span class="si">{}</span><span class="s2">, &#39;\&#39;, &#39;</span><span class="se">\\</span><span class="s2">&#39;), &#39;</span><span class="si">%%</span><span class="s2">&#39;, &#39;\</span><span class="si">%%</span><span class="s2">&#39;), &#39;_&#39;, &#39;\_&#39;)&quot;</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.pattern_ops">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.pattern_ops">[docs]</a>
+    <span class="n">pattern_ops</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;contains&quot;</span><span class="p">:</span> <span class="sa">r</span><span class="s2">&quot;LIKE &#39;</span><span class="si">%%</span><span class="s2">&#39; || </span><span class="si">{}</span><span class="s2"> || &#39;</span><span class="si">%%</span><span class="s2">&#39; ESCAPE &#39;\&#39;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;icontains&quot;</span><span class="p">:</span> <span class="sa">r</span><span class="s2">&quot;LIKE &#39;</span><span class="si">%%</span><span class="s2">&#39; || UPPER(</span><span class="si">{}</span><span class="s2">) || &#39;</span><span class="si">%%</span><span class="s2">&#39; ESCAPE &#39;\&#39;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;startswith&quot;</span><span class="p">:</span> <span class="sa">r</span><span class="s2">&quot;LIKE </span><span class="si">{}</span><span class="s2"> || &#39;</span><span class="si">%%</span><span class="s2">&#39; ESCAPE &#39;\&#39;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;istartswith&quot;</span><span class="p">:</span> <span class="sa">r</span><span class="s2">&quot;LIKE UPPER(</span><span class="si">{}</span><span class="s2">) || &#39;</span><span class="si">%%</span><span class="s2">&#39; ESCAPE &#39;\&#39;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;endswith&quot;</span><span class="p">:</span> <span class="sa">r</span><span class="s2">&quot;LIKE &#39;</span><span class="si">%%</span><span class="s2">&#39; || </span><span class="si">{}</span><span class="s2"> ESCAPE &#39;\&#39;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;iendswith&quot;</span><span class="p">:</span> <span class="sa">r</span><span class="s2">&quot;LIKE &#39;</span><span class="si">%%</span><span class="s2">&#39; || UPPER(</span><span class="si">{}</span><span class="s2">) ESCAPE &#39;\&#39;&quot;</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.Database">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.Database">[docs]</a>
+    <span class="n">Database</span> <span class="o">=</span> <span class="n">Database</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.SchemaEditorClass">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.SchemaEditorClass">[docs]</a>
+    <span class="n">SchemaEditorClass</span> <span class="o">=</span> <span class="n">DatabaseSchemaEditor</span></div>
+
+    <span class="c1"># Classes instantiated in __init__().</span>
+<div class="viewcode-block" id="DatabaseWrapper.client_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.client_class">[docs]</a>
+    <span class="n">client_class</span> <span class="o">=</span> <span class="n">DatabaseClient</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.creation_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.creation_class">[docs]</a>
+    <span class="n">creation_class</span> <span class="o">=</span> <span class="n">DatabaseCreation</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.features_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.features_class">[docs]</a>
+    <span class="n">features_class</span> <span class="o">=</span> <span class="n">DatabaseFeatures</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.introspection_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.introspection_class">[docs]</a>
+    <span class="n">introspection_class</span> <span class="o">=</span> <span class="n">DatabaseIntrospection</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.ops_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.ops_class">[docs]</a>
+    <span class="n">ops_class</span> <span class="o">=</span> <span class="n">DatabaseOperations</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.get_connection_params">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.get_connection_params">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_connection_params</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">settings_dict</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">settings_dict</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;NAME&quot;</span><span class="p">]:</span>
+            <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+                <span class="s2">&quot;settings.DATABASES is improperly configured. &quot;</span>
+                <span class="s2">&quot;Please supply the NAME value.&quot;</span>
+            <span class="p">)</span>
+        <span class="n">kwargs</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;database&quot;</span><span class="p">:</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;NAME&quot;</span><span class="p">],</span>
+            <span class="s2">&quot;detect_types&quot;</span><span class="p">:</span> <span class="n">Database</span><span class="o">.</span><span class="n">PARSE_DECLTYPES</span> <span class="o">|</span> <span class="n">Database</span><span class="o">.</span><span class="n">PARSE_COLNAMES</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;OPTIONS&quot;</span><span class="p">],</span>
+        <span class="p">}</span>
+        <span class="c1"># Always allow the underlying SQLite connection to be shareable</span>
+        <span class="c1"># between multiple threads. The safe-guarding will be handled at a</span>
+        <span class="c1"># higher level by the `BaseDatabaseWrapper.allow_thread_sharing`</span>
+        <span class="c1"># property. This is necessary as the shareability is disabled by</span>
+        <span class="c1"># default in sqlite3 and it cannot be changed once a connection is</span>
+        <span class="c1"># opened.</span>
+        <span class="k">if</span> <span class="s2">&quot;check_same_thread&quot;</span> <span class="ow">in</span> <span class="n">kwargs</span> <span class="ow">and</span> <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;check_same_thread&quot;</span><span class="p">]:</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+                <span class="s2">&quot;The `check_same_thread` option was provided and set to &quot;</span>
+                <span class="s2">&quot;True. It will be overridden with False. Use the &quot;</span>
+                <span class="s2">&quot;`DatabaseWrapper.allow_thread_sharing` property instead &quot;</span>
+                <span class="s2">&quot;for controlling thread shareability.&quot;</span><span class="p">,</span>
+                <span class="ne">RuntimeWarning</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="n">kwargs</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="s2">&quot;check_same_thread&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;uri&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">})</span>
+        <span class="k">return</span> <span class="n">kwargs</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.get_database_version">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.get_database_version">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_database_version</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">Database</span><span class="o">.</span><span class="n">sqlite_version_info</span></div>
+
+
+    <span class="nd">@async_unsafe</span>
+<div class="viewcode-block" id="DatabaseWrapper.get_new_connection">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.get_new_connection">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_new_connection</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">conn_params</span><span class="p">):</span>
+        <span class="n">conn</span> <span class="o">=</span> <span class="n">Database</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="o">**</span><span class="n">conn_params</span><span class="p">)</span>
+        <span class="n">register_functions</span><span class="p">(</span><span class="n">conn</span><span class="p">)</span>
+
+        <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;PRAGMA foreign_keys = ON&quot;</span><span class="p">)</span>
+        <span class="c1"># The macOS bundled SQLite defaults legacy_alter_table ON, which</span>
+        <span class="c1"># prevents atomic table renames (feature supports_atomic_references_rename)</span>
+        <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;PRAGMA legacy_alter_table = OFF&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">conn</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.create_cursor">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.create_cursor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_cursor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">cursor</span><span class="p">(</span><span class="n">factory</span><span class="o">=</span><span class="n">SQLiteCursorWrapper</span><span class="p">)</span></div>
+
+
+    <span class="nd">@async_unsafe</span>
+<div class="viewcode-block" id="DatabaseWrapper.close">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.close">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">validate_thread_sharing</span><span class="p">()</span>
+        <span class="c1"># If database is in memory, closing the connection destroys the</span>
+        <span class="c1"># database. To prevent accidental data loss, ignore close requests on</span>
+        <span class="c1"># an in-memory db.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_in_memory_db</span><span class="p">():</span>
+            <span class="n">BaseDatabaseWrapper</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_savepoint_allowed</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># When &#39;isolation_level&#39; is not None, sqlite3 commits before each</span>
+        <span class="c1"># savepoint; it&#39;s a bug. When it is None, savepoints don&#39;t make sense</span>
+        <span class="c1"># because autocommit is enabled. The only exception is inside &#39;atomic&#39;</span>
+        <span class="c1"># blocks. To work around that bug, on SQLite, &#39;atomic&#39; starts a</span>
+        <span class="c1"># transaction explicitly rather than simply disable autocommit.</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">in_atomic_block</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_set_autocommit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">autocommit</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">autocommit</span><span class="p">:</span>
+            <span class="n">level</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># sqlite3&#39;s internal default is &#39;&#39;. It&#39;s different from None.</span>
+            <span class="c1"># See Modules/_sqlite/connection.c.</span>
+            <span class="n">level</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+        <span class="c1"># &#39;isolation_level&#39; is a misleading API.</span>
+        <span class="c1"># SQLite always runs at the SERIALIZABLE isolation level.</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">wrap_database_errors</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">isolation_level</span> <span class="o">=</span> <span class="n">level</span>
+
+<div class="viewcode-block" id="DatabaseWrapper.disable_constraint_checking">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.disable_constraint_checking">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">disable_constraint_checking</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;PRAGMA foreign_keys = OFF&quot;</span><span class="p">)</span>
+            <span class="c1"># Foreign key constraints cannot be turned off while in a multi-</span>
+            <span class="c1"># statement transaction. Fetch the current state of the pragma</span>
+            <span class="c1"># to determine if constraints are effectively disabled.</span>
+            <span class="n">enabled</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;PRAGMA foreign_keys&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">return</span> <span class="ow">not</span> <span class="nb">bool</span><span class="p">(</span><span class="n">enabled</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.enable_constraint_checking">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.enable_constraint_checking">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">enable_constraint_checking</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;PRAGMA foreign_keys = ON&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.check_constraints">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.check_constraints">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_constraints</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table_names</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Check each table name in `table_names` for rows with invalid foreign</span>
+<span class="sd">        key references. This method is intended to be used in conjunction with</span>
+<span class="sd">        `disable_constraint_checking()` and `enable_constraint_checking()`, to</span>
+<span class="sd">        determine if rows with invalid references were entered while constraint</span>
+<span class="sd">        checks were off.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">table_names</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">violations</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;PRAGMA foreign_key_check&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">violations</span> <span class="o">=</span> <span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span>
+                    <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+                        <span class="s2">&quot;PRAGMA foreign_key_check(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">table_name</span><span class="p">)</span>
+                    <span class="p">)</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+                    <span class="k">for</span> <span class="n">table_name</span> <span class="ow">in</span> <span class="n">table_names</span>
+                <span class="p">)</span>
+            <span class="c1"># See https://www.sqlite.org/pragma.html#pragma_foreign_key_check</span>
+            <span class="k">for</span> <span class="p">(</span>
+                <span class="n">table_name</span><span class="p">,</span>
+                <span class="n">rowid</span><span class="p">,</span>
+                <span class="n">referenced_table_name</span><span class="p">,</span>
+                <span class="n">foreign_key_index</span><span class="p">,</span>
+            <span class="p">)</span> <span class="ow">in</span> <span class="n">violations</span><span class="p">:</span>
+                <span class="n">foreign_key</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+                    <span class="s2">&quot;PRAGMA foreign_key_list(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">table_name</span><span class="p">)</span>
+                <span class="p">)</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()[</span><span class="n">foreign_key_index</span><span class="p">]</span>
+                <span class="n">column_name</span><span class="p">,</span> <span class="n">referenced_column_name</span> <span class="o">=</span> <span class="n">foreign_key</span><span class="p">[</span><span class="mi">3</span><span class="p">:</span><span class="mi">5</span><span class="p">]</span>
+                <span class="n">primary_key_column_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">introspection</span><span class="o">.</span><span class="n">get_primary_key_column</span><span class="p">(</span>
+                    <span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span>
+                <span class="p">)</span>
+                <span class="n">primary_key_value</span><span class="p">,</span> <span class="n">bad_value</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+                    <span class="s2">&quot;SELECT </span><span class="si">%s</span><span class="s2">, </span><span class="si">%s</span><span class="s2"> FROM </span><span class="si">%s</span><span class="s2"> WHERE rowid = </span><span class="si">%%</span><span class="s2">s&quot;</span>
+                    <span class="o">%</span> <span class="p">(</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">primary_key_column_name</span><span class="p">),</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">column_name</span><span class="p">),</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">table_name</span><span class="p">),</span>
+                    <span class="p">),</span>
+                    <span class="p">(</span><span class="n">rowid</span><span class="p">,),</span>
+                <span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+                <span class="k">raise</span> <span class="n">IntegrityError</span><span class="p">(</span>
+                    <span class="s2">&quot;The row in table &#39;</span><span class="si">%s</span><span class="s2">&#39; with primary key &#39;</span><span class="si">%s</span><span class="s2">&#39; has an &quot;</span>
+                    <span class="s2">&quot;invalid foreign key: </span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2"> contains a value &#39;</span><span class="si">%s</span><span class="s2">&#39; that &quot;</span>
+                    <span class="s2">&quot;does not have a corresponding value in </span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2">.&quot;</span>
+                    <span class="o">%</span> <span class="p">(</span>
+                        <span class="n">table_name</span><span class="p">,</span>
+                        <span class="n">primary_key_value</span><span class="p">,</span>
+                        <span class="n">table_name</span><span class="p">,</span>
+                        <span class="n">column_name</span><span class="p">,</span>
+                        <span class="n">bad_value</span><span class="p">,</span>
+                        <span class="n">referenced_table_name</span><span class="p">,</span>
+                        <span class="n">referenced_column_name</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.is_usable">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.is_usable">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_usable</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">True</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_start_transaction_under_autocommit</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Start a transaction explicitly in autocommit mode.</span>
+
+<span class="sd">        Staying in autocommit mode works around a bug of sqlite3 that breaks</span>
+<span class="sd">        savepoints when autocommit is disabled.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;BEGIN&quot;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="DatabaseWrapper.is_in_memory_db">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.DatabaseWrapper.is_in_memory_db">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_in_memory_db</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">creation</span><span class="o">.</span><span class="n">is_in_memory_db</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;NAME&quot;</span><span class="p">])</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="FORMAT_QMARK_REGEX">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.FORMAT_QMARK_REGEX">[docs]</a>
+<span class="n">FORMAT_QMARK_REGEX</span> <span class="o">=</span> <span class="n">_lazy_re_compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;(?&lt;!%)</span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="SQLiteCursorWrapper">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.SQLiteCursorWrapper">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SQLiteCursorWrapper</span><span class="p">(</span><span class="n">Database</span><span class="o">.</span><span class="n">Cursor</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Django uses the &quot;format&quot; and &quot;pyformat&quot; styles, but Python&#39;s sqlite3 module</span>
+<span class="sd">    supports neither of these styles.</span>
+
+<span class="sd">    This wrapper performs the following conversions:</span>
+
+<span class="sd">    - &quot;format&quot; style to &quot;qmark&quot; style</span>
+<span class="sd">    - &quot;pyformat&quot; style to &quot;named&quot; style</span>
+
+<span class="sd">    In both cases, if you want to use a literal &quot;%s&quot;, you&#39;ll need to use &quot;%%s&quot;.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="SQLiteCursorWrapper.execute">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.SQLiteCursorWrapper.execute">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">execute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">params</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">query</span><span class="p">)</span>
+        <span class="c1"># Extract names if params is a mapping, i.e. &quot;pyformat&quot; style is used.</span>
+        <span class="n">param_names</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">params</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="n">query</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">convert_query</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">param_names</span><span class="o">=</span><span class="n">param_names</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SQLiteCursorWrapper.executemany">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.SQLiteCursorWrapper.executemany">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">executemany</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="n">param_list</span><span class="p">):</span>
+        <span class="c1"># Extract names if params is a mapping, i.e. &quot;pyformat&quot; style is used.</span>
+        <span class="c1"># Peek carefully as a generator can be passed instead of a list/tuple.</span>
+        <span class="n">peekable</span><span class="p">,</span> <span class="n">param_list</span> <span class="o">=</span> <span class="n">tee</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">param_list</span><span class="p">))</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">params</span> <span class="o">:=</span> <span class="nb">next</span><span class="p">(</span><span class="n">peekable</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">):</span>
+            <span class="n">param_names</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">param_names</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">query</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">convert_query</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">param_names</span><span class="o">=</span><span class="n">param_names</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">executemany</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">param_list</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SQLiteCursorWrapper.convert_query">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/base/index.html#django.db.backends.sqlite3.base.SQLiteCursorWrapper.convert_query">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">convert_query</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">param_names</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">param_names</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Convert from &quot;format&quot; style to &quot;qmark&quot; style.</span>
+            <span class="k">return</span> <span class="n">FORMAT_QMARK_REGEX</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s2">&quot;?&quot;</span><span class="p">,</span> <span class="n">query</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%%</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;%&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Convert from &quot;pyformat&quot; style to &quot;named&quot; style.</span>
+            <span class="k">return</span> <span class="n">query</span> <span class="o">%</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;:</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">param_names</span><span class="p">}</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

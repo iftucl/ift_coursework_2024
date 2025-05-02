@@ -1,0 +1,556 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.db.backends.oracle.introspection &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../../../db.html">django.db</a></li>
+      <li class="breadcrumb-item active">django.db.backends.oracle.introspection</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.db.backends.oracle.introspection</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">namedtuple</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">cx_Oracle</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">models</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.base.introspection</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseDatabaseIntrospection</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.base.introspection</span><span class="w"> </span><span class="kn">import</span> <span class="n">FieldInfo</span> <span class="k">as</span> <span class="n">BaseFieldInfo</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.base.introspection</span><span class="w"> </span><span class="kn">import</span> <span class="n">TableInfo</span> <span class="k">as</span> <span class="n">BaseTableInfo</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">cached_property</span>
+
+<div class="viewcode-block" id="FieldInfo">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/introspection/index.html#django.db.backends.oracle.introspection.FieldInfo">[docs]</a>
+<span class="n">FieldInfo</span> <span class="o">=</span> <span class="n">namedtuple</span><span class="p">(</span>
+    <span class="s2">&quot;FieldInfo&quot;</span><span class="p">,</span> <span class="n">BaseFieldInfo</span><span class="o">.</span><span class="n">_fields</span> <span class="o">+</span> <span class="p">(</span><span class="s2">&quot;is_autofield&quot;</span><span class="p">,</span> <span class="s2">&quot;is_json&quot;</span><span class="p">,</span> <span class="s2">&quot;comment&quot;</span><span class="p">)</span>
+<span class="p">)</span></div>
+
+<div class="viewcode-block" id="TableInfo">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/introspection/index.html#django.db.backends.oracle.introspection.TableInfo">[docs]</a>
+<span class="n">TableInfo</span> <span class="o">=</span> <span class="n">namedtuple</span><span class="p">(</span><span class="s2">&quot;TableInfo&quot;</span><span class="p">,</span> <span class="n">BaseTableInfo</span><span class="o">.</span><span class="n">_fields</span> <span class="o">+</span> <span class="p">(</span><span class="s2">&quot;comment&quot;</span><span class="p">,))</span></div>
+
+
+
+<div class="viewcode-block" id="DatabaseIntrospection">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/introspection/index.html#django.db.backends.oracle.introspection.DatabaseIntrospection">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DatabaseIntrospection</span><span class="p">(</span><span class="n">BaseDatabaseIntrospection</span><span class="p">):</span>
+<div class="viewcode-block" id="DatabaseIntrospection.cache_bust_counter">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/introspection/index.html#django.db.backends.oracle.introspection.DatabaseIntrospection.cache_bust_counter">[docs]</a>
+    <span class="n">cache_bust_counter</span> <span class="o">=</span> <span class="mi">1</span></div>
+
+
+    <span class="c1"># Maps type objects to Django Field types.</span>
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="DatabaseIntrospection.data_types_reverse">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/introspection/index.html#django.db.backends.oracle.introspection.DatabaseIntrospection.data_types_reverse">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">data_types_reverse</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">cx_oracle_version</span> <span class="o">&lt;</span> <span class="p">(</span><span class="mi">8</span><span class="p">,):</span>
+            <span class="k">return</span> <span class="p">{</span>
+                <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">BLOB</span><span class="p">:</span> <span class="s2">&quot;BinaryField&quot;</span><span class="p">,</span>
+                <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">CLOB</span><span class="p">:</span> <span class="s2">&quot;TextField&quot;</span><span class="p">,</span>
+                <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">DATETIME</span><span class="p">:</span> <span class="s2">&quot;DateField&quot;</span><span class="p">,</span>
+                <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">FIXED_CHAR</span><span class="p">:</span> <span class="s2">&quot;CharField&quot;</span><span class="p">,</span>
+                <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">FIXED_NCHAR</span><span class="p">:</span> <span class="s2">&quot;CharField&quot;</span><span class="p">,</span>
+                <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">INTERVAL</span><span class="p">:</span> <span class="s2">&quot;DurationField&quot;</span><span class="p">,</span>
+                <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">NATIVE_FLOAT</span><span class="p">:</span> <span class="s2">&quot;FloatField&quot;</span><span class="p">,</span>
+                <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">NCHAR</span><span class="p">:</span> <span class="s2">&quot;CharField&quot;</span><span class="p">,</span>
+                <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">NCLOB</span><span class="p">:</span> <span class="s2">&quot;TextField&quot;</span><span class="p">,</span>
+                <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">NUMBER</span><span class="p">:</span> <span class="s2">&quot;DecimalField&quot;</span><span class="p">,</span>
+                <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">STRING</span><span class="p">:</span> <span class="s2">&quot;CharField&quot;</span><span class="p">,</span>
+                <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">TIMESTAMP</span><span class="p">:</span> <span class="s2">&quot;DateTimeField&quot;</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{</span>
+                <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">DB_TYPE_DATE</span><span class="p">:</span> <span class="s2">&quot;DateField&quot;</span><span class="p">,</span>
+                <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">DB_TYPE_BINARY_DOUBLE</span><span class="p">:</span> <span class="s2">&quot;FloatField&quot;</span><span class="p">,</span>
+                <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">DB_TYPE_BLOB</span><span class="p">:</span> <span class="s2">&quot;BinaryField&quot;</span><span class="p">,</span>
+                <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">DB_TYPE_CHAR</span><span class="p">:</span> <span class="s2">&quot;CharField&quot;</span><span class="p">,</span>
+                <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">DB_TYPE_CLOB</span><span class="p">:</span> <span class="s2">&quot;TextField&quot;</span><span class="p">,</span>
+                <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">DB_TYPE_INTERVAL_DS</span><span class="p">:</span> <span class="s2">&quot;DurationField&quot;</span><span class="p">,</span>
+                <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">DB_TYPE_NCHAR</span><span class="p">:</span> <span class="s2">&quot;CharField&quot;</span><span class="p">,</span>
+                <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">DB_TYPE_NCLOB</span><span class="p">:</span> <span class="s2">&quot;TextField&quot;</span><span class="p">,</span>
+                <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">DB_TYPE_NVARCHAR</span><span class="p">:</span> <span class="s2">&quot;CharField&quot;</span><span class="p">,</span>
+                <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">DB_TYPE_NUMBER</span><span class="p">:</span> <span class="s2">&quot;DecimalField&quot;</span><span class="p">,</span>
+                <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">DB_TYPE_TIMESTAMP</span><span class="p">:</span> <span class="s2">&quot;DateTimeField&quot;</span><span class="p">,</span>
+                <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">DB_TYPE_VARCHAR</span><span class="p">:</span> <span class="s2">&quot;CharField&quot;</span><span class="p">,</span>
+            <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="DatabaseIntrospection.get_field_type">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/introspection/index.html#django.db.backends.oracle.introspection.DatabaseIntrospection.get_field_type">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_field_type</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data_type</span><span class="p">,</span> <span class="n">description</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">data_type</span> <span class="o">==</span> <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">NUMBER</span><span class="p">:</span>
+            <span class="n">precision</span><span class="p">,</span> <span class="n">scale</span> <span class="o">=</span> <span class="n">description</span><span class="p">[</span><span class="mi">4</span><span class="p">:</span><span class="mi">6</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">scale</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">precision</span> <span class="o">&gt;</span> <span class="mi">11</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="p">(</span>
+                        <span class="s2">&quot;BigAutoField&quot;</span>
+                        <span class="k">if</span> <span class="n">description</span><span class="o">.</span><span class="n">is_autofield</span>
+                        <span class="k">else</span> <span class="s2">&quot;BigIntegerField&quot;</span>
+                    <span class="p">)</span>
+                <span class="k">elif</span> <span class="mi">1</span> <span class="o">&lt;</span> <span class="n">precision</span> <span class="o">&lt;</span> <span class="mi">6</span> <span class="ow">and</span> <span class="n">description</span><span class="o">.</span><span class="n">is_autofield</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="s2">&quot;SmallAutoField&quot;</span>
+                <span class="k">elif</span> <span class="n">precision</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="s2">&quot;BooleanField&quot;</span>
+                <span class="k">elif</span> <span class="n">description</span><span class="o">.</span><span class="n">is_autofield</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="s2">&quot;AutoField&quot;</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="s2">&quot;IntegerField&quot;</span>
+            <span class="k">elif</span> <span class="n">scale</span> <span class="o">==</span> <span class="o">-</span><span class="mi">127</span><span class="p">:</span>
+                <span class="k">return</span> <span class="s2">&quot;FloatField&quot;</span>
+        <span class="k">elif</span> <span class="n">data_type</span> <span class="o">==</span> <span class="n">cx_Oracle</span><span class="o">.</span><span class="n">NCLOB</span> <span class="ow">and</span> <span class="n">description</span><span class="o">.</span><span class="n">is_json</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;JSONField&quot;</span>
+
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">get_field_type</span><span class="p">(</span><span class="n">data_type</span><span class="p">,</span> <span class="n">description</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseIntrospection.get_table_list">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/introspection/index.html#django.db.backends.oracle.introspection.DatabaseIntrospection.get_table_list">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_table_list</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a list of table and view names in the current database.&quot;&quot;&quot;</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            SELECT</span>
+<span class="sd">                user_tables.table_name,</span>
+<span class="sd">                &#39;t&#39;,</span>
+<span class="sd">                user_tab_comments.comments</span>
+<span class="sd">            FROM user_tables</span>
+<span class="sd">            LEFT OUTER JOIN</span>
+<span class="sd">                user_tab_comments</span>
+<span class="sd">                ON user_tab_comments.table_name = user_tables.table_name</span>
+<span class="sd">            WHERE</span>
+<span class="sd">                NOT EXISTS (</span>
+<span class="sd">                    SELECT 1</span>
+<span class="sd">                    FROM user_mviews</span>
+<span class="sd">                    WHERE user_mviews.mview_name = user_tables.table_name</span>
+<span class="sd">                )</span>
+<span class="sd">            UNION ALL</span>
+<span class="sd">            SELECT view_name, &#39;v&#39;, NULL FROM user_views</span>
+<span class="sd">            UNION ALL</span>
+<span class="sd">            SELECT mview_name, &#39;v&#39;, NULL FROM user_mviews</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span>
+            <span class="n">TableInfo</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">identifier_converter</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="n">row</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">row</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+            <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+        <span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="DatabaseIntrospection.get_table_description">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/introspection/index.html#django.db.backends.oracle.introspection.DatabaseIntrospection.get_table_description">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_table_description</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a description of the table with the DB-API cursor.description</span>
+<span class="sd">        interface.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># user_tab_columns gives data default for columns</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            SELECT</span>
+<span class="sd">                user_tab_cols.column_name,</span>
+<span class="sd">                user_tab_cols.data_default,</span>
+<span class="sd">                CASE</span>
+<span class="sd">                    WHEN user_tab_cols.collation = user_tables.default_collation</span>
+<span class="sd">                    THEN NULL</span>
+<span class="sd">                    ELSE user_tab_cols.collation</span>
+<span class="sd">                END collation,</span>
+<span class="sd">                CASE</span>
+<span class="sd">                    WHEN user_tab_cols.char_used IS NULL</span>
+<span class="sd">                    THEN user_tab_cols.data_length</span>
+<span class="sd">                    ELSE user_tab_cols.char_length</span>
+<span class="sd">                END as display_size,</span>
+<span class="sd">                CASE</span>
+<span class="sd">                    WHEN user_tab_cols.identity_column = &#39;YES&#39; THEN 1</span>
+<span class="sd">                    ELSE 0</span>
+<span class="sd">                END as is_autofield,</span>
+<span class="sd">                CASE</span>
+<span class="sd">                    WHEN EXISTS (</span>
+<span class="sd">                        SELECT  1</span>
+<span class="sd">                        FROM user_json_columns</span>
+<span class="sd">                        WHERE</span>
+<span class="sd">                            user_json_columns.table_name = user_tab_cols.table_name AND</span>
+<span class="sd">                            user_json_columns.column_name = user_tab_cols.column_name</span>
+<span class="sd">                    )</span>
+<span class="sd">                    THEN 1</span>
+<span class="sd">                    ELSE 0</span>
+<span class="sd">                END as is_json,</span>
+<span class="sd">                user_col_comments.comments as col_comment</span>
+<span class="sd">            FROM user_tab_cols</span>
+<span class="sd">            LEFT OUTER JOIN</span>
+<span class="sd">                user_tables ON user_tables.table_name = user_tab_cols.table_name</span>
+<span class="sd">            LEFT OUTER JOIN</span>
+<span class="sd">                user_col_comments ON</span>
+<span class="sd">                user_col_comments.column_name = user_tab_cols.column_name AND</span>
+<span class="sd">                user_col_comments.table_name = user_tab_cols.table_name</span>
+<span class="sd">            WHERE user_tab_cols.table_name = UPPER(%s)</span>
+<span class="sd">            &quot;&quot;&quot;</span><span class="p">,</span>
+            <span class="p">[</span><span class="n">table_name</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="n">field_map</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="n">column</span><span class="p">:</span> <span class="p">(</span>
+                <span class="n">display_size</span><span class="p">,</span>
+                <span class="n">default</span> <span class="k">if</span> <span class="n">default</span> <span class="o">!=</span> <span class="s2">&quot;NULL&quot;</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">collation</span><span class="p">,</span>
+                <span class="n">is_autofield</span><span class="p">,</span>
+                <span class="n">is_json</span><span class="p">,</span>
+                <span class="n">comment</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="p">(</span>
+                <span class="n">column</span><span class="p">,</span>
+                <span class="n">default</span><span class="p">,</span>
+                <span class="n">collation</span><span class="p">,</span>
+                <span class="n">display_size</span><span class="p">,</span>
+                <span class="n">is_autofield</span><span class="p">,</span>
+                <span class="n">is_json</span><span class="p">,</span>
+                <span class="n">comment</span><span class="p">,</span>
+            <span class="p">)</span> <span class="ow">in</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+        <span class="p">}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cache_bust_counter</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT * FROM </span><span class="si">{}</span><span class="s2"> WHERE ROWNUM &lt; 2 AND </span><span class="si">{}</span><span class="s2"> &gt; 0&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">table_name</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">cache_bust_counter</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">description</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">desc</span> <span class="ow">in</span> <span class="n">cursor</span><span class="o">.</span><span class="n">description</span><span class="p">:</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="n">desc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="p">(</span>
+                <span class="n">display_size</span><span class="p">,</span>
+                <span class="n">default</span><span class="p">,</span>
+                <span class="n">collation</span><span class="p">,</span>
+                <span class="n">is_autofield</span><span class="p">,</span>
+                <span class="n">is_json</span><span class="p">,</span>
+                <span class="n">comment</span><span class="p">,</span>
+            <span class="p">)</span> <span class="o">=</span> <span class="n">field_map</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
+            <span class="n">name</span> <span class="o">%=</span> <span class="p">{}</span>  <span class="c1"># cx_Oracle, for some reason, doubles percent signs.</span>
+            <span class="n">description</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="n">FieldInfo</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">identifier_converter</span><span class="p">(</span><span class="n">name</span><span class="p">),</span>
+                    <span class="n">desc</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+                    <span class="n">display_size</span><span class="p">,</span>
+                    <span class="n">desc</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span>
+                    <span class="n">desc</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">,</span>
+                    <span class="n">desc</span><span class="p">[</span><span class="mi">5</span><span class="p">]</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">,</span>
+                    <span class="o">*</span><span class="n">desc</span><span class="p">[</span><span class="mi">6</span><span class="p">:],</span>
+                    <span class="n">default</span><span class="p">,</span>
+                    <span class="n">collation</span><span class="p">,</span>
+                    <span class="n">is_autofield</span><span class="p">,</span>
+                    <span class="n">is_json</span><span class="p">,</span>
+                    <span class="n">comment</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">description</span></div>
+
+
+<div class="viewcode-block" id="DatabaseIntrospection.identifier_converter">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/introspection/index.html#django.db.backends.oracle.introspection.DatabaseIntrospection.identifier_converter">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">identifier_converter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Identifier comparison is case insensitive under Oracle.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="DatabaseIntrospection.get_sequences">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/introspection/index.html#django.db.backends.oracle.introspection.DatabaseIntrospection.get_sequences">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_sequences</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">,</span> <span class="n">table_fields</span><span class="o">=</span><span class="p">()):</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            SELECT</span>
+<span class="sd">                user_tab_identity_cols.sequence_name,</span>
+<span class="sd">                user_tab_identity_cols.column_name</span>
+<span class="sd">            FROM</span>
+<span class="sd">                user_tab_identity_cols,</span>
+<span class="sd">                user_constraints,</span>
+<span class="sd">                user_cons_columns cols</span>
+<span class="sd">            WHERE</span>
+<span class="sd">                user_constraints.constraint_name = cols.constraint_name</span>
+<span class="sd">                AND user_constraints.table_name = user_tab_identity_cols.table_name</span>
+<span class="sd">                AND cols.column_name = user_tab_identity_cols.column_name</span>
+<span class="sd">                AND user_constraints.constraint_type = &#39;P&#39;</span>
+<span class="sd">                AND user_tab_identity_cols.table_name = UPPER(%s)</span>
+<span class="sd">            &quot;&quot;&quot;</span><span class="p">,</span>
+            <span class="p">[</span><span class="n">table_name</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="c1"># Oracle allows only one identity column per table.</span>
+        <span class="n">row</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">row</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[</span>
+                <span class="p">{</span>
+                    <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">identifier_converter</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span>
+                    <span class="s2">&quot;table&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">identifier_converter</span><span class="p">(</span><span class="n">table_name</span><span class="p">),</span>
+                    <span class="s2">&quot;column&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">identifier_converter</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span>
+                <span class="p">}</span>
+            <span class="p">]</span>
+        <span class="c1"># To keep backward compatibility for AutoFields that aren&#39;t Oracle</span>
+        <span class="c1"># identity columns.</span>
+        <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">table_fields</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">AutoField</span><span class="p">):</span>
+                <span class="k">return</span> <span class="p">[{</span><span class="s2">&quot;table&quot;</span><span class="p">:</span> <span class="n">table_name</span><span class="p">,</span> <span class="s2">&quot;column&quot;</span><span class="p">:</span> <span class="n">f</span><span class="o">.</span><span class="n">column</span><span class="p">}]</span>
+        <span class="k">return</span> <span class="p">[]</span></div>
+
+
+<div class="viewcode-block" id="DatabaseIntrospection.get_relations">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/introspection/index.html#django.db.backends.oracle.introspection.DatabaseIntrospection.get_relations">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_relations</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a dictionary of {field_name: (field_name_other_table, other_table)}</span>
+<span class="sd">        representing all foreign keys in the given table.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">table_name</span> <span class="o">=</span> <span class="n">table_name</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    SELECT ca.column_name, cb.table_name, cb.column_name</span>
+<span class="sd">    FROM   user_constraints, USER_CONS_COLUMNS ca, USER_CONS_COLUMNS cb</span>
+<span class="sd">    WHERE  user_constraints.table_name = %s AND</span>
+<span class="sd">           user_constraints.constraint_name = ca.constraint_name AND</span>
+<span class="sd">           user_constraints.r_constraint_name = cb.constraint_name AND</span>
+<span class="sd">           ca.position = cb.position&quot;&quot;&quot;</span><span class="p">,</span>
+            <span class="p">[</span><span class="n">table_name</span><span class="p">],</span>
+        <span class="p">)</span>
+
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">identifier_converter</span><span class="p">(</span><span class="n">field_name</span><span class="p">):</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">identifier_converter</span><span class="p">(</span><span class="n">rel_field_name</span><span class="p">),</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">identifier_converter</span><span class="p">(</span><span class="n">rel_table_name</span><span class="p">),</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">rel_table_name</span><span class="p">,</span> <span class="n">rel_field_name</span> <span class="ow">in</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+        <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="DatabaseIntrospection.get_primary_key_columns">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/introspection/index.html#django.db.backends.oracle.introspection.DatabaseIntrospection.get_primary_key_columns">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_primary_key_columns</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">):</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            SELECT</span>
+<span class="sd">                cols.column_name</span>
+<span class="sd">            FROM</span>
+<span class="sd">                user_constraints,</span>
+<span class="sd">                user_cons_columns cols</span>
+<span class="sd">            WHERE</span>
+<span class="sd">                user_constraints.constraint_name = cols.constraint_name AND</span>
+<span class="sd">                user_constraints.constraint_type = &#39;P&#39; AND</span>
+<span class="sd">                user_constraints.table_name = UPPER(%s)</span>
+<span class="sd">            ORDER BY</span>
+<span class="sd">                cols.position</span>
+<span class="sd">            &quot;&quot;&quot;</span><span class="p">,</span>
+            <span class="p">[</span><span class="n">table_name</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">identifier_converter</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()]</span></div>
+
+
+<div class="viewcode-block" id="DatabaseIntrospection.get_constraints">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/introspection/index.html#django.db.backends.oracle.introspection.DatabaseIntrospection.get_constraints">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_constraints</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Retrieve any constraints or keys (unique, pk, fk, check, index) across</span>
+<span class="sd">        one or more columns.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">constraints</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="c1"># Loop over the constraints, getting PKs, uniques, and checks</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            SELECT</span>
+<span class="sd">                user_constraints.constraint_name,</span>
+<span class="sd">                LISTAGG(LOWER(cols.column_name), &#39;,&#39;)</span>
+<span class="sd">                    WITHIN GROUP (ORDER BY cols.position),</span>
+<span class="sd">                CASE user_constraints.constraint_type</span>
+<span class="sd">                    WHEN &#39;P&#39; THEN 1</span>
+<span class="sd">                    ELSE 0</span>
+<span class="sd">                END AS is_primary_key,</span>
+<span class="sd">                CASE</span>
+<span class="sd">                    WHEN user_constraints.constraint_type IN (&#39;P&#39;, &#39;U&#39;) THEN 1</span>
+<span class="sd">                    ELSE 0</span>
+<span class="sd">                END AS is_unique,</span>
+<span class="sd">                CASE user_constraints.constraint_type</span>
+<span class="sd">                    WHEN &#39;C&#39; THEN 1</span>
+<span class="sd">                    ELSE 0</span>
+<span class="sd">                END AS is_check_constraint</span>
+<span class="sd">            FROM</span>
+<span class="sd">                user_constraints</span>
+<span class="sd">            LEFT OUTER JOIN</span>
+<span class="sd">                user_cons_columns cols</span>
+<span class="sd">                ON user_constraints.constraint_name = cols.constraint_name</span>
+<span class="sd">            WHERE</span>
+<span class="sd">                user_constraints.constraint_type = ANY(&#39;P&#39;, &#39;U&#39;, &#39;C&#39;)</span>
+<span class="sd">                AND user_constraints.table_name = UPPER(%s)</span>
+<span class="sd">            GROUP BY user_constraints.constraint_name, user_constraints.constraint_type</span>
+<span class="sd">            &quot;&quot;&quot;</span><span class="p">,</span>
+            <span class="p">[</span><span class="n">table_name</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">constraint</span><span class="p">,</span> <span class="n">columns</span><span class="p">,</span> <span class="n">pk</span><span class="p">,</span> <span class="n">unique</span><span class="p">,</span> <span class="n">check</span> <span class="ow">in</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">():</span>
+            <span class="n">constraint</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">identifier_converter</span><span class="p">(</span><span class="n">constraint</span><span class="p">)</span>
+            <span class="n">constraints</span><span class="p">[</span><span class="n">constraint</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">&quot;columns&quot;</span><span class="p">:</span> <span class="n">columns</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">),</span>
+                <span class="s2">&quot;primary_key&quot;</span><span class="p">:</span> <span class="n">pk</span><span class="p">,</span>
+                <span class="s2">&quot;unique&quot;</span><span class="p">:</span> <span class="n">unique</span><span class="p">,</span>
+                <span class="s2">&quot;foreign_key&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="s2">&quot;check&quot;</span><span class="p">:</span> <span class="n">check</span><span class="p">,</span>
+                <span class="s2">&quot;index&quot;</span><span class="p">:</span> <span class="n">unique</span><span class="p">,</span>  <span class="c1"># All uniques come with an index</span>
+            <span class="p">}</span>
+        <span class="c1"># Foreign key constraints</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            SELECT</span>
+<span class="sd">                cons.constraint_name,</span>
+<span class="sd">                LISTAGG(LOWER(cols.column_name), &#39;,&#39;)</span>
+<span class="sd">                    WITHIN GROUP (ORDER BY cols.position),</span>
+<span class="sd">                LOWER(rcols.table_name),</span>
+<span class="sd">                LOWER(rcols.column_name)</span>
+<span class="sd">            FROM</span>
+<span class="sd">                user_constraints cons</span>
+<span class="sd">            INNER JOIN</span>
+<span class="sd">                user_cons_columns rcols</span>
+<span class="sd">                ON rcols.constraint_name = cons.r_constraint_name AND rcols.position = 1</span>
+<span class="sd">            LEFT OUTER JOIN</span>
+<span class="sd">                user_cons_columns cols</span>
+<span class="sd">                ON cons.constraint_name = cols.constraint_name</span>
+<span class="sd">            WHERE</span>
+<span class="sd">                cons.constraint_type = &#39;R&#39; AND</span>
+<span class="sd">                cons.table_name = UPPER(%s)</span>
+<span class="sd">            GROUP BY cons.constraint_name, rcols.table_name, rcols.column_name</span>
+<span class="sd">            &quot;&quot;&quot;</span><span class="p">,</span>
+            <span class="p">[</span><span class="n">table_name</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">constraint</span><span class="p">,</span> <span class="n">columns</span><span class="p">,</span> <span class="n">other_table</span><span class="p">,</span> <span class="n">other_column</span> <span class="ow">in</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">():</span>
+            <span class="n">constraint</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">identifier_converter</span><span class="p">(</span><span class="n">constraint</span><span class="p">)</span>
+            <span class="n">constraints</span><span class="p">[</span><span class="n">constraint</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">&quot;primary_key&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                <span class="s2">&quot;unique&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                <span class="s2">&quot;foreign_key&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">other_table</span><span class="p">,</span> <span class="n">other_column</span><span class="p">),</span>
+                <span class="s2">&quot;check&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                <span class="s2">&quot;index&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                <span class="s2">&quot;columns&quot;</span><span class="p">:</span> <span class="n">columns</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">),</span>
+            <span class="p">}</span>
+        <span class="c1"># Now get indexes</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            SELECT</span>
+<span class="sd">                ind.index_name,</span>
+<span class="sd">                LOWER(ind.index_type),</span>
+<span class="sd">                LOWER(ind.uniqueness),</span>
+<span class="sd">                LISTAGG(LOWER(cols.column_name), &#39;,&#39;)</span>
+<span class="sd">                    WITHIN GROUP (ORDER BY cols.column_position),</span>
+<span class="sd">                LISTAGG(cols.descend, &#39;,&#39;) WITHIN GROUP (ORDER BY cols.column_position)</span>
+<span class="sd">            FROM</span>
+<span class="sd">                user_ind_columns cols, user_indexes ind</span>
+<span class="sd">            WHERE</span>
+<span class="sd">                cols.table_name = UPPER(%s) AND</span>
+<span class="sd">                NOT EXISTS (</span>
+<span class="sd">                    SELECT 1</span>
+<span class="sd">                    FROM user_constraints cons</span>
+<span class="sd">                    WHERE ind.index_name = cons.index_name</span>
+<span class="sd">                ) AND cols.index_name = ind.index_name</span>
+<span class="sd">            GROUP BY ind.index_name, ind.index_type, ind.uniqueness</span>
+<span class="sd">            &quot;&quot;&quot;</span><span class="p">,</span>
+            <span class="p">[</span><span class="n">table_name</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">constraint</span><span class="p">,</span> <span class="n">type_</span><span class="p">,</span> <span class="n">unique</span><span class="p">,</span> <span class="n">columns</span><span class="p">,</span> <span class="n">orders</span> <span class="ow">in</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">():</span>
+            <span class="n">constraint</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">identifier_converter</span><span class="p">(</span><span class="n">constraint</span><span class="p">)</span>
+            <span class="n">constraints</span><span class="p">[</span><span class="n">constraint</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">&quot;primary_key&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                <span class="s2">&quot;unique&quot;</span><span class="p">:</span> <span class="n">unique</span> <span class="o">==</span> <span class="s2">&quot;unique&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;foreign_key&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="s2">&quot;check&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                <span class="s2">&quot;index&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;idx&quot;</span> <span class="k">if</span> <span class="n">type_</span> <span class="o">==</span> <span class="s2">&quot;normal&quot;</span> <span class="k">else</span> <span class="n">type_</span><span class="p">,</span>
+                <span class="s2">&quot;columns&quot;</span><span class="p">:</span> <span class="n">columns</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">),</span>
+                <span class="s2">&quot;orders&quot;</span><span class="p">:</span> <span class="n">orders</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">),</span>
+            <span class="p">}</span>
+        <span class="k">return</span> <span class="n">constraints</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

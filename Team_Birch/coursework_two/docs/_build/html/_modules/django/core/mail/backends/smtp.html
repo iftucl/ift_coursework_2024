@@ -1,0 +1,314 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.core.mail.backends.smtp &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../../mail.html">django.core.mail</a></li>
+      <li class="breadcrumb-item active">django.core.mail.backends.smtp</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.core.mail.backends.smtp</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;SMTP email backend class.&quot;&quot;&quot;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">smtplib</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">ssl</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">threading</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.mail.backends.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseEmailBackend</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.mail.message</span><span class="w"> </span><span class="kn">import</span> <span class="n">sanitize_address</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.mail.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">DNS_NAME</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">cached_property</span>
+
+
+<div class="viewcode-block" id="EmailBackend">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/mail/backends/smtp/index.html#django.core.mail.backends.smtp.EmailBackend">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">EmailBackend</span><span class="p">(</span><span class="n">BaseEmailBackend</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A wrapper that manages the SMTP network connection.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">host</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">port</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">username</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">password</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">use_tls</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">fail_silently</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">use_ssl</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">timeout</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">ssl_keyfile</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">ssl_certfile</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">fail_silently</span><span class="o">=</span><span class="n">fail_silently</span><span class="p">)</span>
+<div class="viewcode-block" id="EmailBackend.host">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/mail/backends/smtp/index.html#django.core.mail.backends.smtp.EmailBackend.host">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">host</span> <span class="o">=</span> <span class="n">host</span> <span class="ow">or</span> <span class="n">settings</span><span class="o">.</span><span class="n">EMAIL_HOST</span></div>
+
+<div class="viewcode-block" id="EmailBackend.port">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/mail/backends/smtp/index.html#django.core.mail.backends.smtp.EmailBackend.port">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">port</span> <span class="o">=</span> <span class="n">port</span> <span class="ow">or</span> <span class="n">settings</span><span class="o">.</span><span class="n">EMAIL_PORT</span></div>
+
+<div class="viewcode-block" id="EmailBackend.username">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/mail/backends/smtp/index.html#django.core.mail.backends.smtp.EmailBackend.username">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">username</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">EMAIL_HOST_USER</span> <span class="k">if</span> <span class="n">username</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">username</span></div>
+
+<div class="viewcode-block" id="EmailBackend.password">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/mail/backends/smtp/index.html#django.core.mail.backends.smtp.EmailBackend.password">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">password</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">EMAIL_HOST_PASSWORD</span> <span class="k">if</span> <span class="n">password</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">password</span></div>
+
+<div class="viewcode-block" id="EmailBackend.use_tls">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/mail/backends/smtp/index.html#django.core.mail.backends.smtp.EmailBackend.use_tls">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">use_tls</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">EMAIL_USE_TLS</span> <span class="k">if</span> <span class="n">use_tls</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">use_tls</span></div>
+
+<div class="viewcode-block" id="EmailBackend.use_ssl">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/mail/backends/smtp/index.html#django.core.mail.backends.smtp.EmailBackend.use_ssl">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">use_ssl</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">EMAIL_USE_SSL</span> <span class="k">if</span> <span class="n">use_ssl</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">use_ssl</span></div>
+
+<div class="viewcode-block" id="EmailBackend.timeout">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/mail/backends/smtp/index.html#django.core.mail.backends.smtp.EmailBackend.timeout">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">timeout</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">EMAIL_TIMEOUT</span> <span class="k">if</span> <span class="n">timeout</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">timeout</span></div>
+
+<div class="viewcode-block" id="EmailBackend.ssl_keyfile">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/mail/backends/smtp/index.html#django.core.mail.backends.smtp.EmailBackend.ssl_keyfile">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ssl_keyfile</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">settings</span><span class="o">.</span><span class="n">EMAIL_SSL_KEYFILE</span> <span class="k">if</span> <span class="n">ssl_keyfile</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">ssl_keyfile</span>
+        <span class="p">)</span></div>
+
+<div class="viewcode-block" id="EmailBackend.ssl_certfile">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/mail/backends/smtp/index.html#django.core.mail.backends.smtp.EmailBackend.ssl_certfile">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ssl_certfile</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">settings</span><span class="o">.</span><span class="n">EMAIL_SSL_CERTFILE</span> <span class="k">if</span> <span class="n">ssl_certfile</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">ssl_certfile</span>
+        <span class="p">)</span></div>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_ssl</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_tls</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;EMAIL_USE_TLS/EMAIL_USE_SSL are mutually exclusive, so only set &quot;</span>
+                <span class="s2">&quot;one of those settings to True.&quot;</span>
+            <span class="p">)</span>
+<div class="viewcode-block" id="EmailBackend.connection">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/mail/backends/smtp/index.html#django.core.mail.backends.smtp.EmailBackend.connection">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">connection</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_lock</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">RLock</span><span class="p">()</span>
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="EmailBackend.connection_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/mail/backends/smtp/index.html#django.core.mail.backends.smtp.EmailBackend.connection_class">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">connection_class</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">smtplib</span><span class="o">.</span><span class="n">SMTP_SSL</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_ssl</span> <span class="k">else</span> <span class="n">smtplib</span><span class="o">.</span><span class="n">SMTP</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="EmailBackend.ssl_context">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/mail/backends/smtp/index.html#django.core.mail.backends.smtp.EmailBackend.ssl_context">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">ssl_context</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ssl_certfile</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">ssl_keyfile</span><span class="p">:</span>
+            <span class="n">ssl_context</span> <span class="o">=</span> <span class="n">ssl</span><span class="o">.</span><span class="n">SSLContext</span><span class="p">(</span><span class="n">protocol</span><span class="o">=</span><span class="n">ssl</span><span class="o">.</span><span class="n">PROTOCOL_TLS_CLIENT</span><span class="p">)</span>
+            <span class="n">ssl_context</span><span class="o">.</span><span class="n">load_cert_chain</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ssl_certfile</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ssl_keyfile</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">ssl_context</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">ssl</span><span class="o">.</span><span class="n">create_default_context</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="EmailBackend.open">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/mail/backends/smtp/index.html#django.core.mail.backends.smtp.EmailBackend.open">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">open</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Ensure an open connection to the email server. Return whether or not a</span>
+<span class="sd">        new connection was required (True or False) or None if an exception</span>
+<span class="sd">        passed silently.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="p">:</span>
+            <span class="c1"># Nothing to do if the connection is already open.</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="c1"># If local_hostname is not specified, socket.getfqdn() gets used.</span>
+        <span class="c1"># For performance, we use the cached FQDN for local_hostname.</span>
+        <span class="n">connection_params</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;local_hostname&quot;</span><span class="p">:</span> <span class="n">DNS_NAME</span><span class="o">.</span><span class="n">get_fqdn</span><span class="p">()}</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">timeout</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">connection_params</span><span class="p">[</span><span class="s2">&quot;timeout&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">timeout</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_ssl</span><span class="p">:</span>
+            <span class="n">connection_params</span><span class="p">[</span><span class="s2">&quot;context&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ssl_context</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">connection</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection_class</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">host</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">port</span><span class="p">,</span> <span class="o">**</span><span class="n">connection_params</span>
+            <span class="p">)</span>
+
+            <span class="c1"># TLS/SSL are mutually exclusive, so only attempt TLS over</span>
+            <span class="c1"># non-secure connections.</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_ssl</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_tls</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">starttls</span><span class="p">(</span><span class="n">context</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">ssl_context</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">username</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">password</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">login</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">username</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">password</span><span class="p">)</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">fail_silently</span><span class="p">:</span>
+                <span class="k">raise</span></div>
+
+
+<div class="viewcode-block" id="EmailBackend.close">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/mail/backends/smtp/index.html#django.core.mail.backends.smtp.EmailBackend.close">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Close the connection to the email server.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">quit</span><span class="p">()</span>
+            <span class="k">except</span> <span class="p">(</span><span class="n">ssl</span><span class="o">.</span><span class="n">SSLError</span><span class="p">,</span> <span class="n">smtplib</span><span class="o">.</span><span class="n">SMTPServerDisconnected</span><span class="p">):</span>
+                <span class="c1"># This happens when calling quit() on a TLS connection</span>
+                <span class="c1"># sometimes, or when the connection was already disconnected</span>
+                <span class="c1"># by the server.</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="k">except</span> <span class="n">smtplib</span><span class="o">.</span><span class="n">SMTPException</span><span class="p">:</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">fail_silently</span><span class="p">:</span>
+                    <span class="k">return</span>
+                <span class="k">raise</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">connection</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="EmailBackend.send_messages">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/mail/backends/smtp/index.html#django.core.mail.backends.smtp.EmailBackend.send_messages">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">send_messages</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">email_messages</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Send one or more EmailMessage objects and return the number of email</span>
+<span class="sd">        messages sent.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">email_messages</span><span class="p">:</span>
+            <span class="k">return</span> <span class="mi">0</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lock</span><span class="p">:</span>
+            <span class="n">new_conn_created</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">open</span><span class="p">()</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span> <span class="ow">or</span> <span class="n">new_conn_created</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="c1"># We failed silently on open().</span>
+                <span class="c1"># Trying to send would be pointless.</span>
+                <span class="k">return</span> <span class="mi">0</span>
+            <span class="n">num_sent</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">for</span> <span class="n">message</span> <span class="ow">in</span> <span class="n">email_messages</span><span class="p">:</span>
+                <span class="n">sent</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_send</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">sent</span><span class="p">:</span>
+                    <span class="n">num_sent</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">if</span> <span class="n">new_conn_created</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">num_sent</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_send</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">email_message</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;A helper method that does the actual sending.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">email_message</span><span class="o">.</span><span class="n">recipients</span><span class="p">():</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">encoding</span> <span class="o">=</span> <span class="n">email_message</span><span class="o">.</span><span class="n">encoding</span> <span class="ow">or</span> <span class="n">settings</span><span class="o">.</span><span class="n">DEFAULT_CHARSET</span>
+        <span class="n">from_email</span> <span class="o">=</span> <span class="n">sanitize_address</span><span class="p">(</span><span class="n">email_message</span><span class="o">.</span><span class="n">from_email</span><span class="p">,</span> <span class="n">encoding</span><span class="p">)</span>
+        <span class="n">recipients</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">sanitize_address</span><span class="p">(</span><span class="n">addr</span><span class="p">,</span> <span class="n">encoding</span><span class="p">)</span> <span class="k">for</span> <span class="n">addr</span> <span class="ow">in</span> <span class="n">email_message</span><span class="o">.</span><span class="n">recipients</span><span class="p">()</span>
+        <span class="p">]</span>
+        <span class="n">message</span> <span class="o">=</span> <span class="n">email_message</span><span class="o">.</span><span class="n">message</span><span class="p">()</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">sendmail</span><span class="p">(</span>
+                <span class="n">from_email</span><span class="p">,</span> <span class="n">recipients</span><span class="p">,</span> <span class="n">message</span><span class="o">.</span><span class="n">as_bytes</span><span class="p">(</span><span class="n">linesep</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\r\n</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">except</span> <span class="n">smtplib</span><span class="o">.</span><span class="n">SMTPException</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">fail_silently</span><span class="p">:</span>
+                <span class="k">raise</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">return</span> <span class="kc">True</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,985 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.db.backends.oracle.operations &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../../../db.html">django.db</a></li>
+      <li class="breadcrumb-item active">django.db.backends.oracle.operations</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.db.backends.oracle.operations</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">uuid</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">lru_cache</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseError</span><span class="p">,</span> <span class="n">NotSupportedError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.base.operations</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseDatabaseOperations</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">split_tzname_delta</span><span class="p">,</span> <span class="n">strip_quotes</span><span class="p">,</span> <span class="n">truncate_name</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">AutoField</span><span class="p">,</span> <span class="n">Exists</span><span class="p">,</span> <span class="n">ExpressionWrapper</span><span class="p">,</span> <span class="n">Lookup</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.models.expressions</span><span class="w"> </span><span class="kn">import</span> <span class="n">RawSQL</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.models.sql.where</span><span class="w"> </span><span class="kn">import</span> <span class="n">WhereNode</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">timezone</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.encoding</span><span class="w"> </span><span class="kn">import</span> <span class="n">force_bytes</span><span class="p">,</span> <span class="n">force_str</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">cached_property</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.regex_helper</span><span class="w"> </span><span class="kn">import</span> <span class="n">_lazy_re_compile</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">Database</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">BulkInsertMapper</span><span class="p">,</span> <span class="n">InsertVar</span><span class="p">,</span> <span class="n">Oracle_datetime</span>
+
+
+<div class="viewcode-block" id="DatabaseOperations">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DatabaseOperations</span><span class="p">(</span><span class="n">BaseDatabaseOperations</span><span class="p">):</span>
+    <span class="c1"># Oracle uses NUMBER(5), NUMBER(11), and NUMBER(19) for integer fields.</span>
+    <span class="c1"># SmallIntegerField uses NUMBER(11) instead of NUMBER(5), which is used by</span>
+    <span class="c1"># SmallAutoField, to preserve backward compatibility.</span>
+<div class="viewcode-block" id="DatabaseOperations.integer_field_ranges">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.integer_field_ranges">[docs]</a>
+    <span class="n">integer_field_ranges</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;SmallIntegerField&quot;</span><span class="p">:</span> <span class="p">(</span><span class="o">-</span><span class="mi">99999999999</span><span class="p">,</span> <span class="mi">99999999999</span><span class="p">),</span>
+        <span class="s2">&quot;IntegerField&quot;</span><span class="p">:</span> <span class="p">(</span><span class="o">-</span><span class="mi">99999999999</span><span class="p">,</span> <span class="mi">99999999999</span><span class="p">),</span>
+        <span class="s2">&quot;BigIntegerField&quot;</span><span class="p">:</span> <span class="p">(</span><span class="o">-</span><span class="mi">9999999999999999999</span><span class="p">,</span> <span class="mi">9999999999999999999</span><span class="p">),</span>
+        <span class="s2">&quot;PositiveBigIntegerField&quot;</span><span class="p">:</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">9999999999999999999</span><span class="p">),</span>
+        <span class="s2">&quot;PositiveSmallIntegerField&quot;</span><span class="p">:</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">99999999999</span><span class="p">),</span>
+        <span class="s2">&quot;PositiveIntegerField&quot;</span><span class="p">:</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">99999999999</span><span class="p">),</span>
+        <span class="s2">&quot;SmallAutoField&quot;</span><span class="p">:</span> <span class="p">(</span><span class="o">-</span><span class="mi">99999</span><span class="p">,</span> <span class="mi">99999</span><span class="p">),</span>
+        <span class="s2">&quot;AutoField&quot;</span><span class="p">:</span> <span class="p">(</span><span class="o">-</span><span class="mi">99999999999</span><span class="p">,</span> <span class="mi">99999999999</span><span class="p">),</span>
+        <span class="s2">&quot;BigAutoField&quot;</span><span class="p">:</span> <span class="p">(</span><span class="o">-</span><span class="mi">9999999999999999999</span><span class="p">,</span> <span class="mi">9999999999999999999</span><span class="p">),</span>
+    <span class="p">}</span></div>
+
+<div class="viewcode-block" id="DatabaseOperations.set_operators">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.set_operators">[docs]</a>
+    <span class="n">set_operators</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="n">BaseDatabaseOperations</span><span class="o">.</span><span class="n">set_operators</span><span class="p">,</span> <span class="s2">&quot;difference&quot;</span><span class="p">:</span> <span class="s2">&quot;MINUS&quot;</span><span class="p">}</span></div>
+
+
+    <span class="c1"># TODO: colorize this SQL code with style.SQL_KEYWORD(), etc.</span>
+    <span class="n">_sequence_reset_sql</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">DECLARE</span>
+<span class="s2">    table_value integer;</span>
+<span class="s2">    seq_value integer;</span>
+<span class="s2">    seq_name user_tab_identity_cols.sequence_name</span><span class="si">%%</span><span class="s2">TYPE;</span>
+<span class="s2">BEGIN</span>
+<span class="s2">    BEGIN</span>
+<span class="s2">        SELECT sequence_name INTO seq_name FROM user_tab_identity_cols</span>
+<span class="s2">        WHERE  table_name = &#39;</span><span class="si">%(table_name)s</span><span class="s2">&#39; AND</span>
+<span class="s2">               column_name = &#39;</span><span class="si">%(column_name)s</span><span class="s2">&#39;;</span>
+<span class="s2">        EXCEPTION WHEN NO_DATA_FOUND THEN</span>
+<span class="s2">            seq_name := &#39;</span><span class="si">%(no_autofield_sequence_name)s</span><span class="s2">&#39;;</span>
+<span class="s2">    END;</span>
+
+<span class="s2">    SELECT NVL(MAX(</span><span class="si">%(column)s</span><span class="s2">), 0) INTO table_value FROM </span><span class="si">%(table)s</span><span class="s2">;</span>
+<span class="s2">    SELECT NVL(last_number - cache_size, 0) INTO seq_value FROM user_sequences</span>
+<span class="s2">           WHERE sequence_name = seq_name;</span>
+<span class="s2">    WHILE table_value &gt; seq_value LOOP</span>
+<span class="s2">        EXECUTE IMMEDIATE &#39;SELECT &quot;&#39;||seq_name||&#39;&quot;.nextval FROM DUAL&#39;</span>
+<span class="s2">        INTO seq_value;</span>
+<span class="s2">    END LOOP;</span>
+<span class="s2">END;</span>
+<span class="s2">/&quot;&quot;&quot;</span>
+
+    <span class="c1"># Oracle doesn&#39;t support string without precision; use the max string size.</span>
+<div class="viewcode-block" id="DatabaseOperations.cast_char_field_without_max_length">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.cast_char_field_without_max_length">[docs]</a>
+    <span class="n">cast_char_field_without_max_length</span> <span class="o">=</span> <span class="s2">&quot;NVARCHAR2(2000)&quot;</span></div>
+
+<div class="viewcode-block" id="DatabaseOperations.cast_data_types">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.cast_data_types">[docs]</a>
+    <span class="n">cast_data_types</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;AutoField&quot;</span><span class="p">:</span> <span class="s2">&quot;NUMBER(11)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;BigAutoField&quot;</span><span class="p">:</span> <span class="s2">&quot;NUMBER(19)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;SmallAutoField&quot;</span><span class="p">:</span> <span class="s2">&quot;NUMBER(5)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;TextField&quot;</span><span class="p">:</span> <span class="n">cast_char_field_without_max_length</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.cache_key_culling_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.cache_key_culling_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">cache_key_culling_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">cache_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;cache_key&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;SELECT </span><span class="si">{</span><span class="n">cache_key</span><span class="si">}</span><span class="s2"> &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;FROM %s &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;ORDER BY </span><span class="si">{</span><span class="n">cache_key</span><span class="si">}</span><span class="s2"> OFFSET %%s ROWS FETCH FIRST 1 ROWS ONLY&quot;</span>
+        <span class="p">)</span></div>
+
+
+    <span class="c1"># EXTRACT format cannot be passed in parameters.</span>
+    <span class="n">_extract_format_re</span> <span class="o">=</span> <span class="n">_lazy_re_compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;[A-Z_]+&quot;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="DatabaseOperations.date_extract_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.date_extract_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">date_extract_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="n">extract_sql</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;TO_CHAR(</span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">, %s)&quot;</span>
+        <span class="n">extract_param</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">lookup_type</span> <span class="o">==</span> <span class="s2">&quot;week_day&quot;</span><span class="p">:</span>
+            <span class="c1"># TO_CHAR(field, &#39;D&#39;) returns an integer from 1-7, where 1=Sunday.</span>
+            <span class="n">extract_param</span> <span class="o">=</span> <span class="s2">&quot;D&quot;</span>
+        <span class="k">elif</span> <span class="n">lookup_type</span> <span class="o">==</span> <span class="s2">&quot;iso_week_day&quot;</span><span class="p">:</span>
+            <span class="n">extract_sql</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;TO_CHAR(</span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2"> - 1, %s)&quot;</span>
+            <span class="n">extract_param</span> <span class="o">=</span> <span class="s2">&quot;D&quot;</span>
+        <span class="k">elif</span> <span class="n">lookup_type</span> <span class="o">==</span> <span class="s2">&quot;week&quot;</span><span class="p">:</span>
+            <span class="c1"># IW = ISO week number</span>
+            <span class="n">extract_param</span> <span class="o">=</span> <span class="s2">&quot;IW&quot;</span>
+        <span class="k">elif</span> <span class="n">lookup_type</span> <span class="o">==</span> <span class="s2">&quot;quarter&quot;</span><span class="p">:</span>
+            <span class="n">extract_param</span> <span class="o">=</span> <span class="s2">&quot;Q&quot;</span>
+        <span class="k">elif</span> <span class="n">lookup_type</span> <span class="o">==</span> <span class="s2">&quot;iso_year&quot;</span><span class="p">:</span>
+            <span class="n">extract_param</span> <span class="o">=</span> <span class="s2">&quot;IYYY&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">lookup_type</span> <span class="o">=</span> <span class="n">lookup_type</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_extract_format_re</span><span class="o">.</span><span class="n">fullmatch</span><span class="p">(</span><span class="n">lookup_type</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Invalid loookup type: </span><span class="si">{</span><span class="n">lookup_type</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="c1"># https://docs.oracle.com/en/database/oracle/oracle-database/21/sqlrf/EXTRACT-datetime.html</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;EXTRACT(</span><span class="si">{</span><span class="n">lookup_type</span><span class="si">}</span><span class="s2"> FROM </span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span> <span class="n">params</span>
+        <span class="k">return</span> <span class="n">extract_sql</span><span class="p">,</span> <span class="p">(</span><span class="o">*</span><span class="n">params</span><span class="p">,</span> <span class="n">extract_param</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.date_trunc_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.date_trunc_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">date_trunc_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="n">sql</span><span class="p">,</span> <span class="n">params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_sql_to_tz</span><span class="p">(</span><span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">)</span>
+        <span class="c1"># https://docs.oracle.com/en/database/oracle/oracle-database/21/sqlrf/ROUND-and-TRUNC-Date-Functions.html</span>
+        <span class="n">trunc_param</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">lookup_type</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;year&quot;</span><span class="p">,</span> <span class="s2">&quot;month&quot;</span><span class="p">):</span>
+            <span class="n">trunc_param</span> <span class="o">=</span> <span class="n">lookup_type</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="n">lookup_type</span> <span class="o">==</span> <span class="s2">&quot;quarter&quot;</span><span class="p">:</span>
+            <span class="n">trunc_param</span> <span class="o">=</span> <span class="s2">&quot;Q&quot;</span>
+        <span class="k">elif</span> <span class="n">lookup_type</span> <span class="o">==</span> <span class="s2">&quot;week&quot;</span><span class="p">:</span>
+            <span class="n">trunc_param</span> <span class="o">=</span> <span class="s2">&quot;IW&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;TRUNC(</span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span> <span class="n">params</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;TRUNC(</span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">, %s)&quot;</span><span class="p">,</span> <span class="p">(</span><span class="o">*</span><span class="n">params</span><span class="p">,</span> <span class="n">trunc_param</span><span class="p">)</span></div>
+
+
+    <span class="c1"># Oracle crashes with &quot;ORA-03113: end-of-file on communication channel&quot;</span>
+    <span class="c1"># if the time zone name is passed in parameter. Use interpolation instead.</span>
+    <span class="c1"># https://groups.google.com/forum/#!msg/django-developers/zwQju7hbG78/9l934yelwfsJ</span>
+    <span class="c1"># This regexp matches all time zone names from the zoneinfo database.</span>
+    <span class="n">_tzname_re</span> <span class="o">=</span> <span class="n">_lazy_re_compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;^[\w/:+-]+$&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_prepare_tzname_delta</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tzname</span><span class="p">):</span>
+        <span class="n">tzname</span><span class="p">,</span> <span class="n">sign</span><span class="p">,</span> <span class="n">offset</span> <span class="o">=</span> <span class="n">split_tzname_delta</span><span class="p">(</span><span class="n">tzname</span><span class="p">)</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">sign</span><span class="si">}{</span><span class="n">offset</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">if</span> <span class="n">offset</span> <span class="k">else</span> <span class="n">tzname</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_convert_sql_to_tz</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">USE_TZ</span> <span class="ow">and</span> <span class="n">tzname</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tzname_re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">tzname</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Invalid time zone name: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">tzname</span><span class="p">)</span>
+        <span class="c1"># Convert from connection timezone to the local time, returning</span>
+        <span class="c1"># TIMESTAMP WITH TIME ZONE and cast it back to TIMESTAMP to strip the</span>
+        <span class="c1"># TIME ZONE details.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">timezone_name</span> <span class="o">!=</span> <span class="n">tzname</span><span class="p">:</span>
+            <span class="n">from_timezone_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">timezone_name</span>
+            <span class="n">to_timezone_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prepare_tzname_delta</span><span class="p">(</span><span class="n">tzname</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;CAST((FROM_TZ(</span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">, &#39;</span><span class="si">{</span><span class="n">from_timezone_name</span><span class="si">}</span><span class="s2">&#39;) AT TIME ZONE &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;&#39;</span><span class="si">{</span><span class="n">to_timezone_name</span><span class="si">}</span><span class="s2">&#39;) AS TIMESTAMP)&quot;</span><span class="p">,</span>
+                <span class="n">params</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span>
+
+<div class="viewcode-block" id="DatabaseOperations.datetime_cast_date_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.datetime_cast_date_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">datetime_cast_date_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">):</span>
+        <span class="n">sql</span><span class="p">,</span> <span class="n">params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_sql_to_tz</span><span class="p">(</span><span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">)</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;TRUNC(</span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span> <span class="n">params</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.datetime_cast_time_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.datetime_cast_time_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">datetime_cast_time_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">):</span>
+        <span class="c1"># Since `TimeField` values are stored as TIMESTAMP change to the</span>
+        <span class="c1"># default date and convert the field to the specified timezone.</span>
+        <span class="n">sql</span><span class="p">,</span> <span class="n">params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_sql_to_tz</span><span class="p">(</span><span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">)</span>
+        <span class="n">convert_datetime_sql</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;TO_TIMESTAMP(CONCAT(&#39;1900-01-01 &#39;, TO_CHAR(</span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">, &#39;HH24:MI:SS.FF&#39;)), &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;&#39;YYYY-MM-DD HH24:MI:SS.FF&#39;)&quot;</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;CASE WHEN </span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2"> IS NOT NULL THEN </span><span class="si">{</span><span class="n">convert_datetime_sql</span><span class="si">}</span><span class="s2"> ELSE NULL END&quot;</span><span class="p">,</span>
+            <span class="p">(</span><span class="o">*</span><span class="n">params</span><span class="p">,</span> <span class="o">*</span><span class="n">params</span><span class="p">),</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.datetime_extract_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.datetime_extract_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">datetime_extract_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">):</span>
+        <span class="n">sql</span><span class="p">,</span> <span class="n">params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_sql_to_tz</span><span class="p">(</span><span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">date_extract_sql</span><span class="p">(</span><span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.datetime_trunc_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.datetime_trunc_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">datetime_trunc_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">):</span>
+        <span class="n">sql</span><span class="p">,</span> <span class="n">params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_sql_to_tz</span><span class="p">(</span><span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">)</span>
+        <span class="c1"># https://docs.oracle.com/en/database/oracle/oracle-database/21/sqlrf/ROUND-and-TRUNC-Date-Functions.html</span>
+        <span class="n">trunc_param</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">lookup_type</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;year&quot;</span><span class="p">,</span> <span class="s2">&quot;month&quot;</span><span class="p">):</span>
+            <span class="n">trunc_param</span> <span class="o">=</span> <span class="n">lookup_type</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="n">lookup_type</span> <span class="o">==</span> <span class="s2">&quot;quarter&quot;</span><span class="p">:</span>
+            <span class="n">trunc_param</span> <span class="o">=</span> <span class="s2">&quot;Q&quot;</span>
+        <span class="k">elif</span> <span class="n">lookup_type</span> <span class="o">==</span> <span class="s2">&quot;week&quot;</span><span class="p">:</span>
+            <span class="n">trunc_param</span> <span class="o">=</span> <span class="s2">&quot;IW&quot;</span>
+        <span class="k">elif</span> <span class="n">lookup_type</span> <span class="o">==</span> <span class="s2">&quot;hour&quot;</span><span class="p">:</span>
+            <span class="n">trunc_param</span> <span class="o">=</span> <span class="s2">&quot;HH24&quot;</span>
+        <span class="k">elif</span> <span class="n">lookup_type</span> <span class="o">==</span> <span class="s2">&quot;minute&quot;</span><span class="p">:</span>
+            <span class="n">trunc_param</span> <span class="o">=</span> <span class="s2">&quot;MI&quot;</span>
+        <span class="k">elif</span> <span class="n">lookup_type</span> <span class="o">==</span> <span class="s2">&quot;day&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;TRUNC(</span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span> <span class="n">params</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Cast to DATE removes sub-second precision.</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;CAST(</span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2"> AS DATE)&quot;</span><span class="p">,</span> <span class="n">params</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;TRUNC(</span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">, %s)&quot;</span><span class="p">,</span> <span class="p">(</span><span class="o">*</span><span class="n">params</span><span class="p">,</span> <span class="n">trunc_param</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.time_trunc_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.time_trunc_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">time_trunc_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="c1"># The implementation is similar to `datetime_trunc_sql` as both</span>
+        <span class="c1"># `DateTimeField` and `TimeField` are stored as TIMESTAMP where</span>
+        <span class="c1"># the date part of the later is ignored.</span>
+        <span class="n">sql</span><span class="p">,</span> <span class="n">params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_sql_to_tz</span><span class="p">(</span><span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">)</span>
+        <span class="n">trunc_param</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">lookup_type</span> <span class="o">==</span> <span class="s2">&quot;hour&quot;</span><span class="p">:</span>
+            <span class="n">trunc_param</span> <span class="o">=</span> <span class="s2">&quot;HH24&quot;</span>
+        <span class="k">elif</span> <span class="n">lookup_type</span> <span class="o">==</span> <span class="s2">&quot;minute&quot;</span><span class="p">:</span>
+            <span class="n">trunc_param</span> <span class="o">=</span> <span class="s2">&quot;MI&quot;</span>
+        <span class="k">elif</span> <span class="n">lookup_type</span> <span class="o">==</span> <span class="s2">&quot;second&quot;</span><span class="p">:</span>
+            <span class="c1"># Cast to DATE removes sub-second precision.</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;CAST(</span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2"> AS DATE)&quot;</span><span class="p">,</span> <span class="n">params</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;TRUNC(</span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">, %s)&quot;</span><span class="p">,</span> <span class="p">(</span><span class="o">*</span><span class="n">params</span><span class="p">,</span> <span class="n">trunc_param</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.get_db_converters">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.get_db_converters">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_db_converters</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expression</span><span class="p">):</span>
+        <span class="n">converters</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">get_db_converters</span><span class="p">(</span><span class="n">expression</span><span class="p">)</span>
+        <span class="n">internal_type</span> <span class="o">=</span> <span class="n">expression</span><span class="o">.</span><span class="n">output_field</span><span class="o">.</span><span class="n">get_internal_type</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">internal_type</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;JSONField&quot;</span><span class="p">,</span> <span class="s2">&quot;TextField&quot;</span><span class="p">]:</span>
+            <span class="n">converters</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">convert_textfield_value</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">internal_type</span> <span class="o">==</span> <span class="s2">&quot;BinaryField&quot;</span><span class="p">:</span>
+            <span class="n">converters</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">convert_binaryfield_value</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">internal_type</span> <span class="o">==</span> <span class="s2">&quot;BooleanField&quot;</span><span class="p">:</span>
+            <span class="n">converters</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">convert_booleanfield_value</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">internal_type</span> <span class="o">==</span> <span class="s2">&quot;DateTimeField&quot;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">USE_TZ</span><span class="p">:</span>
+                <span class="n">converters</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">convert_datetimefield_value</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">internal_type</span> <span class="o">==</span> <span class="s2">&quot;DateField&quot;</span><span class="p">:</span>
+            <span class="n">converters</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">convert_datefield_value</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">internal_type</span> <span class="o">==</span> <span class="s2">&quot;TimeField&quot;</span><span class="p">:</span>
+            <span class="n">converters</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">convert_timefield_value</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">internal_type</span> <span class="o">==</span> <span class="s2">&quot;UUIDField&quot;</span><span class="p">:</span>
+            <span class="n">converters</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">convert_uuidfield_value</span><span class="p">)</span>
+        <span class="c1"># Oracle stores empty strings as null. If the field accepts the empty</span>
+        <span class="c1"># string, undo this to adhere to the Django convention of using</span>
+        <span class="c1"># the empty string instead of null.</span>
+        <span class="k">if</span> <span class="n">expression</span><span class="o">.</span><span class="n">output_field</span><span class="o">.</span><span class="n">empty_strings_allowed</span><span class="p">:</span>
+            <span class="n">converters</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">convert_empty_bytes</span>
+                <span class="k">if</span> <span class="n">internal_type</span> <span class="o">==</span> <span class="s2">&quot;BinaryField&quot;</span>
+                <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">convert_empty_string</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">converters</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.convert_textfield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.convert_textfield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">convert_textfield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">Database</span><span class="o">.</span><span class="n">LOB</span><span class="p">):</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.convert_binaryfield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.convert_binaryfield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">convert_binaryfield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">Database</span><span class="o">.</span><span class="n">LOB</span><span class="p">):</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">force_bytes</span><span class="p">(</span><span class="n">value</span><span class="o">.</span><span class="n">read</span><span class="p">())</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.convert_booleanfield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.convert_booleanfield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">convert_booleanfield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">in</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+    <span class="c1"># cx_Oracle always returns datetime.datetime objects for</span>
+    <span class="c1"># DATE and TIMESTAMP columns, but Django wants to see a</span>
+    <span class="c1"># python datetime.date, .time, or .datetime.</span>
+
+<div class="viewcode-block" id="DatabaseOperations.convert_datetimefield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.convert_datetimefield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">convert_datetimefield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">timezone</span><span class="o">.</span><span class="n">make_aware</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">timezone</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.convert_datefield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.convert_datefield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">convert_datefield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">Database</span><span class="o">.</span><span class="n">Timestamp</span><span class="p">):</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">date</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.convert_timefield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.convert_timefield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">convert_timefield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">Database</span><span class="o">.</span><span class="n">Timestamp</span><span class="p">):</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.convert_uuidfield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.convert_uuidfield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">convert_uuidfield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">uuid</span><span class="o">.</span><span class="n">UUID</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="DatabaseOperations.convert_empty_string">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.convert_empty_string">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">convert_empty_string</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;&quot;</span> <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">value</span></div>
+
+
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="DatabaseOperations.convert_empty_bytes">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.convert_empty_bytes">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">convert_empty_bytes</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">b</span><span class="s2">&quot;&quot;</span> <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">value</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.deferrable_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.deferrable_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">deferrable_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot; DEFERRABLE INITIALLY DEFERRED&quot;</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.fetch_returned_insert_columns">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.fetch_returned_insert_columns">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">fetch_returned_insert_columns</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">returning_params</span><span class="p">):</span>
+        <span class="n">columns</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">param</span> <span class="ow">in</span> <span class="n">returning_params</span><span class="p">:</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">param</span><span class="o">.</span><span class="n">get_value</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="o">==</span> <span class="p">[]:</span>
+                <span class="k">raise</span> <span class="n">DatabaseError</span><span class="p">(</span>
+                    <span class="s2">&quot;The database did not return a new row id. Probably &quot;</span>
+                    <span class="s1">&#39;&quot;ORA-1403: no data found&quot; was raised internally but was &#39;</span>
+                    <span class="s2">&quot;hidden by the Oracle OCI library (see &quot;</span>
+                    <span class="s2">&quot;https://code.djangoproject.com/ticket/28859).&quot;</span>
+                <span class="p">)</span>
+            <span class="n">columns</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">value</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">columns</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.no_limit_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.no_limit_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">no_limit_value</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.limit_offset_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.limit_offset_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">limit_offset_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">low_mark</span><span class="p">,</span> <span class="n">high_mark</span><span class="p">):</span>
+        <span class="n">fetch</span><span class="p">,</span> <span class="n">offset</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_limit_offset_params</span><span class="p">(</span><span class="n">low_mark</span><span class="p">,</span> <span class="n">high_mark</span><span class="p">)</span>
+        <span class="k">return</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+            <span class="n">sql</span>
+            <span class="k">for</span> <span class="n">sql</span> <span class="ow">in</span> <span class="p">(</span>
+                <span class="p">(</span><span class="s2">&quot;OFFSET </span><span class="si">%d</span><span class="s2"> ROWS&quot;</span> <span class="o">%</span> <span class="n">offset</span><span class="p">)</span> <span class="k">if</span> <span class="n">offset</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="p">(</span><span class="s2">&quot;FETCH FIRST </span><span class="si">%d</span><span class="s2"> ROWS ONLY&quot;</span> <span class="o">%</span> <span class="n">fetch</span><span class="p">)</span> <span class="k">if</span> <span class="n">fetch</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">sql</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.last_executed_query">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.last_executed_query">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">last_executed_query</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="c1"># https://cx-oracle.readthedocs.io/en/latest/api_manual/cursor.html#Cursor.statement</span>
+        <span class="c1"># The DB API definition does not define this attribute.</span>
+        <span class="n">statement</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">statement</span>
+        <span class="c1"># Unlike Psycopg&#39;s `query` and MySQLdb`&#39;s `_executed`, cx_Oracle&#39;s</span>
+        <span class="c1"># `statement` doesn&#39;t contain the query parameters. Substitute</span>
+        <span class="c1"># parameters manually.</span>
+        <span class="k">if</span> <span class="n">params</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="p">(</span><span class="nb">tuple</span><span class="p">,</span> <span class="nb">list</span><span class="p">)):</span>
+                <span class="n">params</span> <span class="o">=</span> <span class="p">{</span>
+                    <span class="sa">f</span><span class="s2">&quot;:arg</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">param</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">param</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">dict</span><span class="o">.</span><span class="n">fromkeys</span><span class="p">(</span><span class="n">params</span><span class="p">))</span>
+                <span class="p">}</span>
+            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+                <span class="n">params</span> <span class="o">=</span> <span class="p">{</span><span class="sa">f</span><span class="s2">&quot;:</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">val</span> <span class="k">for</span> <span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">val</span><span class="p">)</span> <span class="ow">in</span> <span class="n">params</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+            <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="nb">len</span><span class="p">,</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+                <span class="n">statement</span> <span class="o">=</span> <span class="n">statement</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span>
+                    <span class="n">key</span><span class="p">,</span> <span class="n">force_str</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">key</span><span class="p">],</span> <span class="n">errors</span><span class="o">=</span><span class="s2">&quot;replace&quot;</span><span class="p">)</span>
+                <span class="p">)</span>
+        <span class="k">return</span> <span class="n">statement</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.last_insert_id">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.last_insert_id">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">last_insert_id</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">,</span> <span class="n">pk_name</span><span class="p">):</span>
+        <span class="n">sq_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_sequence_name</span><span class="p">(</span><span class="n">cursor</span><span class="p">,</span> <span class="n">strip_quotes</span><span class="p">(</span><span class="n">table_name</span><span class="p">),</span> <span class="n">pk_name</span><span class="p">)</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s1">&#39;&quot;</span><span class="si">%s</span><span class="s1">&quot;.currval&#39;</span> <span class="o">%</span> <span class="n">sq_name</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.lookup_cast">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.lookup_cast">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">lookup_cast</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">internal_type</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">lookup_type</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;iexact&quot;</span><span class="p">,</span> <span class="s2">&quot;icontains&quot;</span><span class="p">,</span> <span class="s2">&quot;istartswith&quot;</span><span class="p">,</span> <span class="s2">&quot;iendswith&quot;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s2">&quot;UPPER(</span><span class="si">%s</span><span class="s2">)&quot;</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="n">lookup_type</span> <span class="o">!=</span> <span class="s2">&quot;isnull&quot;</span> <span class="ow">and</span> <span class="n">internal_type</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;BinaryField&quot;</span><span class="p">,</span> <span class="s2">&quot;TextField&quot;</span><span class="p">)</span>
+        <span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">lookup_type</span> <span class="o">==</span> <span class="s2">&quot;exact&quot;</span> <span class="ow">and</span> <span class="n">internal_type</span> <span class="o">==</span> <span class="s2">&quot;JSONField&quot;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s2">&quot;DBMS_LOB.SUBSTR(</span><span class="si">%s</span><span class="s2">)&quot;</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">&quot;</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.max_in_list_size">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.max_in_list_size">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">max_in_list_size</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="mi">1000</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.max_name_length">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.max_name_length">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">max_name_length</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="mi">30</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.pk_default_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.pk_default_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">pk_default_value</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;NULL&quot;</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.prep_for_iexact_query">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.prep_for_iexact_query">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">prep_for_iexact_query</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">x</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.process_clob">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.process_clob">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">process_clob</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">value</span><span class="o">.</span><span class="n">read</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.quote_name">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.quote_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">quote_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="c1"># SQL92 requires delimited (quoted) names to be case-sensitive.  When</span>
+        <span class="c1"># not quoted, Oracle has case-insensitive behavior for identifiers, but</span>
+        <span class="c1"># always defaults to uppercase.</span>
+        <span class="c1"># We simplify things by making Oracle identifiers always uppercase.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">&#39;&quot;&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">name</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">&#39;&quot;&#39;</span><span class="p">):</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="s1">&#39;&quot;</span><span class="si">%s</span><span class="s1">&quot;&#39;</span> <span class="o">%</span> <span class="n">truncate_name</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_name_length</span><span class="p">())</span>
+        <span class="c1"># Oracle puts the query text into a (query % args) construct, so % signs</span>
+        <span class="c1"># in names need to be escaped. The &#39;%%&#39; will be collapsed back to &#39;%&#39; at</span>
+        <span class="c1"># that stage so we aren&#39;t really making the name longer here.</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="n">name</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;%&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="si">%%</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">name</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.regex_lookup">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.regex_lookup">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">regex_lookup</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">lookup_type</span> <span class="o">==</span> <span class="s2">&quot;regex&quot;</span><span class="p">:</span>
+            <span class="n">match_option</span> <span class="o">=</span> <span class="s2">&quot;&#39;c&#39;&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">match_option</span> <span class="o">=</span> <span class="s2">&quot;&#39;i&#39;&quot;</span>
+        <span class="k">return</span> <span class="s2">&quot;REGEXP_LIKE(</span><span class="si">%%</span><span class="s2">s, </span><span class="si">%%</span><span class="s2">s, </span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="n">match_option</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.return_insert_columns">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.return_insert_columns">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">return_insert_columns</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fields</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">fields</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="p">()</span>
+        <span class="n">field_names</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">params</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">fields</span><span class="p">:</span>
+            <span class="n">field_names</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2">&quot;</span>
+                <span class="o">%</span> <span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">field</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span><span class="p">),</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">field</span><span class="o">.</span><span class="n">column</span><span class="p">),</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+            <span class="n">params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">InsertVar</span><span class="p">(</span><span class="n">field</span><span class="p">))</span>
+        <span class="k">return</span> <span class="s2">&quot;RETURNING </span><span class="si">%s</span><span class="s2"> INTO </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span>
+            <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">field_names</span><span class="p">),</span>
+            <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">params</span><span class="p">)),</span>
+        <span class="p">),</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">params</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">__foreign_key_constraints</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table_name</span><span class="p">,</span> <span class="n">recursive</span><span class="p">):</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">recursive</span><span class="p">:</span>
+                <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">                    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">                    SELECT</span>
+<span class="sd">                        user_tables.table_name, rcons.constraint_name</span>
+<span class="sd">                    FROM</span>
+<span class="sd">                        user_tables</span>
+<span class="sd">                    JOIN</span>
+<span class="sd">                        user_constraints cons</span>
+<span class="sd">                        ON (user_tables.table_name = cons.table_name</span>
+<span class="sd">                        AND cons.constraint_type = ANY(&#39;P&#39;, &#39;U&#39;))</span>
+<span class="sd">                    LEFT JOIN</span>
+<span class="sd">                        user_constraints rcons</span>
+<span class="sd">                        ON (user_tables.table_name = rcons.table_name</span>
+<span class="sd">                        AND rcons.constraint_type = &#39;R&#39;)</span>
+<span class="sd">                    START WITH user_tables.table_name = UPPER(%s)</span>
+<span class="sd">                    CONNECT BY</span>
+<span class="sd">                        NOCYCLE PRIOR cons.constraint_name = rcons.r_constraint_name</span>
+<span class="sd">                    GROUP BY</span>
+<span class="sd">                        user_tables.table_name, rcons.constraint_name</span>
+<span class="sd">                    HAVING user_tables.table_name != UPPER(%s)</span>
+<span class="sd">                    ORDER BY MAX(level) DESC</span>
+<span class="sd">                    &quot;&quot;&quot;</span><span class="p">,</span>
+                    <span class="p">(</span><span class="n">table_name</span><span class="p">,</span> <span class="n">table_name</span><span class="p">),</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">                    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">                    SELECT</span>
+<span class="sd">                        cons.table_name, cons.constraint_name</span>
+<span class="sd">                    FROM</span>
+<span class="sd">                        user_constraints cons</span>
+<span class="sd">                    WHERE</span>
+<span class="sd">                        cons.constraint_type = &#39;R&#39;</span>
+<span class="sd">                        AND cons.table_name = UPPER(%s)</span>
+<span class="sd">                    &quot;&quot;&quot;</span><span class="p">,</span>
+                    <span class="p">(</span><span class="n">table_name</span><span class="p">,),</span>
+                <span class="p">)</span>
+            <span class="k">return</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+
+    <span class="nd">@cached_property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_foreign_key_constraints</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># 512 is large enough to fit the ~330 tables (as of this writing) in</span>
+        <span class="c1"># Django&#39;s test suite.</span>
+        <span class="k">return</span> <span class="n">lru_cache</span><span class="p">(</span><span class="n">maxsize</span><span class="o">=</span><span class="mi">512</span><span class="p">)(</span><span class="bp">self</span><span class="o">.</span><span class="n">__foreign_key_constraints</span><span class="p">)</span>
+
+<div class="viewcode-block" id="DatabaseOperations.sql_flush">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.sql_flush">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">sql_flush</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">style</span><span class="p">,</span> <span class="n">tables</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">reset_sequences</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">allow_cascade</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">tables</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+        <span class="n">truncated_tables</span> <span class="o">=</span> <span class="p">{</span><span class="n">table</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span> <span class="k">for</span> <span class="n">table</span> <span class="ow">in</span> <span class="n">tables</span><span class="p">}</span>
+        <span class="n">constraints</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="c1"># Oracle&#39;s TRUNCATE CASCADE only works with ON DELETE CASCADE foreign</span>
+        <span class="c1"># keys which Django doesn&#39;t define. Emulate the PostgreSQL behavior</span>
+        <span class="c1"># which truncates all dependent tables by manually retrieving all</span>
+        <span class="c1"># foreign key constraints and resolving dependencies.</span>
+        <span class="k">for</span> <span class="n">table</span> <span class="ow">in</span> <span class="n">tables</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">foreign_table</span><span class="p">,</span> <span class="n">constraint</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_foreign_key_constraints</span><span class="p">(</span>
+                <span class="n">table</span><span class="p">,</span> <span class="n">recursive</span><span class="o">=</span><span class="n">allow_cascade</span>
+            <span class="p">):</span>
+                <span class="k">if</span> <span class="n">allow_cascade</span><span class="p">:</span>
+                    <span class="n">truncated_tables</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">foreign_table</span><span class="p">)</span>
+                <span class="n">constraints</span><span class="o">.</span><span class="n">add</span><span class="p">((</span><span class="n">foreign_table</span><span class="p">,</span> <span class="n">constraint</span><span class="p">))</span>
+        <span class="n">sql</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="p">[</span>
+                <span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2">;&quot;</span>
+                <span class="o">%</span> <span class="p">(</span>
+                    <span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;ALTER&quot;</span><span class="p">),</span>
+                    <span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;TABLE&quot;</span><span class="p">),</span>
+                    <span class="n">style</span><span class="o">.</span><span class="n">SQL_FIELD</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">table</span><span class="p">)),</span>
+                    <span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;DISABLE&quot;</span><span class="p">),</span>
+                    <span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;CONSTRAINT&quot;</span><span class="p">),</span>
+                    <span class="n">style</span><span class="o">.</span><span class="n">SQL_FIELD</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">constraint</span><span class="p">)),</span>
+                    <span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;KEEP&quot;</span><span class="p">),</span>
+                    <span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;INDEX&quot;</span><span class="p">),</span>
+                <span class="p">)</span>
+                <span class="k">for</span> <span class="n">table</span><span class="p">,</span> <span class="n">constraint</span> <span class="ow">in</span> <span class="n">constraints</span>
+            <span class="p">]</span>
+            <span class="o">+</span> <span class="p">[</span>
+                <span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2">;&quot;</span>
+                <span class="o">%</span> <span class="p">(</span>
+                    <span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;TRUNCATE&quot;</span><span class="p">),</span>
+                    <span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;TABLE&quot;</span><span class="p">),</span>
+                    <span class="n">style</span><span class="o">.</span><span class="n">SQL_FIELD</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">table</span><span class="p">)),</span>
+                <span class="p">)</span>
+                <span class="k">for</span> <span class="n">table</span> <span class="ow">in</span> <span class="n">truncated_tables</span>
+            <span class="p">]</span>
+            <span class="o">+</span> <span class="p">[</span>
+                <span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2">;&quot;</span>
+                <span class="o">%</span> <span class="p">(</span>
+                    <span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;ALTER&quot;</span><span class="p">),</span>
+                    <span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;TABLE&quot;</span><span class="p">),</span>
+                    <span class="n">style</span><span class="o">.</span><span class="n">SQL_FIELD</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">table</span><span class="p">)),</span>
+                    <span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;ENABLE&quot;</span><span class="p">),</span>
+                    <span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;CONSTRAINT&quot;</span><span class="p">),</span>
+                    <span class="n">style</span><span class="o">.</span><span class="n">SQL_FIELD</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">constraint</span><span class="p">)),</span>
+                <span class="p">)</span>
+                <span class="k">for</span> <span class="n">table</span><span class="p">,</span> <span class="n">constraint</span> <span class="ow">in</span> <span class="n">constraints</span>
+            <span class="p">]</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">reset_sequences</span><span class="p">:</span>
+            <span class="n">sequences</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="n">sequence</span>
+                <span class="k">for</span> <span class="n">sequence</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">introspection</span><span class="o">.</span><span class="n">sequence_list</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">sequence</span><span class="p">[</span><span class="s2">&quot;table&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span> <span class="ow">in</span> <span class="n">truncated_tables</span>
+            <span class="p">]</span>
+            <span class="c1"># Since we&#39;ve just deleted all the rows, running our sequence ALTER</span>
+            <span class="c1"># code will reset the sequence to 0.</span>
+            <span class="n">sql</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sequence_reset_by_name_sql</span><span class="p">(</span><span class="n">style</span><span class="p">,</span> <span class="n">sequences</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">sql</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.sequence_reset_by_name_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.sequence_reset_by_name_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">sequence_reset_by_name_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">style</span><span class="p">,</span> <span class="n">sequences</span><span class="p">):</span>
+        <span class="n">sql</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">sequence_info</span> <span class="ow">in</span> <span class="n">sequences</span><span class="p">:</span>
+            <span class="n">no_autofield_sequence_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_no_autofield_sequence_name</span><span class="p">(</span>
+                <span class="n">sequence_info</span><span class="p">[</span><span class="s2">&quot;table&quot;</span><span class="p">]</span>
+            <span class="p">)</span>
+            <span class="n">table</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">sequence_info</span><span class="p">[</span><span class="s2">&quot;table&quot;</span><span class="p">])</span>
+            <span class="n">column</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">sequence_info</span><span class="p">[</span><span class="s2">&quot;column&quot;</span><span class="p">]</span> <span class="ow">or</span> <span class="s2">&quot;id&quot;</span><span class="p">)</span>
+            <span class="n">query</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sequence_reset_sql</span> <span class="o">%</span> <span class="p">{</span>
+                <span class="s2">&quot;no_autofield_sequence_name&quot;</span><span class="p">:</span> <span class="n">no_autofield_sequence_name</span><span class="p">,</span>
+                <span class="s2">&quot;table&quot;</span><span class="p">:</span> <span class="n">table</span><span class="p">,</span>
+                <span class="s2">&quot;column&quot;</span><span class="p">:</span> <span class="n">column</span><span class="p">,</span>
+                <span class="s2">&quot;table_name&quot;</span><span class="p">:</span> <span class="n">strip_quotes</span><span class="p">(</span><span class="n">table</span><span class="p">),</span>
+                <span class="s2">&quot;column_name&quot;</span><span class="p">:</span> <span class="n">strip_quotes</span><span class="p">(</span><span class="n">column</span><span class="p">),</span>
+            <span class="p">}</span>
+            <span class="n">sql</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">query</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">sql</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.sequence_reset_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.sequence_reset_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">sequence_reset_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">style</span><span class="p">,</span> <span class="n">model_list</span><span class="p">):</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">query</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sequence_reset_sql</span>
+        <span class="k">for</span> <span class="n">model</span> <span class="ow">in</span> <span class="n">model_list</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">local_fields</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">AutoField</span><span class="p">):</span>
+                    <span class="n">no_autofield_sequence_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_no_autofield_sequence_name</span><span class="p">(</span>
+                        <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span>
+                    <span class="p">)</span>
+                    <span class="n">table</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span><span class="p">)</span>
+                    <span class="n">column</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">column</span><span class="p">)</span>
+                    <span class="n">output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                        <span class="n">query</span>
+                        <span class="o">%</span> <span class="p">{</span>
+                            <span class="s2">&quot;no_autofield_sequence_name&quot;</span><span class="p">:</span> <span class="n">no_autofield_sequence_name</span><span class="p">,</span>
+                            <span class="s2">&quot;table&quot;</span><span class="p">:</span> <span class="n">table</span><span class="p">,</span>
+                            <span class="s2">&quot;column&quot;</span><span class="p">:</span> <span class="n">column</span><span class="p">,</span>
+                            <span class="s2">&quot;table_name&quot;</span><span class="p">:</span> <span class="n">strip_quotes</span><span class="p">(</span><span class="n">table</span><span class="p">),</span>
+                            <span class="s2">&quot;column_name&quot;</span><span class="p">:</span> <span class="n">strip_quotes</span><span class="p">(</span><span class="n">column</span><span class="p">),</span>
+                        <span class="p">}</span>
+                    <span class="p">)</span>
+                    <span class="c1"># Only one AutoField is allowed per model, so don&#39;t</span>
+                    <span class="c1"># continue to loop</span>
+                    <span class="k">break</span>
+        <span class="k">return</span> <span class="n">output</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.start_transaction_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.start_transaction_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">start_transaction_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;&quot;</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.tablespace_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.tablespace_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">tablespace_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tablespace</span><span class="p">,</span> <span class="n">inline</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">inline</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;USING INDEX TABLESPACE </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">tablespace</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;TABLESPACE </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">tablespace</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.adapt_datefield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.adapt_datefield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">adapt_datefield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Transform a date value to an object compatible with what is expected</span>
+<span class="sd">        by the backend driver for date columns.</span>
+<span class="sd">        The default implementation transforms the date to text, but that is not</span>
+<span class="sd">        necessary for Oracle.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.adapt_datetimefield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.adapt_datetimefield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">adapt_datetimefield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Transform a datetime value to an object compatible with what is expected</span>
+<span class="sd">        by the backend driver for datetime columns.</span>
+
+<span class="sd">        If naive datetime is passed assumes that is in UTC. Normally Django</span>
+<span class="sd">        models.DateTimeField makes sure that if USE_TZ is True passed datetime</span>
+<span class="sd">        is timezone aware.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="c1"># Expression values are adapted by the database.</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;resolve_expression&quot;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">value</span>
+
+        <span class="c1"># cx_Oracle doesn&#39;t support tz-aware datetimes</span>
+        <span class="k">if</span> <span class="n">timezone</span><span class="o">.</span><span class="n">is_aware</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">USE_TZ</span><span class="p">:</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="n">timezone</span><span class="o">.</span><span class="n">make_naive</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">timezone</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">&quot;Oracle backend does not support timezone-aware datetimes when &quot;</span>
+                    <span class="s2">&quot;USE_TZ is False.&quot;</span>
+                <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">Oracle_datetime</span><span class="o">.</span><span class="n">from_datetime</span><span class="p">(</span><span class="n">value</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.adapt_timefield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.adapt_timefield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">adapt_timefield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="c1"># Expression values are adapted by the database.</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;resolve_expression&quot;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">value</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">strptime</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;%H:%M:%S&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Oracle doesn&#39;t support tz-aware times</span>
+        <span class="k">if</span> <span class="n">timezone</span><span class="o">.</span><span class="n">is_aware</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Oracle backend does not support timezone-aware times.&quot;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">Oracle_datetime</span><span class="p">(</span>
+            <span class="mi">1900</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">value</span><span class="o">.</span><span class="n">hour</span><span class="p">,</span> <span class="n">value</span><span class="o">.</span><span class="n">minute</span><span class="p">,</span> <span class="n">value</span><span class="o">.</span><span class="n">second</span><span class="p">,</span> <span class="n">value</span><span class="o">.</span><span class="n">microsecond</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.adapt_decimalfield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.adapt_decimalfield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">adapt_decimalfield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">max_digits</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">decimal_places</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.combine_expression">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.combine_expression">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">combine_expression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">connector</span><span class="p">,</span> <span class="n">sub_expressions</span><span class="p">):</span>
+        <span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span> <span class="o">=</span> <span class="n">sub_expressions</span>
+        <span class="k">if</span> <span class="n">connector</span> <span class="o">==</span> <span class="s2">&quot;</span><span class="si">%%</span><span class="s2">&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;MOD(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="s2">&quot;,&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">sub_expressions</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">connector</span> <span class="o">==</span> <span class="s2">&quot;&amp;&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;BITAND(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="s2">&quot;,&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">sub_expressions</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">connector</span> <span class="o">==</span> <span class="s2">&quot;|&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;BITAND(-</span><span class="si">%(lhs)s</span><span class="s2">-1,</span><span class="si">%(rhs)s</span><span class="s2">)+</span><span class="si">%(lhs)s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">{</span><span class="s2">&quot;lhs&quot;</span><span class="p">:</span> <span class="n">lhs</span><span class="p">,</span> <span class="s2">&quot;rhs&quot;</span><span class="p">:</span> <span class="n">rhs</span><span class="p">}</span>
+        <span class="k">elif</span> <span class="n">connector</span> <span class="o">==</span> <span class="s2">&quot;&lt;&lt;&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;(</span><span class="si">%(lhs)s</span><span class="s2"> * POWER(2, </span><span class="si">%(rhs)s</span><span class="s2">))&quot;</span> <span class="o">%</span> <span class="p">{</span><span class="s2">&quot;lhs&quot;</span><span class="p">:</span> <span class="n">lhs</span><span class="p">,</span> <span class="s2">&quot;rhs&quot;</span><span class="p">:</span> <span class="n">rhs</span><span class="p">}</span>
+        <span class="k">elif</span> <span class="n">connector</span> <span class="o">==</span> <span class="s2">&quot;&gt;&gt;&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;FLOOR(</span><span class="si">%(lhs)s</span><span class="s2"> / POWER(2, </span><span class="si">%(rhs)s</span><span class="s2">))&quot;</span> <span class="o">%</span> <span class="p">{</span><span class="s2">&quot;lhs&quot;</span><span class="p">:</span> <span class="n">lhs</span><span class="p">,</span> <span class="s2">&quot;rhs&quot;</span><span class="p">:</span> <span class="n">rhs</span><span class="p">}</span>
+        <span class="k">elif</span> <span class="n">connector</span> <span class="o">==</span> <span class="s2">&quot;^&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;POWER(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="s2">&quot;,&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">sub_expressions</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">connector</span> <span class="o">==</span> <span class="s2">&quot;#&quot;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">NotSupportedError</span><span class="p">(</span><span class="s2">&quot;Bitwise XOR is not supported in Oracle.&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">combine_expression</span><span class="p">(</span><span class="n">connector</span><span class="p">,</span> <span class="n">sub_expressions</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_no_autofield_sequence_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Manually created sequence name to keep backward compatibility for</span>
+<span class="sd">        AutoFields that aren&#39;t Oracle identity columns.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">name_length</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_name_length</span><span class="p">()</span> <span class="o">-</span> <span class="mi">3</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">_SQ&quot;</span> <span class="o">%</span> <span class="n">truncate_name</span><span class="p">(</span><span class="n">strip_quotes</span><span class="p">(</span><span class="n">table</span><span class="p">),</span> <span class="n">name_length</span><span class="p">)</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_sequence_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">table</span><span class="p">,</span> <span class="n">pk_name</span><span class="p">):</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            SELECT sequence_name</span>
+<span class="sd">            FROM user_tab_identity_cols</span>
+<span class="sd">            WHERE table_name = UPPER(%s)</span>
+<span class="sd">            AND column_name = UPPER(%s)&quot;&quot;&quot;</span><span class="p">,</span>
+            <span class="p">[</span><span class="n">table</span><span class="p">,</span> <span class="n">pk_name</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="n">row</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_no_autofield_sequence_name</span><span class="p">(</span><span class="n">table</span><span class="p">)</span> <span class="k">if</span> <span class="n">row</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">row</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+<div class="viewcode-block" id="DatabaseOperations.bulk_insert_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.bulk_insert_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">bulk_insert_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">placeholder_rows</span><span class="p">):</span>
+        <span class="n">query</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">placeholder_rows</span><span class="p">:</span>
+            <span class="n">select</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">placeholder</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">row</span><span class="p">):</span>
+                <span class="c1"># A model without any fields has fields=[None].</span>
+                <span class="k">if</span> <span class="n">fields</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span>
+                    <span class="n">internal_type</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span>
+                        <span class="n">fields</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="s2">&quot;target_field&quot;</span><span class="p">,</span> <span class="n">fields</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                    <span class="p">)</span><span class="o">.</span><span class="n">get_internal_type</span><span class="p">()</span>
+                    <span class="n">placeholder</span> <span class="o">=</span> <span class="p">(</span>
+                        <span class="n">BulkInsertMapper</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">internal_type</span><span class="p">,</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">)</span> <span class="o">%</span> <span class="n">placeholder</span>
+                    <span class="p">)</span>
+                <span class="c1"># Add columns aliases to the first select to avoid &quot;ORA-00918:</span>
+                <span class="c1"># column ambiguously defined&quot; when two or more columns in the</span>
+                <span class="c1"># first select have the same value.</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">query</span><span class="p">:</span>
+                    <span class="n">placeholder</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> col_</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">placeholder</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+                <span class="n">select</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">placeholder</span><span class="p">)</span>
+            <span class="n">query</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;SELECT </span><span class="si">%s</span><span class="s2"> FROM DUAL&quot;</span> <span class="o">%</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">select</span><span class="p">))</span>
+        <span class="c1"># Bulk insert to tables with Oracle identity columns causes Oracle to</span>
+        <span class="c1"># add sequence.nextval to it. Sequence.nextval cannot be used with the</span>
+        <span class="c1"># UNION operator. To prevent incorrect SQL, move UNION to a subquery.</span>
+        <span class="k">return</span> <span class="s2">&quot;SELECT * FROM (</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="s2">&quot; UNION ALL &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">query</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.subtract_temporals">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.subtract_temporals">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">subtract_temporals</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">internal_type</span><span class="p">,</span> <span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">internal_type</span> <span class="o">==</span> <span class="s2">&quot;DateField&quot;</span><span class="p">:</span>
+            <span class="n">lhs_sql</span><span class="p">,</span> <span class="n">lhs_params</span> <span class="o">=</span> <span class="n">lhs</span>
+            <span class="n">rhs_sql</span><span class="p">,</span> <span class="n">rhs_params</span> <span class="o">=</span> <span class="n">rhs</span>
+            <span class="n">params</span> <span class="o">=</span> <span class="p">(</span><span class="o">*</span><span class="n">lhs_params</span><span class="p">,</span> <span class="o">*</span><span class="n">rhs_params</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">(</span>
+                <span class="s2">&quot;NUMTODSINTERVAL(TO_NUMBER(</span><span class="si">%s</span><span class="s2"> - </span><span class="si">%s</span><span class="s2">), &#39;DAY&#39;)&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">lhs_sql</span><span class="p">,</span> <span class="n">rhs_sql</span><span class="p">),</span>
+                <span class="n">params</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">subtract_temporals</span><span class="p">(</span><span class="n">internal_type</span><span class="p">,</span> <span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.bulk_batch_size">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.bulk_batch_size">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">bulk_batch_size</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">objs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Oracle restricts the number of parameters in a query.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">fields</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">max_query_params</span> <span class="o">//</span> <span class="nb">len</span><span class="p">(</span><span class="n">fields</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">objs</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.conditional_expression_supported_in_where_clause">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/oracle/operations/index.html#django.db.backends.oracle.operations.DatabaseOperations.conditional_expression_supported_in_where_clause">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">conditional_expression_supported_in_where_clause</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expression</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Oracle supports only EXISTS(...) or filters in the WHERE clause, others</span>
+<span class="sd">        must be compared with True.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="p">(</span><span class="n">Exists</span><span class="p">,</span> <span class="n">Lookup</span><span class="p">,</span> <span class="n">WhereNode</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">ExpressionWrapper</span><span class="p">)</span> <span class="ow">and</span> <span class="n">expression</span><span class="o">.</span><span class="n">conditional</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">conditional_expression_supported_in_where_clause</span><span class="p">(</span>
+                <span class="n">expression</span><span class="o">.</span><span class="n">expression</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">RawSQL</span><span class="p">)</span> <span class="ow">and</span> <span class="n">expression</span><span class="o">.</span><span class="n">conditional</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

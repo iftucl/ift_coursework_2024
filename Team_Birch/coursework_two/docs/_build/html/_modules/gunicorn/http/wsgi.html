@@ -1,0 +1,611 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gunicorn.http.wsgi &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../gunicorn.html">gunicorn</a></li>
+      <li class="breadcrumb-item active">gunicorn.http.wsgi</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gunicorn.http.wsgi</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -</span>
+<span class="c1">#</span>
+<span class="c1"># This file is part of gunicorn released under the MIT license.</span>
+<span class="c1"># See the NOTICE for more information.</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">io</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">gunicorn</span><span class="w"> </span><span class="kn">import</span> <span class="n">SERVER</span><span class="p">,</span> <span class="n">SERVER_SOFTWARE</span><span class="p">,</span> <span class="n">util</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">gunicorn.http.errors</span><span class="w"> </span><span class="kn">import</span> <span class="n">InvalidHeader</span><span class="p">,</span> <span class="n">InvalidHeaderName</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">gunicorn.http.message</span><span class="w"> </span><span class="kn">import</span> <span class="n">HEADER_RE</span>
+
+<span class="c1"># Send files in at most 1GB blocks as some operating systems can have problems</span>
+<span class="c1"># with sending files in blocks over 2GB.</span>
+<div class="viewcode-block" id="BLKSIZE">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.BLKSIZE">[docs]</a>
+<span class="n">BLKSIZE</span> <span class="o">=</span> <span class="mh">0x3FFFFFFF</span></div>
+
+
+<div class="viewcode-block" id="HEADER_VALUE_RE">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.HEADER_VALUE_RE">[docs]</a>
+<span class="n">HEADER_VALUE_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;[\x00-\x1F\x7F]&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="log">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.log">[docs]</a>
+<span class="n">log</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="FileWrapper">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.FileWrapper">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">FileWrapper</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filelike</span><span class="p">,</span> <span class="n">blksize</span><span class="o">=</span><span class="mi">8192</span><span class="p">):</span>
+<div class="viewcode-block" id="FileWrapper.filelike">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.FileWrapper.filelike">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">filelike</span> <span class="o">=</span> <span class="n">filelike</span></div>
+
+<div class="viewcode-block" id="FileWrapper.blksize">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.FileWrapper.blksize">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">blksize</span> <span class="o">=</span> <span class="n">blksize</span></div>
+
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">filelike</span><span class="p">,</span> <span class="s2">&quot;close&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">close</span> <span class="o">=</span> <span class="n">filelike</span><span class="o">.</span><span class="n">close</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">filelike</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">blksize</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">data</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">data</span>
+        <span class="k">raise</span> <span class="ne">IndexError</span></div>
+
+
+
+<div class="viewcode-block" id="WSGIErrorsWrapper">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.WSGIErrorsWrapper">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">WSGIErrorsWrapper</span><span class="p">(</span><span class="n">io</span><span class="o">.</span><span class="n">RawIOBase</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cfg</span><span class="p">):</span>
+        <span class="c1"># There is no public __init__ method for RawIOBase so</span>
+        <span class="c1"># we don&#39;t need to call super() in the __init__ method.</span>
+        <span class="c1"># pylint: disable=super-init-not-called</span>
+        <span class="n">errorlog</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;gunicorn.error&quot;</span><span class="p">)</span>
+        <span class="n">handlers</span> <span class="o">=</span> <span class="n">errorlog</span><span class="o">.</span><span class="n">handlers</span>
+<div class="viewcode-block" id="WSGIErrorsWrapper.streams">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.WSGIErrorsWrapper.streams">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">streams</span> <span class="o">=</span> <span class="p">[]</span></div>
+
+
+        <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">errorlog</span> <span class="o">==</span> <span class="s2">&quot;-&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">streams</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="p">)</span>
+            <span class="n">handlers</span> <span class="o">=</span> <span class="n">handlers</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+
+        <span class="k">for</span> <span class="n">h</span> <span class="ow">in</span> <span class="n">handlers</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">h</span><span class="p">,</span> <span class="s2">&quot;stream&quot;</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">streams</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">h</span><span class="o">.</span><span class="n">stream</span><span class="p">)</span>
+
+<div class="viewcode-block" id="WSGIErrorsWrapper.write">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.WSGIErrorsWrapper.write">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">write</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">stream</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">streams</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">stream</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">UnicodeError</span><span class="p">:</span>
+                <span class="n">stream</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;UTF-8&quot;</span><span class="p">))</span>
+            <span class="n">stream</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="base_environ">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.base_environ">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">base_environ</span><span class="p">(</span><span class="n">cfg</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;wsgi.errors&quot;</span><span class="p">:</span> <span class="n">WSGIErrorsWrapper</span><span class="p">(</span><span class="n">cfg</span><span class="p">),</span>
+        <span class="s2">&quot;wsgi.version&quot;</span><span class="p">:</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
+        <span class="s2">&quot;wsgi.multithread&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="s2">&quot;wsgi.multiprocess&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">workers</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">),</span>
+        <span class="s2">&quot;wsgi.run_once&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="s2">&quot;wsgi.file_wrapper&quot;</span><span class="p">:</span> <span class="n">FileWrapper</span><span class="p">,</span>
+        <span class="s2">&quot;wsgi.input_terminated&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s2">&quot;SERVER_SOFTWARE&quot;</span><span class="p">:</span> <span class="n">SERVER_SOFTWARE</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+
+
+<div class="viewcode-block" id="default_environ">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.default_environ">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">default_environ</span><span class="p">(</span><span class="n">req</span><span class="p">,</span> <span class="n">sock</span><span class="p">,</span> <span class="n">cfg</span><span class="p">):</span>
+    <span class="n">env</span> <span class="o">=</span> <span class="n">base_environ</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
+    <span class="n">env</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;wsgi.input&quot;</span><span class="p">:</span> <span class="n">req</span><span class="o">.</span><span class="n">body</span><span class="p">,</span>
+            <span class="s2">&quot;gunicorn.socket&quot;</span><span class="p">:</span> <span class="n">sock</span><span class="p">,</span>
+            <span class="s2">&quot;REQUEST_METHOD&quot;</span><span class="p">:</span> <span class="n">req</span><span class="o">.</span><span class="n">method</span><span class="p">,</span>
+            <span class="s2">&quot;QUERY_STRING&quot;</span><span class="p">:</span> <span class="n">req</span><span class="o">.</span><span class="n">query</span><span class="p">,</span>
+            <span class="s2">&quot;RAW_URI&quot;</span><span class="p">:</span> <span class="n">req</span><span class="o">.</span><span class="n">uri</span><span class="p">,</span>
+            <span class="s2">&quot;SERVER_PROTOCOL&quot;</span><span class="p">:</span> <span class="s2">&quot;HTTP/</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="s2">&quot;.&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="nb">str</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">req</span><span class="o">.</span><span class="n">version</span><span class="p">]),</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">env</span></div>
+
+
+
+<div class="viewcode-block" id="proxy_environ">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.proxy_environ">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">proxy_environ</span><span class="p">(</span><span class="n">req</span><span class="p">):</span>
+    <span class="n">info</span> <span class="o">=</span> <span class="n">req</span><span class="o">.</span><span class="n">proxy_protocol_info</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">info</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">{}</span>
+
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;PROXY_PROTOCOL&quot;</span><span class="p">:</span> <span class="n">info</span><span class="p">[</span><span class="s2">&quot;proxy_protocol&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;REMOTE_ADDR&quot;</span><span class="p">:</span> <span class="n">info</span><span class="p">[</span><span class="s2">&quot;client_addr&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;REMOTE_PORT&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">info</span><span class="p">[</span><span class="s2">&quot;client_port&quot;</span><span class="p">]),</span>
+        <span class="s2">&quot;PROXY_ADDR&quot;</span><span class="p">:</span> <span class="n">info</span><span class="p">[</span><span class="s2">&quot;proxy_addr&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;PROXY_PORT&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">info</span><span class="p">[</span><span class="s2">&quot;proxy_port&quot;</span><span class="p">]),</span>
+    <span class="p">}</span></div>
+
+
+
+<div class="viewcode-block" id="create">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.create">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">create</span><span class="p">(</span><span class="n">req</span><span class="p">,</span> <span class="n">sock</span><span class="p">,</span> <span class="n">client</span><span class="p">,</span> <span class="n">server</span><span class="p">,</span> <span class="n">cfg</span><span class="p">):</span>
+    <span class="n">resp</span> <span class="o">=</span> <span class="n">Response</span><span class="p">(</span><span class="n">req</span><span class="p">,</span> <span class="n">sock</span><span class="p">,</span> <span class="n">cfg</span><span class="p">)</span>
+
+    <span class="c1"># set initial environ</span>
+    <span class="n">environ</span> <span class="o">=</span> <span class="n">default_environ</span><span class="p">(</span><span class="n">req</span><span class="p">,</span> <span class="n">sock</span><span class="p">,</span> <span class="n">cfg</span><span class="p">)</span>
+
+    <span class="c1"># default variables</span>
+    <span class="n">host</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">script_name</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;SCRIPT_NAME&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+
+    <span class="c1"># add the headers to the environ</span>
+    <span class="k">for</span> <span class="n">hdr_name</span><span class="p">,</span> <span class="n">hdr_value</span> <span class="ow">in</span> <span class="n">req</span><span class="o">.</span><span class="n">headers</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">hdr_name</span> <span class="o">==</span> <span class="s2">&quot;EXPECT&quot;</span><span class="p">:</span>
+            <span class="c1"># handle expect</span>
+            <span class="k">if</span> <span class="n">hdr_value</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;100-continue&quot;</span><span class="p">:</span>
+                <span class="n">sock</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="sa">b</span><span class="s2">&quot;HTTP/1.1 100 Continue</span><span class="se">\r\n\r\n</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">hdr_name</span> <span class="o">==</span> <span class="s2">&quot;HOST&quot;</span><span class="p">:</span>
+            <span class="n">host</span> <span class="o">=</span> <span class="n">hdr_value</span>
+        <span class="k">elif</span> <span class="n">hdr_name</span> <span class="o">==</span> <span class="s2">&quot;SCRIPT_NAME&quot;</span><span class="p">:</span>
+            <span class="n">script_name</span> <span class="o">=</span> <span class="n">hdr_value</span>
+        <span class="k">elif</span> <span class="n">hdr_name</span> <span class="o">==</span> <span class="s2">&quot;CONTENT-TYPE&quot;</span><span class="p">:</span>
+            <span class="n">environ</span><span class="p">[</span><span class="s2">&quot;CONTENT_TYPE&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">hdr_value</span>
+            <span class="k">continue</span>
+        <span class="k">elif</span> <span class="n">hdr_name</span> <span class="o">==</span> <span class="s2">&quot;CONTENT-LENGTH&quot;</span><span class="p">:</span>
+            <span class="n">environ</span><span class="p">[</span><span class="s2">&quot;CONTENT_LENGTH&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">hdr_value</span>
+            <span class="k">continue</span>
+
+        <span class="n">key</span> <span class="o">=</span> <span class="s2">&quot;HTTP_&quot;</span> <span class="o">+</span> <span class="n">hdr_name</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">,</span> <span class="s2">&quot;_&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">environ</span><span class="p">:</span>
+            <span class="n">hdr_value</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">,</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">environ</span><span class="p">[</span><span class="n">key</span><span class="p">],</span> <span class="n">hdr_value</span><span class="p">)</span>
+        <span class="n">environ</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">hdr_value</span>
+
+    <span class="c1"># set the url scheme</span>
+    <span class="n">environ</span><span class="p">[</span><span class="s2">&quot;wsgi.url_scheme&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">req</span><span class="o">.</span><span class="n">scheme</span>
+
+    <span class="c1"># set the REMOTE_* keys in environ</span>
+    <span class="c1"># authors should be aware that REMOTE_HOST and REMOTE_ADDR</span>
+    <span class="c1"># may not qualify the remote addr:</span>
+    <span class="c1"># http://www.ietf.org/rfc/rfc3875</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">client</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="n">environ</span><span class="p">[</span><span class="s2">&quot;REMOTE_ADDR&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">client</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">client</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
+        <span class="n">environ</span><span class="p">[</span><span class="s2">&quot;REMOTE_ADDR&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">environ</span><span class="p">[</span><span class="s2">&quot;REMOTE_ADDR&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">client</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">environ</span><span class="p">[</span><span class="s2">&quot;REMOTE_PORT&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">client</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+
+    <span class="c1"># handle the SERVER_*</span>
+    <span class="c1"># Normally only the application should use the Host header but since the</span>
+    <span class="c1"># WSGI spec doesn&#39;t support unix sockets, we are using it to create</span>
+    <span class="c1"># viable SERVER_* if possible.</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">server</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="n">server</span> <span class="o">=</span> <span class="n">server</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">server</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="c1"># unix socket</span>
+            <span class="k">if</span> <span class="n">host</span><span class="p">:</span>
+                <span class="n">server</span> <span class="o">=</span> <span class="n">host</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">server</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">req</span><span class="o">.</span><span class="n">scheme</span> <span class="o">==</span> <span class="s2">&quot;http&quot;</span><span class="p">:</span>
+                        <span class="n">server</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="mi">80</span><span class="p">)</span>
+                    <span class="k">elif</span> <span class="n">req</span><span class="o">.</span><span class="n">scheme</span> <span class="o">==</span> <span class="s2">&quot;https&quot;</span><span class="p">:</span>
+                        <span class="n">server</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="mi">443</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">server</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># no host header given which means that we are not behind a</span>
+                <span class="c1"># proxy, so append an empty port.</span>
+                <span class="n">server</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+    <span class="n">environ</span><span class="p">[</span><span class="s2">&quot;SERVER_NAME&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">server</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">environ</span><span class="p">[</span><span class="s2">&quot;SERVER_PORT&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">server</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+
+    <span class="c1"># set the path and script name</span>
+    <span class="n">path_info</span> <span class="o">=</span> <span class="n">req</span><span class="o">.</span><span class="n">path</span>
+    <span class="k">if</span> <span class="n">script_name</span><span class="p">:</span>
+        <span class="n">path_info</span> <span class="o">=</span> <span class="n">path_info</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">script_name</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">environ</span><span class="p">[</span><span class="s2">&quot;PATH_INFO&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">util</span><span class="o">.</span><span class="n">unquote_to_wsgi_str</span><span class="p">(</span><span class="n">path_info</span><span class="p">)</span>
+    <span class="n">environ</span><span class="p">[</span><span class="s2">&quot;SCRIPT_NAME&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">script_name</span>
+
+    <span class="c1"># override the environ with the correct remote and server address if</span>
+    <span class="c1"># we are behind a proxy using the proxy protocol.</span>
+    <span class="n">environ</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">proxy_environ</span><span class="p">(</span><span class="n">req</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">resp</span><span class="p">,</span> <span class="n">environ</span></div>
+
+
+
+<div class="viewcode-block" id="Response">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Response</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">req</span><span class="p">,</span> <span class="n">sock</span><span class="p">,</span> <span class="n">cfg</span><span class="p">):</span>
+<div class="viewcode-block" id="Response.req">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response.req">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">req</span> <span class="o">=</span> <span class="n">req</span></div>
+
+<div class="viewcode-block" id="Response.sock">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response.sock">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sock</span> <span class="o">=</span> <span class="n">sock</span></div>
+
+<div class="viewcode-block" id="Response.version">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response.version">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">version</span> <span class="o">=</span> <span class="n">SERVER</span></div>
+
+<div class="viewcode-block" id="Response.status">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response.status">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="Response.chunked">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response.chunked">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">chunked</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+<div class="viewcode-block" id="Response.must_close">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response.must_close">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">must_close</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+<div class="viewcode-block" id="Response.headers">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response.headers">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">headers</span> <span class="o">=</span> <span class="p">[]</span></div>
+
+<div class="viewcode-block" id="Response.headers_sent">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response.headers_sent">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">headers_sent</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+<div class="viewcode-block" id="Response.response_length">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response.response_length">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">response_length</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="Response.sent">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response.sent">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sent</span> <span class="o">=</span> <span class="mi">0</span></div>
+
+<div class="viewcode-block" id="Response.upgrade">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response.upgrade">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">upgrade</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+<div class="viewcode-block" id="Response.cfg">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response.cfg">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span> <span class="o">=</span> <span class="n">cfg</span></div>
+
+
+<div class="viewcode-block" id="Response.force_close">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response.force_close">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">force_close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">must_close</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="Response.should_close">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response.should_close">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">should_close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">must_close</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">req</span><span class="o">.</span><span class="n">should_close</span><span class="p">():</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">response_length</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">chunked</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">req</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;HEAD&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">status_code</span> <span class="o">&lt;</span> <span class="mi">200</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">status_code</span> <span class="ow">in</span> <span class="p">(</span><span class="mi">204</span><span class="p">,</span> <span class="mi">304</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">return</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="Response.start_response">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response.start_response">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">start_response</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">status</span><span class="p">,</span> <span class="n">headers</span><span class="p">,</span> <span class="n">exc_info</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">exc_info</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">status</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">headers_sent</span><span class="p">:</span>
+                    <span class="n">util</span><span class="o">.</span><span class="n">reraise</span><span class="p">(</span><span class="n">exc_info</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">exc_info</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">exc_info</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+            <span class="k">finally</span><span class="p">:</span>
+                <span class="n">exc_info</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">status</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s2">&quot;Response headers already set!&quot;</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="n">status</span>
+
+        <span class="c1"># get the status code from the response here so we can use it to check</span>
+        <span class="c1"># the need for the connection header later without parsing the string</span>
+        <span class="c1"># each time.</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">status_code</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">status</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">status_code</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">process_headers</span><span class="p">(</span><span class="n">headers</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">chunked</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_chunked</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">write</span></div>
+
+
+<div class="viewcode-block" id="Response.process_headers">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response.process_headers">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">process_headers</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">headers</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">headers</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%r</span><span class="s2"> is not a string&quot;</span> <span class="o">%</span> <span class="n">name</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">HEADER_RE</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="n">InvalidHeaderName</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%r</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">name</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%r</span><span class="s2"> is not a string&quot;</span> <span class="o">%</span> <span class="n">value</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">HEADER_VALUE_RE</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="n">InvalidHeader</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%r</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">value</span><span class="p">)</span>
+
+            <span class="n">value</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+            <span class="n">lname</span> <span class="o">=</span> <span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">lname</span> <span class="o">==</span> <span class="s2">&quot;content-length&quot;</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">response_length</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">util</span><span class="o">.</span><span class="n">is_hoppish</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">lname</span> <span class="o">==</span> <span class="s2">&quot;connection&quot;</span><span class="p">:</span>
+                    <span class="c1"># handle websocket</span>
+                    <span class="k">if</span> <span class="n">value</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;upgrade&quot;</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">upgrade</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="k">elif</span> <span class="n">lname</span> <span class="o">==</span> <span class="s2">&quot;upgrade&quot;</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">value</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;websocket&quot;</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">headers</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">name</span><span class="o">.</span><span class="n">strip</span><span class="p">(),</span> <span class="n">value</span><span class="p">))</span>
+
+                <span class="c1"># ignore hopbyhop headers</span>
+                <span class="k">continue</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">headers</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">name</span><span class="o">.</span><span class="n">strip</span><span class="p">(),</span> <span class="n">value</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="Response.is_chunked">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response.is_chunked">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_chunked</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Only use chunked responses when the client is</span>
+        <span class="c1"># speaking HTTP/1.1 or newer and there was</span>
+        <span class="c1"># no Content-Length header set.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">response_length</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">req</span><span class="o">.</span><span class="n">version</span> <span class="o">&lt;=</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">req</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;HEAD&quot;</span><span class="p">:</span>
+            <span class="c1"># Responses to a HEAD request MUST NOT contain a response body.</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">status_code</span> <span class="ow">in</span> <span class="p">(</span><span class="mi">204</span><span class="p">,</span> <span class="mi">304</span><span class="p">):</span>
+            <span class="c1"># Do not use chunked responses when the response is guaranteed to</span>
+            <span class="c1"># not have a response body.</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">return</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="Response.default_headers">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response.default_headers">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">default_headers</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># set the connection header</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">upgrade</span><span class="p">:</span>
+            <span class="n">connection</span> <span class="o">=</span> <span class="s2">&quot;upgrade&quot;</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">should_close</span><span class="p">():</span>
+            <span class="n">connection</span> <span class="o">=</span> <span class="s2">&quot;close&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">connection</span> <span class="o">=</span> <span class="s2">&quot;keep-alive&quot;</span>
+
+        <span class="n">headers</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="s2">&quot;HTTP/</span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="se">\r\n</span><span class="s2">&quot;</span>
+            <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">req</span><span class="o">.</span><span class="n">version</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">req</span><span class="o">.</span><span class="n">version</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">status</span><span class="p">),</span>
+            <span class="s2">&quot;Server: </span><span class="si">%s</span><span class="se">\r\n</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">version</span><span class="p">,</span>
+            <span class="s2">&quot;Date: </span><span class="si">%s</span><span class="se">\r\n</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">util</span><span class="o">.</span><span class="n">http_date</span><span class="p">(),</span>
+            <span class="s2">&quot;Connection: </span><span class="si">%s</span><span class="se">\r\n</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">connection</span><span class="p">,</span>
+        <span class="p">]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">chunked</span><span class="p">:</span>
+            <span class="n">headers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;Transfer-Encoding: chunked</span><span class="se">\r\n</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">headers</span></div>
+
+
+<div class="viewcode-block" id="Response.send_headers">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response.send_headers">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">send_headers</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">headers_sent</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="n">tosend</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">default_headers</span><span class="p">()</span>
+        <span class="n">tosend</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="se">\r\n</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">headers</span><span class="p">])</span>
+
+        <span class="n">header_str</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="se">\r\n</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tosend</span><span class="p">)</span>
+        <span class="n">util</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="p">,</span> <span class="n">util</span><span class="o">.</span><span class="n">to_bytestring</span><span class="p">(</span><span class="n">header_str</span><span class="p">,</span> <span class="s2">&quot;latin-1&quot;</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">headers_sent</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="Response.write">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response.write">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">write</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">arg</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">send_headers</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%r</span><span class="s2"> is not a byte&quot;</span> <span class="o">%</span> <span class="n">arg</span><span class="p">)</span>
+        <span class="n">arglen</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span>
+        <span class="n">tosend</span> <span class="o">=</span> <span class="n">arglen</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">response_length</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">sent</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">response_length</span><span class="p">:</span>
+                <span class="c1"># Never write more than self.response_length bytes</span>
+                <span class="k">return</span>
+
+            <span class="n">tosend</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">response_length</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">sent</span><span class="p">,</span> <span class="n">tosend</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">tosend</span> <span class="o">&lt;</span> <span class="n">arglen</span><span class="p">:</span>
+                <span class="n">arg</span> <span class="o">=</span> <span class="n">arg</span><span class="p">[:</span><span class="n">tosend</span><span class="p">]</span>
+
+        <span class="c1"># Sending an empty chunk signals the end of the</span>
+        <span class="c1"># response and prematurely closes the response</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">chunked</span> <span class="ow">and</span> <span class="n">tosend</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">sent</span> <span class="o">+=</span> <span class="n">tosend</span>
+        <span class="n">util</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="p">,</span> <span class="n">arg</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">chunked</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Response.can_sendfile">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response.can_sendfile">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">can_sendfile</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">sendfile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">False</span></div>
+
+
+<div class="viewcode-block" id="Response.sendfile">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response.sendfile">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">sendfile</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">respiter</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">is_ssl</span> <span class="ow">or</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">can_sendfile</span><span class="p">():</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">util</span><span class="o">.</span><span class="n">has_fileno</span><span class="p">(</span><span class="n">respiter</span><span class="o">.</span><span class="n">filelike</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="n">fileno</span> <span class="o">=</span> <span class="n">respiter</span><span class="o">.</span><span class="n">filelike</span><span class="o">.</span><span class="n">fileno</span><span class="p">()</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">offset</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">lseek</span><span class="p">(</span><span class="n">fileno</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">SEEK_CUR</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">response_length</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">filesize</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">fstat</span><span class="p">(</span><span class="n">fileno</span><span class="p">)</span><span class="o">.</span><span class="n">st_size</span>
+                <span class="n">nbytes</span> <span class="o">=</span> <span class="n">filesize</span> <span class="o">-</span> <span class="n">offset</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">nbytes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">response_length</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">OSError</span><span class="p">,</span> <span class="n">io</span><span class="o">.</span><span class="n">UnsupportedOperation</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">send_headers</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_chunked</span><span class="p">():</span>
+            <span class="n">chunk_size</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%X</span><span class="se">\r\n</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">nbytes</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="o">.</span><span class="n">sendall</span><span class="p">(</span><span class="n">chunk_size</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">nbytes</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="o">.</span><span class="n">sendfile</span><span class="p">(</span><span class="n">respiter</span><span class="o">.</span><span class="n">filelike</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="n">offset</span><span class="p">,</span> <span class="n">count</span><span class="o">=</span><span class="n">nbytes</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_chunked</span><span class="p">():</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="o">.</span><span class="n">sendall</span><span class="p">(</span><span class="sa">b</span><span class="s2">&quot;</span><span class="se">\r\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="n">os</span><span class="o">.</span><span class="n">lseek</span><span class="p">(</span><span class="n">fileno</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">SEEK_SET</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="Response.write_file">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response.write_file">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">write_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">respiter</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">sendfile</span><span class="p">(</span><span class="n">respiter</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">respiter</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">item</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Response.close">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/http/wsgi/index.html#gunicorn.http.wsgi.Response.close">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">headers_sent</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">send_headers</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">chunked</span><span class="p">:</span>
+            <span class="n">util</span><span class="o">.</span><span class="n">write_chunk</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="p">,</span> <span class="sa">b</span><span class="s2">&quot;&quot;</span><span class="p">)</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

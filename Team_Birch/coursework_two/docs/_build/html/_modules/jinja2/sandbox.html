@@ -1,0 +1,637 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>jinja2.sandbox &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">jinja2.sandbox</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for jinja2.sandbox</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;A sandbox layer that ensures unsafe operations cannot be performed.</span>
+<span class="sd">Useful when the template itself comes from an untrusted source.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">operator</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">types</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">t</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">abc</span><span class="p">,</span> <span class="n">deque</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">update_wrapper</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">string</span><span class="w"> </span><span class="kn">import</span> <span class="n">Formatter</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">_string</span><span class="w"> </span><span class="kn">import</span> <span class="n">formatter_field_name_split</span>  <span class="c1"># type: ignore</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">markupsafe</span><span class="w"> </span><span class="kn">import</span> <span class="n">EscapeFormatter</span><span class="p">,</span> <span class="n">Markup</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.environment</span><span class="w"> </span><span class="kn">import</span> <span class="n">Environment</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">SecurityError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.runtime</span><span class="w"> </span><span class="kn">import</span> <span class="n">Context</span><span class="p">,</span> <span class="n">Undefined</span>
+
+<div class="viewcode-block" id="F">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.F">[docs]</a>
+<span class="n">F</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">TypeVar</span><span class="p">(</span><span class="s2">&quot;F&quot;</span><span class="p">,</span> <span class="n">bound</span><span class="o">=</span><span class="n">t</span><span class="o">.</span><span class="n">Callable</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">])</span></div>
+
+
+<span class="c1">#: maximum number of items a range may produce</span>
+<div class="viewcode-block" id="MAX_RANGE">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.MAX_RANGE">[docs]</a>
+<span class="n">MAX_RANGE</span> <span class="o">=</span> <span class="mi">100000</span></div>
+
+
+<span class="c1">#: Unsafe function attributes.</span>
+<div class="viewcode-block" id="UNSAFE_FUNCTION_ATTRIBUTES">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.UNSAFE_FUNCTION_ATTRIBUTES">[docs]</a>
+<span class="n">UNSAFE_FUNCTION_ATTRIBUTES</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span></div>
+
+
+<span class="c1">#: Unsafe method attributes. Function attributes are unsafe for methods too.</span>
+<div class="viewcode-block" id="UNSAFE_METHOD_ATTRIBUTES">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.UNSAFE_METHOD_ATTRIBUTES">[docs]</a>
+<span class="n">UNSAFE_METHOD_ATTRIBUTES</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span></div>
+
+
+<span class="c1">#: unsafe generator attributes.</span>
+<div class="viewcode-block" id="UNSAFE_GENERATOR_ATTRIBUTES">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.UNSAFE_GENERATOR_ATTRIBUTES">[docs]</a>
+<span class="n">UNSAFE_GENERATOR_ATTRIBUTES</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;gi_frame&quot;</span><span class="p">,</span> <span class="s2">&quot;gi_code&quot;</span><span class="p">}</span></div>
+
+
+<span class="c1">#: unsafe attributes on coroutines</span>
+<div class="viewcode-block" id="UNSAFE_COROUTINE_ATTRIBUTES">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.UNSAFE_COROUTINE_ATTRIBUTES">[docs]</a>
+<span class="n">UNSAFE_COROUTINE_ATTRIBUTES</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;cr_frame&quot;</span><span class="p">,</span> <span class="s2">&quot;cr_code&quot;</span><span class="p">}</span></div>
+
+
+<span class="c1">#: unsafe attributes on async generators</span>
+<div class="viewcode-block" id="UNSAFE_ASYNC_GENERATOR_ATTRIBUTES">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.UNSAFE_ASYNC_GENERATOR_ATTRIBUTES">[docs]</a>
+<span class="n">UNSAFE_ASYNC_GENERATOR_ATTRIBUTES</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;ag_code&quot;</span><span class="p">,</span> <span class="s2">&quot;ag_frame&quot;</span><span class="p">}</span></div>
+
+
+<span class="n">_mutable_spec</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Tuple</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">Tuple</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">Type</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">],</span> <span class="n">t</span><span class="o">.</span><span class="n">FrozenSet</span><span class="p">[</span><span class="nb">str</span><span class="p">]],</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="p">(</span>
+        <span class="n">abc</span><span class="o">.</span><span class="n">MutableSet</span><span class="p">,</span>
+        <span class="nb">frozenset</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="s2">&quot;add&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;clear&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;difference_update&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;discard&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;pop&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;remove&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;symmetric_difference_update&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;update&quot;</span><span class="p">,</span>
+            <span class="p">]</span>
+        <span class="p">),</span>
+    <span class="p">),</span>
+    <span class="p">(</span>
+        <span class="n">abc</span><span class="o">.</span><span class="n">MutableMapping</span><span class="p">,</span>
+        <span class="nb">frozenset</span><span class="p">([</span><span class="s2">&quot;clear&quot;</span><span class="p">,</span> <span class="s2">&quot;pop&quot;</span><span class="p">,</span> <span class="s2">&quot;popitem&quot;</span><span class="p">,</span> <span class="s2">&quot;setdefault&quot;</span><span class="p">,</span> <span class="s2">&quot;update&quot;</span><span class="p">]),</span>
+    <span class="p">),</span>
+    <span class="p">(</span>
+        <span class="n">abc</span><span class="o">.</span><span class="n">MutableSequence</span><span class="p">,</span>
+        <span class="nb">frozenset</span><span class="p">(</span>
+            <span class="p">[</span><span class="s2">&quot;append&quot;</span><span class="p">,</span> <span class="s2">&quot;clear&quot;</span><span class="p">,</span> <span class="s2">&quot;pop&quot;</span><span class="p">,</span> <span class="s2">&quot;reverse&quot;</span><span class="p">,</span> <span class="s2">&quot;insert&quot;</span><span class="p">,</span> <span class="s2">&quot;sort&quot;</span><span class="p">,</span> <span class="s2">&quot;extend&quot;</span><span class="p">,</span> <span class="s2">&quot;remove&quot;</span><span class="p">]</span>
+        <span class="p">),</span>
+    <span class="p">),</span>
+    <span class="p">(</span>
+        <span class="n">deque</span><span class="p">,</span>
+        <span class="nb">frozenset</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="s2">&quot;append&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;appendleft&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;clear&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;extend&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;extendleft&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;pop&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;popleft&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;remove&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;rotate&quot;</span><span class="p">,</span>
+            <span class="p">]</span>
+        <span class="p">),</span>
+    <span class="p">),</span>
+<span class="p">)</span>
+
+
+<div class="viewcode-block" id="safe_range">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.safe_range">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">safe_range</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">range</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A range that can&#39;t generate ranges with a length of more than</span>
+<span class="sd">    MAX_RANGE items.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">rng</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">rng</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">MAX_RANGE</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">OverflowError</span><span class="p">(</span>
+            <span class="s2">&quot;Range too big. The sandbox blocks ranges larger than&quot;</span>
+            <span class="sa">f</span><span class="s2">&quot; MAX_RANGE (</span><span class="si">{</span><span class="n">MAX_RANGE</span><span class="si">}</span><span class="s2">).&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">rng</span></div>
+
+
+
+<div class="viewcode-block" id="unsafe">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.unsafe">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">unsafe</span><span class="p">(</span><span class="n">f</span><span class="p">:</span> <span class="n">F</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">F</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Marks a function or method as unsafe.</span>
+
+<span class="sd">    .. code-block: python</span>
+
+<span class="sd">        @unsafe</span>
+<span class="sd">        def delete(self):</span>
+<span class="sd">            pass</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">f</span><span class="o">.</span><span class="n">unsafe_callable</span> <span class="o">=</span> <span class="kc">True</span>  <span class="c1"># type: ignore</span>
+    <span class="k">return</span> <span class="n">f</span></div>
+
+
+
+<div class="viewcode-block" id="is_internal_attribute">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.is_internal_attribute">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_internal_attribute</span><span class="p">(</span><span class="n">obj</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">,</span> <span class="n">attr</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Test if the attribute given is an internal python attribute.  For</span>
+<span class="sd">    example this function returns `True` for the `func_code` attribute of</span>
+<span class="sd">    python objects.  This is useful if the environment method</span>
+<span class="sd">    :meth:`~SandboxedEnvironment.is_safe_attribute` is overridden.</span>
+
+<span class="sd">    &gt;&gt;&gt; from jinja2.sandbox import is_internal_attribute</span>
+<span class="sd">    &gt;&gt;&gt; is_internal_attribute(str, &quot;mro&quot;)</span>
+<span class="sd">    True</span>
+<span class="sd">    &gt;&gt;&gt; is_internal_attribute(str, &quot;upper&quot;)</span>
+<span class="sd">    False</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">types</span><span class="o">.</span><span class="n">FunctionType</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">attr</span> <span class="ow">in</span> <span class="n">UNSAFE_FUNCTION_ATTRIBUTES</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">types</span><span class="o">.</span><span class="n">MethodType</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">attr</span> <span class="ow">in</span> <span class="n">UNSAFE_FUNCTION_ATTRIBUTES</span> <span class="ow">or</span> <span class="n">attr</span> <span class="ow">in</span> <span class="n">UNSAFE_METHOD_ATTRIBUTES</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="nb">type</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">attr</span> <span class="o">==</span> <span class="s2">&quot;mro&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="p">(</span><span class="n">types</span><span class="o">.</span><span class="n">CodeType</span><span class="p">,</span> <span class="n">types</span><span class="o">.</span><span class="n">TracebackType</span><span class="p">,</span> <span class="n">types</span><span class="o">.</span><span class="n">FrameType</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">types</span><span class="o">.</span><span class="n">GeneratorType</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">attr</span> <span class="ow">in</span> <span class="n">UNSAFE_GENERATOR_ATTRIBUTES</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">elif</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">types</span><span class="p">,</span> <span class="s2">&quot;CoroutineType&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">types</span><span class="o">.</span><span class="n">CoroutineType</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">attr</span> <span class="ow">in</span> <span class="n">UNSAFE_COROUTINE_ATTRIBUTES</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">elif</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">types</span><span class="p">,</span> <span class="s2">&quot;AsyncGeneratorType&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span>
+        <span class="n">obj</span><span class="p">,</span> <span class="n">types</span><span class="o">.</span><span class="n">AsyncGeneratorType</span>
+    <span class="p">):</span>
+        <span class="k">if</span> <span class="n">attr</span> <span class="ow">in</span> <span class="n">UNSAFE_ASYNC_GENERATOR_ATTRIBUTES</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">return</span> <span class="n">attr</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;__&quot;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="modifies_known_mutable">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.modifies_known_mutable">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">modifies_known_mutable</span><span class="p">(</span><span class="n">obj</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">,</span> <span class="n">attr</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;This function checks if an attribute on a builtin mutable object</span>
+<span class="sd">    (list, dict, set or deque) or the corresponding ABCs would modify it</span>
+<span class="sd">    if called.</span>
+
+<span class="sd">    &gt;&gt;&gt; modifies_known_mutable({}, &quot;clear&quot;)</span>
+<span class="sd">    True</span>
+<span class="sd">    &gt;&gt;&gt; modifies_known_mutable({}, &quot;keys&quot;)</span>
+<span class="sd">    False</span>
+<span class="sd">    &gt;&gt;&gt; modifies_known_mutable([], &quot;append&quot;)</span>
+<span class="sd">    True</span>
+<span class="sd">    &gt;&gt;&gt; modifies_known_mutable([], &quot;index&quot;)</span>
+<span class="sd">    False</span>
+
+<span class="sd">    If called with an unsupported object, ``False`` is returned.</span>
+
+<span class="sd">    &gt;&gt;&gt; modifies_known_mutable(&quot;foo&quot;, &quot;upper&quot;)</span>
+<span class="sd">    False</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">typespec</span><span class="p">,</span> <span class="n">unsafe</span> <span class="ow">in</span> <span class="n">_mutable_spec</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">typespec</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">attr</span> <span class="ow">in</span> <span class="n">unsafe</span>
+    <span class="k">return</span> <span class="kc">False</span></div>
+
+
+
+<div class="viewcode-block" id="SandboxedEnvironment">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.SandboxedEnvironment">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SandboxedEnvironment</span><span class="p">(</span><span class="n">Environment</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The sandboxed environment.  It works like the regular environment but</span>
+<span class="sd">    tells the compiler to generate sandboxed code.  Additionally subclasses of</span>
+<span class="sd">    this environment may override the methods that tell the runtime what</span>
+<span class="sd">    attributes or functions are safe to access.</span>
+
+<span class="sd">    If the template tries to access insecure code a :exc:`SecurityError` is</span>
+<span class="sd">    raised.  However also other exceptions may occur during the rendering so</span>
+<span class="sd">    the caller has to ensure that all exceptions are caught.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="SandboxedEnvironment.sandboxed">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.SandboxedEnvironment.sandboxed">[docs]</a>
+    <span class="n">sandboxed</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+
+    <span class="c1">#: default callback table for the binary operators.  A copy of this is</span>
+    <span class="c1">#: available on each instance of a sandboxed environment as</span>
+    <span class="c1">#: :attr:`binop_table`</span>
+<div class="viewcode-block" id="SandboxedEnvironment.default_binop_table">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.SandboxedEnvironment.default_binop_table">[docs]</a>
+    <span class="n">default_binop_table</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">Callable</span><span class="p">[[</span><span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">],</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;+&quot;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">add</span><span class="p">,</span>
+        <span class="s2">&quot;-&quot;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">sub</span><span class="p">,</span>
+        <span class="s2">&quot;*&quot;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">mul</span><span class="p">,</span>
+        <span class="s2">&quot;/&quot;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">truediv</span><span class="p">,</span>
+        <span class="s2">&quot;//&quot;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">floordiv</span><span class="p">,</span>
+        <span class="s2">&quot;**&quot;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">pow</span><span class="p">,</span>
+        <span class="s2">&quot;%&quot;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">mod</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+
+    <span class="c1">#: default callback table for the unary operators.  A copy of this is</span>
+    <span class="c1">#: available on each instance of a sandboxed environment as</span>
+    <span class="c1">#: :attr:`unop_table`</span>
+<div class="viewcode-block" id="SandboxedEnvironment.default_unop_table">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.SandboxedEnvironment.default_unop_table">[docs]</a>
+    <span class="n">default_unop_table</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">Callable</span><span class="p">[[</span><span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">],</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;+&quot;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">pos</span><span class="p">,</span>
+        <span class="s2">&quot;-&quot;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">neg</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+
+    <span class="c1">#: a set of binary operators that should be intercepted.  Each operator</span>
+    <span class="c1">#: that is added to this set (empty by default) is delegated to the</span>
+    <span class="c1">#: :meth:`call_binop` method that will perform the operator.  The default</span>
+    <span class="c1">#: operator callback is specified by :attr:`binop_table`.</span>
+    <span class="c1">#:</span>
+    <span class="c1">#: The following binary operators are interceptable:</span>
+    <span class="c1">#: ``//``, ``%``, ``+``, ``*``, ``-``, ``/``, and ``**``</span>
+    <span class="c1">#:</span>
+    <span class="c1">#: The default operation form the operator table corresponds to the</span>
+    <span class="c1">#: builtin function.  Intercepted calls are always slower than the native</span>
+    <span class="c1">#: operator call, so make sure only to intercept the ones you are</span>
+    <span class="c1">#: interested in.</span>
+    <span class="c1">#:</span>
+    <span class="c1">#: .. versionadded:: 2.6</span>
+<div class="viewcode-block" id="SandboxedEnvironment.intercepted_binops">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.SandboxedEnvironment.intercepted_binops">[docs]</a>
+    <span class="n">intercepted_binops</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">FrozenSet</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">()</span></div>
+
+
+    <span class="c1">#: a set of unary operators that should be intercepted.  Each operator</span>
+    <span class="c1">#: that is added to this set (empty by default) is delegated to the</span>
+    <span class="c1">#: :meth:`call_unop` method that will perform the operator.  The default</span>
+    <span class="c1">#: operator callback is specified by :attr:`unop_table`.</span>
+    <span class="c1">#:</span>
+    <span class="c1">#: The following unary operators are interceptable: ``+``, ``-``</span>
+    <span class="c1">#:</span>
+    <span class="c1">#: The default operation form the operator table corresponds to the</span>
+    <span class="c1">#: builtin function.  Intercepted calls are always slower than the native</span>
+    <span class="c1">#: operator call, so make sure only to intercept the ones you are</span>
+    <span class="c1">#: interested in.</span>
+    <span class="c1">#:</span>
+    <span class="c1">#: .. versionadded:: 2.6</span>
+<div class="viewcode-block" id="SandboxedEnvironment.intercepted_unops">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.SandboxedEnvironment.intercepted_unops">[docs]</a>
+    <span class="n">intercepted_unops</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">FrozenSet</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">()</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">globals</span><span class="p">[</span><span class="s2">&quot;range&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">safe_range</span>
+<div class="viewcode-block" id="SandboxedEnvironment.binop_table">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.SandboxedEnvironment.binop_table">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">binop_table</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">default_binop_table</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="SandboxedEnvironment.unop_table">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.SandboxedEnvironment.unop_table">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">unop_table</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">default_unop_table</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="SandboxedEnvironment.is_safe_attribute">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.SandboxedEnvironment.is_safe_attribute">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_safe_attribute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">,</span> <span class="n">attr</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The sandboxed environment will call this method to check if the</span>
+<span class="sd">        attribute of an object is safe to access.  Per default all attributes</span>
+<span class="sd">        starting with an underscore are considered private as well as the</span>
+<span class="sd">        special attributes of internal python objects as returned by the</span>
+<span class="sd">        :func:`is_internal_attribute` function.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="ow">not</span> <span class="p">(</span><span class="n">attr</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;_&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">is_internal_attribute</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">attr</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="SandboxedEnvironment.is_safe_callable">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.SandboxedEnvironment.is_safe_callable">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_safe_callable</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check if an object is safely callable. By default callables</span>
+<span class="sd">        are considered safe unless decorated with :func:`unsafe`.</span>
+
+<span class="sd">        This also recognizes the Django convention of setting</span>
+<span class="sd">        ``func.alters_data = True``.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="ow">not</span> <span class="p">(</span>
+            <span class="nb">getattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="s2">&quot;unsafe_callable&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="s2">&quot;alters_data&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SandboxedEnvironment.call_binop">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.SandboxedEnvironment.call_binop">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">call_binop</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="p">:</span> <span class="n">Context</span><span class="p">,</span> <span class="n">operator</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">left</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">,</span> <span class="n">right</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;For intercepted binary operator calls (:meth:`intercepted_binops`)</span>
+<span class="sd">        this function is executed instead of the builtin operator.  This can</span>
+<span class="sd">        be used to fine tune the behavior of certain operators.</span>
+
+<span class="sd">        .. versionadded:: 2.6</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">binop_table</span><span class="p">[</span><span class="n">operator</span><span class="p">](</span><span class="n">left</span><span class="p">,</span> <span class="n">right</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SandboxedEnvironment.call_unop">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.SandboxedEnvironment.call_unop">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">call_unop</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="p">:</span> <span class="n">Context</span><span class="p">,</span> <span class="n">operator</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">arg</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;For intercepted unary operator calls (:meth:`intercepted_unops`)</span>
+<span class="sd">        this function is executed instead of the builtin operator.  This can</span>
+<span class="sd">        be used to fine tune the behavior of certain operators.</span>
+
+<span class="sd">        .. versionadded:: 2.6</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">unop_table</span><span class="p">[</span><span class="n">operator</span><span class="p">](</span><span class="n">arg</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SandboxedEnvironment.getitem">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.SandboxedEnvironment.getitem">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">getitem</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">,</span> <span class="n">argument</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">]</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">t</span><span class="o">.</span><span class="n">Union</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">,</span> <span class="n">Undefined</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Subscribe an object from sandboxed code.&quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">obj</span><span class="p">[</span><span class="n">argument</span><span class="p">]</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">LookupError</span><span class="p">):</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">argument</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">attr</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">argument</span><span class="p">)</span>
+                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                    <span class="k">pass</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="n">value</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">attr</span><span class="p">)</span>
+                    <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+                        <span class="k">pass</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">fmt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">wrap_str_format</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="n">fmt</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                            <span class="k">return</span> <span class="n">fmt</span>
+                        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_safe_attribute</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">argument</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+                            <span class="k">return</span> <span class="n">value</span>
+                        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">unsafe_undefined</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">argument</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">undefined</span><span class="p">(</span><span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">argument</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SandboxedEnvironment.getattr">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.SandboxedEnvironment.getattr">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">,</span> <span class="n">attribute</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">t</span><span class="o">.</span><span class="n">Union</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">,</span> <span class="n">Undefined</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Subscribe an object from sandboxed code and prefer the</span>
+<span class="sd">        attribute.  The attribute passed *must* be a bytestring.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">attribute</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">obj</span><span class="p">[</span><span class="n">attribute</span><span class="p">]</span>
+            <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">LookupError</span><span class="p">):</span>
+                <span class="k">pass</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">fmt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">wrap_str_format</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">fmt</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">fmt</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_safe_attribute</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">attribute</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">value</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">unsafe_undefined</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">attribute</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">undefined</span><span class="p">(</span><span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">attribute</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SandboxedEnvironment.unsafe_undefined">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.SandboxedEnvironment.unsafe_undefined">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">unsafe_undefined</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">,</span> <span class="n">attribute</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Undefined</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return an undefined object for unsafe attributes.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">undefined</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;access to attribute </span><span class="si">{</span><span class="n">attribute</span><span class="si">!r}</span><span class="s2"> of&quot;</span>
+            <span class="sa">f</span><span class="s2">&quot; </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">!r}</span><span class="s2"> object is unsafe.&quot;</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="n">attribute</span><span class="p">,</span>
+            <span class="n">obj</span><span class="o">=</span><span class="n">obj</span><span class="p">,</span>
+            <span class="n">exc</span><span class="o">=</span><span class="n">SecurityError</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SandboxedEnvironment.wrap_str_format">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.SandboxedEnvironment.wrap_str_format">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">wrap_str_format</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">t</span><span class="o">.</span><span class="n">Optional</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">Callable</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;If the given value is a ``str.format`` or ``str.format_map`` method,</span>
+<span class="sd">        return a new function than handles sandboxing. This is done at access</span>
+<span class="sd">        rather than in :meth:`call`, so that calls made without ``call`` are</span>
+<span class="sd">        also sandboxed.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span>
+            <span class="n">value</span><span class="p">,</span> <span class="p">(</span><span class="n">types</span><span class="o">.</span><span class="n">MethodType</span><span class="p">,</span> <span class="n">types</span><span class="o">.</span><span class="n">BuiltinMethodType</span><span class="p">)</span>
+        <span class="p">)</span> <span class="ow">or</span> <span class="n">value</span><span class="o">.</span><span class="vm">__name__</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;format&quot;</span><span class="p">,</span> <span class="s2">&quot;format_map&quot;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="n">f_self</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="vm">__self__</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">f_self</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="n">str_type</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Type</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="n">f_self</span><span class="p">)</span>
+        <span class="n">is_format_map</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;format_map&quot;</span>
+        <span class="n">formatter</span><span class="p">:</span> <span class="n">SandboxedFormatter</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">f_self</span><span class="p">,</span> <span class="n">Markup</span><span class="p">):</span>
+            <span class="n">formatter</span> <span class="o">=</span> <span class="n">SandboxedEscapeFormatter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">escape</span><span class="o">=</span><span class="n">f_self</span><span class="o">.</span><span class="n">escape</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">formatter</span> <span class="o">=</span> <span class="n">SandboxedFormatter</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+        <span class="n">vformat</span> <span class="o">=</span> <span class="n">formatter</span><span class="o">.</span><span class="n">vformat</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">wrapper</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">is_format_map</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">kwargs</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;format_map() takes no keyword arguments&quot;</span><span class="p">)</span>
+
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">args</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;format_map() takes exactly one argument (</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">args</span><span class="p">)</span><span class="si">}</span><span class="s2"> given)&quot;</span>
+                    <span class="p">)</span>
+
+                <span class="n">kwargs</span> <span class="o">=</span> <span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">args</span> <span class="o">=</span> <span class="p">()</span>
+
+            <span class="k">return</span> <span class="n">str_type</span><span class="p">(</span><span class="n">vformat</span><span class="p">(</span><span class="n">f_self</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="n">update_wrapper</span><span class="p">(</span><span class="n">wrapper</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SandboxedEnvironment.call">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.SandboxedEnvironment.call">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">call</span><span class="p">(</span>
+        <span class="n">__self</span><span class="p">,</span>  <span class="c1"># noqa: B902</span>
+        <span class="n">__context</span><span class="p">:</span> <span class="n">Context</span><span class="p">,</span>
+        <span class="n">__obj</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">,</span>
+        <span class="o">*</span><span class="n">args</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Call an object from sandboxed code.&quot;&quot;&quot;</span>
+
+        <span class="c1"># the double prefixes are to avoid double keyword argument</span>
+        <span class="c1"># errors when proxying the call.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">__self</span><span class="o">.</span><span class="n">is_safe_callable</span><span class="p">(</span><span class="n">__obj</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">SecurityError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">__obj</span><span class="si">!r}</span><span class="s2"> is not safely callable&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">__context</span><span class="o">.</span><span class="n">call</span><span class="p">(</span><span class="n">__obj</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="ImmutableSandboxedEnvironment">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.ImmutableSandboxedEnvironment">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ImmutableSandboxedEnvironment</span><span class="p">(</span><span class="n">SandboxedEnvironment</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Works exactly like the regular `SandboxedEnvironment` but does not</span>
+<span class="sd">    permit modifications on the builtin mutable objects `list`, `set`, and</span>
+<span class="sd">    `dict` by using the :func:`modifies_known_mutable` function.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="ImmutableSandboxedEnvironment.is_safe_attribute">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.ImmutableSandboxedEnvironment.is_safe_attribute">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_safe_attribute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">,</span> <span class="n">attr</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">is_safe_attribute</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">attr</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="k">return</span> <span class="ow">not</span> <span class="n">modifies_known_mutable</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">attr</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="SandboxedFormatter">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.SandboxedFormatter">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SandboxedFormatter</span><span class="p">(</span><span class="n">Formatter</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">env</span><span class="p">:</span> <span class="n">Environment</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_env</span> <span class="o">=</span> <span class="n">env</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="SandboxedFormatter.get_field">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.SandboxedFormatter.get_field">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_field</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">args</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Sequence</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">],</span> <span class="n">kwargs</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">]</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">t</span><span class="o">.</span><span class="n">Tuple</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+        <span class="n">first</span><span class="p">,</span> <span class="n">rest</span> <span class="o">=</span> <span class="n">formatter_field_name_split</span><span class="p">(</span><span class="n">field_name</span><span class="p">)</span>
+        <span class="n">obj</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_value</span><span class="p">(</span><span class="n">first</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">is_attr</span><span class="p">,</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">rest</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">is_attr</span><span class="p">:</span>
+                <span class="n">obj</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_env</span><span class="o">.</span><span class="n">getattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">obj</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_env</span><span class="o">.</span><span class="n">getitem</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">obj</span><span class="p">,</span> <span class="n">first</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="SandboxedEscapeFormatter">
+<a class="viewcode-back" href="../../autoapi/jinja2/sandbox/index.html#jinja2.sandbox.SandboxedEscapeFormatter">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SandboxedEscapeFormatter</span><span class="p">(</span><span class="n">SandboxedFormatter</span><span class="p">,</span> <span class="n">EscapeFormatter</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,409 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.core.management.commands.dumpdata &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../../management.html">django.core.management</a></li>
+      <li class="breadcrumb-item active">django.core.management.commands.dumpdata</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.core.management.commands.dumpdata</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">gzip</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.apps</span><span class="w"> </span><span class="kn">import</span> <span class="n">apps</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">serializers</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.management.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseCommand</span><span class="p">,</span> <span class="n">CommandError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.management.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">parse_apps_and_model_labels</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">DEFAULT_DB_ALIAS</span><span class="p">,</span> <span class="n">router</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">bz2</span>
+
+<div class="viewcode-block" id="has_bz2">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/dumpdata/index.html#django.core.management.commands.dumpdata.has_bz2">[docs]</a>
+    <span class="n">has_bz2</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="n">has_bz2</span> <span class="o">=</span> <span class="kc">False</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">lzma</span>
+
+<div class="viewcode-block" id="has_lzma">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/dumpdata/index.html#django.core.management.commands.dumpdata.has_lzma">[docs]</a>
+    <span class="n">has_lzma</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="n">has_lzma</span> <span class="o">=</span> <span class="kc">False</span>
+
+
+<div class="viewcode-block" id="ProxyModelWarning">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/dumpdata/index.html#django.core.management.commands.dumpdata.ProxyModelWarning">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ProxyModelWarning</span><span class="p">(</span><span class="ne">Warning</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+
+
+<div class="viewcode-block" id="Command">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/dumpdata/index.html#django.core.management.commands.dumpdata.Command">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Command</span><span class="p">(</span><span class="n">BaseCommand</span><span class="p">):</span>
+<div class="viewcode-block" id="Command.help">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/dumpdata/index.html#django.core.management.commands.dumpdata.Command.help">[docs]</a>
+    <span class="n">help</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="s2">&quot;Output the contents of the database as a fixture of the given format &quot;</span>
+        <span class="s2">&quot;(using each model&#39;s default manager unless --all is specified).&quot;</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Command.add_arguments">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/dumpdata/index.html#django.core.management.commands.dumpdata.Command.add_arguments">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add_arguments</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parser</span><span class="p">):</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;args&quot;</span><span class="p">,</span>
+            <span class="n">metavar</span><span class="o">=</span><span class="s2">&quot;app_label[.ModelName]&quot;</span><span class="p">,</span>
+            <span class="n">nargs</span><span class="o">=</span><span class="s2">&quot;*&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+                <span class="s2">&quot;Restricts dumped data to the specified app_label or &quot;</span>
+                <span class="s2">&quot;app_label.ModelName.&quot;</span>
+            <span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;--format&quot;</span><span class="p">,</span>
+            <span class="n">default</span><span class="o">=</span><span class="s2">&quot;json&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Specifies the output serialization format for fixtures.&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;--indent&quot;</span><span class="p">,</span>
+            <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Specifies the indent level to use when pretty-printing output.&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;--database&quot;</span><span class="p">,</span>
+            <span class="n">default</span><span class="o">=</span><span class="n">DEFAULT_DB_ALIAS</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Nominates a specific database to dump fixtures from. &quot;</span>
+            <span class="s1">&#39;Defaults to the &quot;default&quot; database.&#39;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;-e&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;--exclude&quot;</span><span class="p">,</span>
+            <span class="n">action</span><span class="o">=</span><span class="s2">&quot;append&quot;</span><span class="p">,</span>
+            <span class="n">default</span><span class="o">=</span><span class="p">[],</span>
+            <span class="n">help</span><span class="o">=</span><span class="s2">&quot;An app_label or app_label.ModelName to exclude &quot;</span>
+            <span class="s2">&quot;(use multiple --exclude to exclude multiple apps/models).&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;--natural-foreign&quot;</span><span class="p">,</span>
+            <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+            <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;use_natural_foreign_keys&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Use natural foreign keys if they are available.&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;--natural-primary&quot;</span><span class="p">,</span>
+            <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+            <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;use_natural_primary_keys&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Use natural primary keys if they are available.&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;-a&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;--all&quot;</span><span class="p">,</span>
+            <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+            <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;use_base_manager&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+                <span class="s2">&quot;Use Django&#39;s base manager to dump all models stored in the database, &quot;</span>
+                <span class="s2">&quot;including those that would otherwise be filtered or modified by a &quot;</span>
+                <span class="s2">&quot;custom manager.&quot;</span>
+            <span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;--pks&quot;</span><span class="p">,</span>
+            <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;primary_keys&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Only dump objects with given primary keys. Accepts a comma-separated &quot;</span>
+            <span class="s2">&quot;list of keys. This option only works when you specify one model.&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;-o&quot;</span><span class="p">,</span> <span class="s2">&quot;--output&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Specifies file to which the output is written.&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Command.handle">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/dumpdata/index.html#django.core.management.commands.dumpdata.Command.handle">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">app_labels</span><span class="p">,</span> <span class="o">**</span><span class="n">options</span><span class="p">):</span>
+        <span class="nb">format</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;format&quot;</span><span class="p">]</span>
+        <span class="n">indent</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;indent&quot;</span><span class="p">]</span>
+        <span class="n">using</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;database&quot;</span><span class="p">]</span>
+        <span class="n">excludes</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;exclude&quot;</span><span class="p">]</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;output&quot;</span><span class="p">]</span>
+        <span class="n">show_traceback</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;traceback&quot;</span><span class="p">]</span>
+        <span class="n">use_natural_foreign_keys</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;use_natural_foreign_keys&quot;</span><span class="p">]</span>
+        <span class="n">use_natural_primary_keys</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;use_natural_primary_keys&quot;</span><span class="p">]</span>
+        <span class="n">use_base_manager</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;use_base_manager&quot;</span><span class="p">]</span>
+        <span class="n">pks</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;primary_keys&quot;</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">pks</span><span class="p">:</span>
+            <span class="n">primary_keys</span> <span class="o">=</span> <span class="p">[</span><span class="n">pk</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">pk</span> <span class="ow">in</span> <span class="n">pks</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">)]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">primary_keys</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="n">excluded_models</span><span class="p">,</span> <span class="n">excluded_apps</span> <span class="o">=</span> <span class="n">parse_apps_and_model_labels</span><span class="p">(</span><span class="n">excludes</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">app_labels</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">primary_keys</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">CommandError</span><span class="p">(</span><span class="s2">&quot;You can only use --pks option with one model&quot;</span><span class="p">)</span>
+            <span class="n">app_list</span> <span class="o">=</span> <span class="nb">dict</span><span class="o">.</span><span class="n">fromkeys</span><span class="p">(</span>
+                <span class="n">app_config</span>
+                <span class="k">for</span> <span class="n">app_config</span> <span class="ow">in</span> <span class="n">apps</span><span class="o">.</span><span class="n">get_app_configs</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">app_config</span><span class="o">.</span><span class="n">models_module</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+                <span class="ow">and</span> <span class="n">app_config</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">excluded_apps</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">app_labels</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">primary_keys</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">CommandError</span><span class="p">(</span><span class="s2">&quot;You can only use --pks option with one model&quot;</span><span class="p">)</span>
+            <span class="n">app_list</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="k">for</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">app_labels</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">app_label</span><span class="p">,</span> <span class="n">model_label</span> <span class="o">=</span> <span class="n">label</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="n">app_config</span> <span class="o">=</span> <span class="n">apps</span><span class="o">.</span><span class="n">get_app_config</span><span class="p">(</span><span class="n">app_label</span><span class="p">)</span>
+                    <span class="k">except</span> <span class="ne">LookupError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                        <span class="k">raise</span> <span class="n">CommandError</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">))</span>
+                    <span class="k">if</span> <span class="n">app_config</span><span class="o">.</span><span class="n">models_module</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">app_config</span> <span class="ow">in</span> <span class="n">excluded_apps</span><span class="p">:</span>
+                        <span class="k">continue</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="n">model</span> <span class="o">=</span> <span class="n">app_config</span><span class="o">.</span><span class="n">get_model</span><span class="p">(</span><span class="n">model_label</span><span class="p">)</span>
+                    <span class="k">except</span> <span class="ne">LookupError</span><span class="p">:</span>
+                        <span class="k">raise</span> <span class="n">CommandError</span><span class="p">(</span>
+                            <span class="s2">&quot;Unknown model: </span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">app_label</span><span class="p">,</span> <span class="n">model_label</span><span class="p">)</span>
+                        <span class="p">)</span>
+
+                    <span class="n">app_list_value</span> <span class="o">=</span> <span class="n">app_list</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">app_config</span><span class="p">,</span> <span class="p">[])</span>
+
+                    <span class="c1"># We may have previously seen an &quot;all-models&quot; request for</span>
+                    <span class="c1"># this app (no model qualifier was given). In this case</span>
+                    <span class="c1"># there is no need adding specific models to the list.</span>
+                    <span class="k">if</span> <span class="n">app_list_value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">model</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">app_list_value</span><span class="p">:</span>
+                        <span class="n">app_list_value</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+                <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">primary_keys</span><span class="p">:</span>
+                        <span class="k">raise</span> <span class="n">CommandError</span><span class="p">(</span>
+                            <span class="s2">&quot;You can only use --pks option with one model&quot;</span>
+                        <span class="p">)</span>
+                    <span class="c1"># This is just an app - no model qualifier</span>
+                    <span class="n">app_label</span> <span class="o">=</span> <span class="n">label</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="n">app_config</span> <span class="o">=</span> <span class="n">apps</span><span class="o">.</span><span class="n">get_app_config</span><span class="p">(</span><span class="n">app_label</span><span class="p">)</span>
+                    <span class="k">except</span> <span class="ne">LookupError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                        <span class="k">raise</span> <span class="n">CommandError</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">))</span>
+                    <span class="k">if</span> <span class="n">app_config</span><span class="o">.</span><span class="n">models_module</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">app_config</span> <span class="ow">in</span> <span class="n">excluded_apps</span><span class="p">:</span>
+                        <span class="k">continue</span>
+                    <span class="n">app_list</span><span class="p">[</span><span class="n">app_config</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="c1"># Check that the serialization format exists; this is a shortcut to</span>
+        <span class="c1"># avoid collating all the objects and _then_ failing.</span>
+        <span class="k">if</span> <span class="nb">format</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">serializers</span><span class="o">.</span><span class="n">get_public_serializer_formats</span><span class="p">():</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">serializers</span><span class="o">.</span><span class="n">get_serializer</span><span class="p">(</span><span class="nb">format</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">serializers</span><span class="o">.</span><span class="n">SerializerDoesNotExist</span><span class="p">:</span>
+                <span class="k">pass</span>
+
+            <span class="k">raise</span> <span class="n">CommandError</span><span class="p">(</span><span class="s2">&quot;Unknown serialization format: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="nb">format</span><span class="p">)</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">get_objects</span><span class="p">(</span><span class="n">count_only</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            Collate the objects to be serialized. If count_only is True, just</span>
+<span class="sd">            count the number of objects to be serialized.</span>
+<span class="sd">            &quot;&quot;&quot;</span>
+            <span class="k">if</span> <span class="n">use_natural_foreign_keys</span><span class="p">:</span>
+                <span class="n">models</span> <span class="o">=</span> <span class="n">serializers</span><span class="o">.</span><span class="n">sort_dependencies</span><span class="p">(</span>
+                    <span class="n">app_list</span><span class="o">.</span><span class="n">items</span><span class="p">(),</span> <span class="n">allow_cycles</span><span class="o">=</span><span class="kc">True</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># There is no need to sort dependencies when natural foreign</span>
+                <span class="c1"># keys are not used.</span>
+                <span class="n">models</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="k">for</span> <span class="n">app_config</span><span class="p">,</span> <span class="n">model_list</span> <span class="ow">in</span> <span class="n">app_list</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                    <span class="k">if</span> <span class="n">model_list</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                        <span class="n">models</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">app_config</span><span class="o">.</span><span class="n">get_models</span><span class="p">())</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">models</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">model_list</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">model</span> <span class="ow">in</span> <span class="n">models</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">model</span> <span class="ow">in</span> <span class="n">excluded_models</span><span class="p">:</span>
+                    <span class="k">continue</span>
+                <span class="k">if</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">proxy</span> <span class="ow">and</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">proxy_for_model</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">models</span><span class="p">:</span>
+                    <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+                        <span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> is a proxy model and won&#39;t be serialized.&quot;</span>
+                        <span class="o">%</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">label</span><span class="p">,</span>
+                        <span class="n">category</span><span class="o">=</span><span class="n">ProxyModelWarning</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">proxy</span> <span class="ow">and</span> <span class="n">router</span><span class="o">.</span><span class="n">allow_migrate_model</span><span class="p">(</span><span class="n">using</span><span class="p">,</span> <span class="n">model</span><span class="p">):</span>
+                    <span class="k">if</span> <span class="n">use_base_manager</span><span class="p">:</span>
+                        <span class="n">objects</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_base_manager</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">objects</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_default_manager</span>
+
+                    <span class="n">queryset</span> <span class="o">=</span> <span class="n">objects</span><span class="o">.</span><span class="n">using</span><span class="p">(</span><span class="n">using</span><span class="p">)</span><span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">pk</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">primary_keys</span><span class="p">:</span>
+                        <span class="n">queryset</span> <span class="o">=</span> <span class="n">queryset</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">pk__in</span><span class="o">=</span><span class="n">primary_keys</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">count_only</span><span class="p">:</span>
+                        <span class="k">yield</span> <span class="n">queryset</span><span class="o">.</span><span class="n">order_by</span><span class="p">()</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="k">yield from</span> <span class="n">queryset</span><span class="o">.</span><span class="n">iterator</span><span class="p">()</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">ending</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="n">progress_output</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="n">object_count</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="c1"># If dumpdata is outputting to stdout, there is no way to display progress</span>
+            <span class="k">if</span> <span class="n">output</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">isatty</span><span class="p">()</span> <span class="ow">and</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;verbosity&quot;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">progress_output</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span>
+                <span class="n">object_count</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">get_objects</span><span class="p">(</span><span class="n">count_only</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">output</span><span class="p">:</span>
+                <span class="n">file_root</span><span class="p">,</span> <span class="n">file_ext</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">splitext</span><span class="p">(</span><span class="n">output</span><span class="p">)</span>
+                <span class="n">compression_formats</span> <span class="o">=</span> <span class="p">{</span>
+                    <span class="s2">&quot;.bz2&quot;</span><span class="p">:</span> <span class="p">(</span><span class="nb">open</span><span class="p">,</span> <span class="p">{},</span> <span class="n">file_root</span><span class="p">),</span>
+                    <span class="s2">&quot;.gz&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">gzip</span><span class="o">.</span><span class="n">open</span><span class="p">,</span> <span class="p">{},</span> <span class="n">output</span><span class="p">),</span>
+                    <span class="s2">&quot;.lzma&quot;</span><span class="p">:</span> <span class="p">(</span><span class="nb">open</span><span class="p">,</span> <span class="p">{},</span> <span class="n">file_root</span><span class="p">),</span>
+                    <span class="s2">&quot;.xz&quot;</span><span class="p">:</span> <span class="p">(</span><span class="nb">open</span><span class="p">,</span> <span class="p">{},</span> <span class="n">file_root</span><span class="p">),</span>
+                    <span class="s2">&quot;.zip&quot;</span><span class="p">:</span> <span class="p">(</span><span class="nb">open</span><span class="p">,</span> <span class="p">{},</span> <span class="n">file_root</span><span class="p">),</span>
+                <span class="p">}</span>
+                <span class="k">if</span> <span class="n">has_bz2</span><span class="p">:</span>
+                    <span class="n">compression_formats</span><span class="p">[</span><span class="s2">&quot;.bz2&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">bz2</span><span class="o">.</span><span class="n">open</span><span class="p">,</span> <span class="p">{},</span> <span class="n">output</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">has_lzma</span><span class="p">:</span>
+                    <span class="n">compression_formats</span><span class="p">[</span><span class="s2">&quot;.lzma&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                        <span class="n">lzma</span><span class="o">.</span><span class="n">open</span><span class="p">,</span>
+                        <span class="p">{</span><span class="s2">&quot;format&quot;</span><span class="p">:</span> <span class="n">lzma</span><span class="o">.</span><span class="n">FORMAT_ALONE</span><span class="p">},</span>
+                        <span class="n">output</span><span class="p">,</span>
+                    <span class="p">)</span>
+                    <span class="n">compression_formats</span><span class="p">[</span><span class="s2">&quot;.xz&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">lzma</span><span class="o">.</span><span class="n">open</span><span class="p">,</span> <span class="p">{},</span> <span class="n">output</span><span class="p">)</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">open_method</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">,</span> <span class="n">file_path</span> <span class="o">=</span> <span class="n">compression_formats</span><span class="p">[</span><span class="n">file_ext</span><span class="p">]</span>
+                <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+                    <span class="n">open_method</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">,</span> <span class="n">file_path</span> <span class="o">=</span> <span class="p">(</span><span class="nb">open</span><span class="p">,</span> <span class="p">{},</span> <span class="n">output</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">file_path</span> <span class="o">!=</span> <span class="n">output</span><span class="p">:</span>
+                    <span class="n">file_name</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
+                    <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;Unsupported file extension (</span><span class="si">{</span><span class="n">file_ext</span><span class="si">}</span><span class="s2">). &quot;</span>
+                        <span class="sa">f</span><span class="s2">&quot;Fixtures saved in &#39;</span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s2">&#39;.&quot;</span><span class="p">,</span>
+                        <span class="ne">RuntimeWarning</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="n">stream</span> <span class="o">=</span> <span class="n">open_method</span><span class="p">(</span><span class="n">file_path</span><span class="p">,</span> <span class="s2">&quot;wt&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">stream</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">serializers</span><span class="o">.</span><span class="n">serialize</span><span class="p">(</span>
+                    <span class="nb">format</span><span class="p">,</span>
+                    <span class="n">get_objects</span><span class="p">(),</span>
+                    <span class="n">indent</span><span class="o">=</span><span class="n">indent</span><span class="p">,</span>
+                    <span class="n">use_natural_foreign_keys</span><span class="o">=</span><span class="n">use_natural_foreign_keys</span><span class="p">,</span>
+                    <span class="n">use_natural_primary_keys</span><span class="o">=</span><span class="n">use_natural_primary_keys</span><span class="p">,</span>
+                    <span class="n">stream</span><span class="o">=</span><span class="n">stream</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="p">,</span>
+                    <span class="n">progress_output</span><span class="o">=</span><span class="n">progress_output</span><span class="p">,</span>
+                    <span class="n">object_count</span><span class="o">=</span><span class="n">object_count</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="k">finally</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">stream</span><span class="p">:</span>
+                    <span class="n">stream</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">show_traceback</span><span class="p">:</span>
+                <span class="k">raise</span>
+            <span class="k">raise</span> <span class="n">CommandError</span><span class="p">(</span><span class="s2">&quot;Unable to serialize database: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">e</span><span class="p">)</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

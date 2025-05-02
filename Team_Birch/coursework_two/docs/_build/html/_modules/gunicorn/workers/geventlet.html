@@ -1,0 +1,330 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gunicorn.workers.geventlet &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../gunicorn.html">gunicorn</a></li>
+          <li class="breadcrumb-item"><a href="../workers.html">gunicorn.workers</a></li>
+      <li class="breadcrumb-item active">gunicorn.workers.geventlet</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gunicorn.workers.geventlet</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -</span>
+<span class="c1">#</span>
+<span class="c1"># This file is part of gunicorn released under the MIT license.</span>
+<span class="c1"># See the NOTICE for more information.</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">partial</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">eventlet</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;eventlet worker requires eventlet 0.24.1 or higher&quot;</span><span class="p">)</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">packaging.version</span><span class="w"> </span><span class="kn">import</span> <span class="n">parse</span> <span class="k">as</span> <span class="n">parse_version</span>
+
+    <span class="k">if</span> <span class="n">parse_version</span><span class="p">(</span><span class="n">eventlet</span><span class="o">.</span><span class="n">__version__</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">parse_version</span><span class="p">(</span><span class="s2">&quot;0.24.1&quot;</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;eventlet worker requires eventlet 0.24.1 or higher&quot;</span><span class="p">)</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">eventlet.wsgi</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">greenlet</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">eventlet</span><span class="w"> </span><span class="kn">import</span> <span class="n">greenthread</span><span class="p">,</span> <span class="n">hubs</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">eventlet.greenio</span><span class="w"> </span><span class="kn">import</span> <span class="n">GreenSocket</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">gunicorn.sock</span><span class="w"> </span><span class="kn">import</span> <span class="n">ssl_wrap_socket</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">gunicorn.workers.base_async</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncWorker</span>
+
+<span class="c1"># ALREADY_HANDLED is removed in 0.30.3+ now it&#39;s `WSGI_LOCAL.already_handled: bool`</span>
+<span class="c1"># https://github.com/eventlet/eventlet/pull/544</span>
+<div class="viewcode-block" id="EVENTLET_WSGI_LOCAL">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/workers/geventlet/index.html#gunicorn.workers.geventlet.EVENTLET_WSGI_LOCAL">[docs]</a>
+<span class="n">EVENTLET_WSGI_LOCAL</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">eventlet</span><span class="o">.</span><span class="n">wsgi</span><span class="p">,</span> <span class="s2">&quot;WSGI_LOCAL&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="EVENTLET_ALREADY_HANDLED">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/workers/geventlet/index.html#gunicorn.workers.geventlet.EVENTLET_ALREADY_HANDLED">[docs]</a>
+<span class="n">EVENTLET_ALREADY_HANDLED</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">eventlet</span><span class="o">.</span><span class="n">wsgi</span><span class="p">,</span> <span class="s2">&quot;ALREADY_HANDLED&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_eventlet_socket_sendfile</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">file</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">count</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="c1"># Based on the implementation in gevent which in turn is slightly</span>
+    <span class="c1"># modified from the standard library implementation.</span>
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">gettimeout</span><span class="p">()</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;non-blocking sockets are not supported&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">offset</span><span class="p">:</span>
+        <span class="n">file</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="n">offset</span><span class="p">)</span>
+    <span class="n">blocksize</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="mi">8192</span><span class="p">)</span> <span class="k">if</span> <span class="n">count</span> <span class="k">else</span> <span class="mi">8192</span>
+    <span class="n">total_sent</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="c1"># localize variable access to minimize overhead</span>
+    <span class="n">file_read</span> <span class="o">=</span> <span class="n">file</span><span class="o">.</span><span class="n">read</span>
+    <span class="n">sock_send</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">send</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">count</span><span class="p">:</span>
+                <span class="n">blocksize</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">count</span> <span class="o">-</span> <span class="n">total_sent</span><span class="p">,</span> <span class="n">blocksize</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">blocksize</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="k">break</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="nb">memoryview</span><span class="p">(</span><span class="n">file_read</span><span class="p">(</span><span class="n">blocksize</span><span class="p">))</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">data</span><span class="p">:</span>
+                <span class="k">break</span>  <span class="c1"># EOF</span>
+            <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">sent</span> <span class="o">=</span> <span class="n">sock_send</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+                <span class="k">except</span> <span class="ne">BlockingIOError</span><span class="p">:</span>
+                    <span class="k">continue</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">total_sent</span> <span class="o">+=</span> <span class="n">sent</span>
+                    <span class="k">if</span> <span class="n">sent</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">):</span>
+                        <span class="n">data</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="n">sent</span><span class="p">:]</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="k">break</span>
+        <span class="k">return</span> <span class="n">total_sent</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">total_sent</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">file</span><span class="p">,</span> <span class="s2">&quot;seek&quot;</span><span class="p">):</span>
+            <span class="n">file</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="n">offset</span> <span class="o">+</span> <span class="n">total_sent</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_eventlet_serve</span><span class="p">(</span><span class="n">sock</span><span class="p">,</span> <span class="n">handle</span><span class="p">,</span> <span class="n">concurrency</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Serve requests forever.</span>
+
+<span class="sd">    This code is nearly identical to ``eventlet.convenience.serve`` except</span>
+<span class="sd">    that it attempts to join the pool at the end, which allows for gunicorn</span>
+<span class="sd">    graceful shutdowns.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">pool</span> <span class="o">=</span> <span class="n">eventlet</span><span class="o">.</span><span class="n">greenpool</span><span class="o">.</span><span class="n">GreenPool</span><span class="p">(</span><span class="n">concurrency</span><span class="p">)</span>
+    <span class="n">server_gt</span> <span class="o">=</span> <span class="n">eventlet</span><span class="o">.</span><span class="n">greenthread</span><span class="o">.</span><span class="n">getcurrent</span><span class="p">()</span>
+
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">conn</span><span class="p">,</span> <span class="n">addr</span> <span class="o">=</span> <span class="n">sock</span><span class="o">.</span><span class="n">accept</span><span class="p">()</span>
+            <span class="n">gt</span> <span class="o">=</span> <span class="n">pool</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="n">handle</span><span class="p">,</span> <span class="n">conn</span><span class="p">,</span> <span class="n">addr</span><span class="p">)</span>
+            <span class="n">gt</span><span class="o">.</span><span class="n">link</span><span class="p">(</span><span class="n">_eventlet_stop</span><span class="p">,</span> <span class="n">server_gt</span><span class="p">,</span> <span class="n">conn</span><span class="p">)</span>
+            <span class="n">conn</span><span class="p">,</span> <span class="n">addr</span><span class="p">,</span> <span class="n">gt</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+        <span class="k">except</span> <span class="n">eventlet</span><span class="o">.</span><span class="n">StopServe</span><span class="p">:</span>
+            <span class="n">sock</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="n">pool</span><span class="o">.</span><span class="n">waitall</span><span class="p">()</span>
+            <span class="k">return</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_eventlet_stop</span><span class="p">(</span><span class="n">client</span><span class="p">,</span> <span class="n">server</span><span class="p">,</span> <span class="n">conn</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Stop a greenlet handling a request and close its connection.</span>
+
+<span class="sd">    This code is lifted from eventlet so as not to depend on undocumented</span>
+<span class="sd">    functions in the library.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">client</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="n">conn</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="k">except</span> <span class="n">greenlet</span><span class="o">.</span><span class="n">GreenletExit</span><span class="p">:</span>
+        <span class="k">pass</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="n">greenthread</span><span class="o">.</span><span class="n">kill</span><span class="p">(</span><span class="n">server</span><span class="p">,</span> <span class="o">*</span><span class="n">sys</span><span class="o">.</span><span class="n">exc_info</span><span class="p">())</span>
+
+
+<div class="viewcode-block" id="patch_sendfile">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/workers/geventlet/index.html#gunicorn.workers.geventlet.patch_sendfile">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">patch_sendfile</span><span class="p">():</span>
+    <span class="c1"># As of eventlet 0.25.1, GreenSocket.sendfile doesn&#39;t exist,</span>
+    <span class="c1"># meaning the native implementations of socket.sendfile will be used.</span>
+    <span class="c1"># If os.sendfile exists, it will attempt to use that, failing explicitly</span>
+    <span class="c1"># if the socket is in non-blocking mode, which the underlying</span>
+    <span class="c1"># socket object /is/. Even the regular _sendfile_use_send will</span>
+    <span class="c1"># fail in that way; plus, it would use the underlying socket.send which isn&#39;t</span>
+    <span class="c1"># properly cooperative. So we have to monkey-patch a working socket.sendfile()</span>
+    <span class="c1"># into GreenSocket; in this method, `self.send` will be the GreenSocket&#39;s</span>
+    <span class="c1"># send method which is properly cooperative.</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">GreenSocket</span><span class="p">,</span> <span class="s2">&quot;sendfile&quot;</span><span class="p">):</span>
+        <span class="n">GreenSocket</span><span class="o">.</span><span class="n">sendfile</span> <span class="o">=</span> <span class="n">_eventlet_socket_sendfile</span></div>
+
+
+
+<div class="viewcode-block" id="EventletWorker">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/workers/geventlet/index.html#gunicorn.workers.geventlet.EventletWorker">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">EventletWorker</span><span class="p">(</span><span class="n">AsyncWorker</span><span class="p">):</span>
+<div class="viewcode-block" id="EventletWorker.patch">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/workers/geventlet/index.html#gunicorn.workers.geventlet.EventletWorker.patch">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">patch</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">hubs</span><span class="o">.</span><span class="n">use_hub</span><span class="p">()</span>
+        <span class="n">eventlet</span><span class="o">.</span><span class="n">monkey_patch</span><span class="p">()</span>
+        <span class="n">patch_sendfile</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="EventletWorker.is_already_handled">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/workers/geventlet/index.html#gunicorn.workers.geventlet.EventletWorker.is_already_handled">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_already_handled</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">respiter</span><span class="p">):</span>
+        <span class="c1"># eventlet &gt;= 0.30.3</span>
+        <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">EVENTLET_WSGI_LOCAL</span><span class="p">,</span> <span class="s2">&quot;already_handled&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">StopIteration</span><span class="p">()</span>
+        <span class="c1"># eventlet &lt; 0.30.3</span>
+        <span class="k">if</span> <span class="n">respiter</span> <span class="o">==</span> <span class="n">EVENTLET_ALREADY_HANDLED</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">StopIteration</span><span class="p">()</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">is_already_handled</span><span class="p">(</span><span class="n">respiter</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="EventletWorker.init_process">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/workers/geventlet/index.html#gunicorn.workers.geventlet.EventletWorker.init_process">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">init_process</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">patch</span><span class="p">()</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">init_process</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="EventletWorker.handle_quit">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/workers/geventlet/index.html#gunicorn.workers.geventlet.EventletWorker.handle_quit">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle_quit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sig</span><span class="p">,</span> <span class="n">frame</span><span class="p">):</span>
+        <span class="n">eventlet</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">handle_quit</span><span class="p">,</span> <span class="n">sig</span><span class="p">,</span> <span class="n">frame</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="EventletWorker.handle_usr1">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/workers/geventlet/index.html#gunicorn.workers.geventlet.EventletWorker.handle_usr1">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle_usr1</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sig</span><span class="p">,</span> <span class="n">frame</span><span class="p">):</span>
+        <span class="n">eventlet</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">handle_usr1</span><span class="p">,</span> <span class="n">sig</span><span class="p">,</span> <span class="n">frame</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="EventletWorker.timeout_ctx">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/workers/geventlet/index.html#gunicorn.workers.geventlet.EventletWorker.timeout_ctx">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">timeout_ctx</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">eventlet</span><span class="o">.</span><span class="n">Timeout</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">keepalive</span> <span class="ow">or</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="EventletWorker.handle">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/workers/geventlet/index.html#gunicorn.workers.geventlet.EventletWorker.handle">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">listener</span><span class="p">,</span> <span class="n">client</span><span class="p">,</span> <span class="n">addr</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">is_ssl</span><span class="p">:</span>
+            <span class="n">client</span> <span class="o">=</span> <span class="n">ssl_wrap_socket</span><span class="p">(</span><span class="n">client</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="p">)</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">handle</span><span class="p">(</span><span class="n">listener</span><span class="p">,</span> <span class="n">client</span><span class="p">,</span> <span class="n">addr</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="EventletWorker.run">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/workers/geventlet/index.html#gunicorn.workers.geventlet.EventletWorker.run">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">acceptors</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">sock</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">sockets</span><span class="p">:</span>
+            <span class="n">gsock</span> <span class="o">=</span> <span class="n">GreenSocket</span><span class="p">(</span><span class="n">sock</span><span class="p">)</span>
+            <span class="n">gsock</span><span class="o">.</span><span class="n">setblocking</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">hfun</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">handle</span><span class="p">,</span> <span class="n">gsock</span><span class="p">)</span>
+            <span class="n">acceptor</span> <span class="o">=</span> <span class="n">eventlet</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span>
+                <span class="n">_eventlet_serve</span><span class="p">,</span> <span class="n">gsock</span><span class="p">,</span> <span class="n">hfun</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">worker_connections</span>
+            <span class="p">)</span>
+
+            <span class="n">acceptors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">acceptor</span><span class="p">)</span>
+            <span class="n">eventlet</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span>
+
+        <span class="k">while</span> <span class="bp">self</span><span class="o">.</span><span class="n">alive</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">notify</span><span class="p">()</span>
+            <span class="n">eventlet</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">1.0</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">notify</span><span class="p">()</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">eventlet</span><span class="o">.</span><span class="n">Timeout</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">graceful_timeout</span><span class="p">)</span> <span class="k">as</span> <span class="n">t</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">acceptors</span><span class="p">:</span>
+                    <span class="n">a</span><span class="o">.</span><span class="n">kill</span><span class="p">(</span><span class="n">eventlet</span><span class="o">.</span><span class="n">StopServe</span><span class="p">())</span>
+                <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">acceptors</span><span class="p">:</span>
+                    <span class="n">a</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span>
+        <span class="k">except</span> <span class="n">eventlet</span><span class="o">.</span><span class="n">Timeout</span> <span class="k">as</span> <span class="n">te</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">te</span> <span class="o">!=</span> <span class="n">t</span><span class="p">:</span>
+                <span class="k">raise</span>
+            <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">acceptors</span><span class="p">:</span>
+                <span class="n">a</span><span class="o">.</span><span class="n">kill</span><span class="p">()</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

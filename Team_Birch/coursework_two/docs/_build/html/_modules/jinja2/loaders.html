@@ -1,0 +1,930 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>jinja2.loaders &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">jinja2.loaders</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for jinja2.loaders</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;API and implementations for loading templates from different data</span>
+<span class="sd">sources.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">importlib.util</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">posixpath</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">t</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">weakref</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">zipimport</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">abc</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hashlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">sha1</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">importlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">import_module</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">types</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModuleType</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">TemplateNotFound</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">internalcode</span>
+
+<span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">TYPE_CHECKING</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.environment</span><span class="w"> </span><span class="kn">import</span> <span class="n">Environment</span><span class="p">,</span> <span class="n">Template</span>
+
+
+<div class="viewcode-block" id="split_template_path">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.split_template_path">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">split_template_path</span><span class="p">(</span><span class="n">template</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">t</span><span class="o">.</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Split a path into segments and perform a sanity check.  If it detects</span>
+<span class="sd">    &#39;..&#39; in the path it will raise a `TemplateNotFound` error.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">pieces</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">piece</span> <span class="ow">in</span> <span class="n">template</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">):</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">sep</span> <span class="ow">in</span> <span class="n">piece</span>
+            <span class="ow">or</span> <span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">altsep</span> <span class="ow">and</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">altsep</span> <span class="ow">in</span> <span class="n">piece</span><span class="p">)</span>
+            <span class="ow">or</span> <span class="n">piece</span> <span class="o">==</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">pardir</span>
+        <span class="p">):</span>
+            <span class="k">raise</span> <span class="n">TemplateNotFound</span><span class="p">(</span><span class="n">template</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">piece</span> <span class="ow">and</span> <span class="n">piece</span> <span class="o">!=</span> <span class="s2">&quot;.&quot;</span><span class="p">:</span>
+            <span class="n">pieces</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">piece</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">pieces</span></div>
+
+
+
+<div class="viewcode-block" id="BaseLoader">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.BaseLoader">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BaseLoader</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Baseclass for all loaders.  Subclass this and override `get_source` to</span>
+<span class="sd">    implement a custom loading mechanism.  The environment provides a</span>
+<span class="sd">    `get_template` method that calls the loader&#39;s `load` method to get the</span>
+<span class="sd">    :class:`Template` object.</span>
+
+<span class="sd">    A very basic example for a loader that looks up templates on the file</span>
+<span class="sd">    system could look like this::</span>
+
+<span class="sd">        from jinja2 import BaseLoader, TemplateNotFound</span>
+<span class="sd">        from os.path import join, exists, getmtime</span>
+
+<span class="sd">        class MyLoader(BaseLoader):</span>
+
+<span class="sd">            def __init__(self, path):</span>
+<span class="sd">                self.path = path</span>
+
+<span class="sd">            def get_source(self, environment, template):</span>
+<span class="sd">                path = join(self.path, template)</span>
+<span class="sd">                if not exists(path):</span>
+<span class="sd">                    raise TemplateNotFound(template)</span>
+<span class="sd">                mtime = getmtime(path)</span>
+<span class="sd">                with open(path) as f:</span>
+<span class="sd">                    source = f.read()</span>
+<span class="sd">                return source, path, lambda: mtime == getmtime(path)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1">#: if set to `False` it indicates that the loader cannot provide access</span>
+    <span class="c1">#: to the source of templates.</span>
+    <span class="c1">#:</span>
+    <span class="c1">#: .. versionadded:: 2.4</span>
+<div class="viewcode-block" id="BaseLoader.has_source_access">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.BaseLoader.has_source_access">[docs]</a>
+    <span class="n">has_source_access</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="BaseLoader.get_source">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.BaseLoader.get_source">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_source</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">environment</span><span class="p">:</span> <span class="s2">&quot;Environment&quot;</span><span class="p">,</span> <span class="n">template</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">t</span><span class="o">.</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">t</span><span class="o">.</span><span class="n">Optional</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">Callable</span><span class="p">[[],</span> <span class="nb">bool</span><span class="p">]]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Get the template source, filename and reload helper for a template.</span>
+<span class="sd">        It&#39;s passed the environment and template name and has to return a</span>
+<span class="sd">        tuple in the form ``(source, filename, uptodate)`` or raise a</span>
+<span class="sd">        `TemplateNotFound` error if it can&#39;t locate the template.</span>
+
+<span class="sd">        The source part of the returned tuple must be the source of the</span>
+<span class="sd">        template as a string. The filename should be the name of the</span>
+<span class="sd">        file on the filesystem if it was loaded from there, otherwise</span>
+<span class="sd">        ``None``. The filename is used by Python for the tracebacks</span>
+<span class="sd">        if no loader extension is used.</span>
+
+<span class="sd">        The last item in the tuple is the `uptodate` function.  If auto</span>
+<span class="sd">        reloading is enabled it&#39;s always called to check if the template</span>
+<span class="sd">        changed.  No arguments are passed so the function must store the</span>
+<span class="sd">        old state somewhere (for example in a closure).  If it returns `False`</span>
+<span class="sd">        the template will be reloaded.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_source_access</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> cannot provide access to the source&quot;</span>
+            <span class="p">)</span>
+        <span class="k">raise</span> <span class="n">TemplateNotFound</span><span class="p">(</span><span class="n">template</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseLoader.list_templates">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.BaseLoader.list_templates">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">list_templates</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">t</span><span class="o">.</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Iterates over all templates.  If the loader does not support that</span>
+<span class="sd">        it should raise a :exc:`TypeError` which is the default behavior.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;this loader cannot iterate over all templates&quot;</span><span class="p">)</span></div>
+
+
+    <span class="nd">@internalcode</span>
+<div class="viewcode-block" id="BaseLoader.load">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.BaseLoader.load">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">environment</span><span class="p">:</span> <span class="s2">&quot;Environment&quot;</span><span class="p">,</span>
+        <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="nb">globals</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Optional</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">MutableMapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Template&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Loads a template.  This method looks up the template in the cache</span>
+<span class="sd">        or loads one by calling :meth:`get_source`.  Subclasses should not</span>
+<span class="sd">        override this method as loaders working on collections of other</span>
+<span class="sd">        loaders (such as :class:`PrefixLoader` or :class:`ChoiceLoader`)</span>
+<span class="sd">        will not call this method but `get_source` directly.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">code</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="nb">globals</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="nb">globals</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="c1"># first we try to get the source for this template together</span>
+        <span class="c1"># with the filename and the uptodate function.</span>
+        <span class="n">source</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">uptodate</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_source</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+
+        <span class="c1"># try to load the code from the bytecode cache if there is a</span>
+        <span class="c1"># bytecode cache configured.</span>
+        <span class="n">bcc</span> <span class="o">=</span> <span class="n">environment</span><span class="o">.</span><span class="n">bytecode_cache</span>
+        <span class="k">if</span> <span class="n">bcc</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">bucket</span> <span class="o">=</span> <span class="n">bcc</span><span class="o">.</span><span class="n">get_bucket</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">source</span><span class="p">)</span>
+            <span class="n">code</span> <span class="o">=</span> <span class="n">bucket</span><span class="o">.</span><span class="n">code</span>
+
+        <span class="c1"># if we don&#39;t have code so far (not cached, no longer up to</span>
+        <span class="c1"># date) etc. we compile the template</span>
+        <span class="k">if</span> <span class="n">code</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">code</span> <span class="o">=</span> <span class="n">environment</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span>
+
+        <span class="c1"># if the bytecode cache is available and the bucket doesn&#39;t</span>
+        <span class="c1"># have a code so far, we give the bucket the new code and put</span>
+        <span class="c1"># it back to the bytecode cache.</span>
+        <span class="k">if</span> <span class="n">bcc</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">bucket</span><span class="o">.</span><span class="n">code</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">bucket</span><span class="o">.</span><span class="n">code</span> <span class="o">=</span> <span class="n">code</span>
+            <span class="n">bcc</span><span class="o">.</span><span class="n">set_bucket</span><span class="p">(</span><span class="n">bucket</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">environment</span><span class="o">.</span><span class="n">template_class</span><span class="o">.</span><span class="n">from_code</span><span class="p">(</span>
+            <span class="n">environment</span><span class="p">,</span> <span class="n">code</span><span class="p">,</span> <span class="nb">globals</span><span class="p">,</span> <span class="n">uptodate</span>
+        <span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="FileSystemLoader">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.FileSystemLoader">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">FileSystemLoader</span><span class="p">(</span><span class="n">BaseLoader</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Load templates from a directory in the file system.</span>
+
+<span class="sd">    The path can be relative or absolute. Relative paths are relative to</span>
+<span class="sd">    the current working directory.</span>
+
+<span class="sd">    .. code-block:: python</span>
+
+<span class="sd">        loader = FileSystemLoader(&quot;templates&quot;)</span>
+
+<span class="sd">    A list of paths can be given. The directories will be searched in</span>
+<span class="sd">    order, stopping at the first matching template.</span>
+
+<span class="sd">    .. code-block:: python</span>
+
+<span class="sd">        loader = FileSystemLoader([&quot;/override/templates&quot;, &quot;/default/templates&quot;])</span>
+
+<span class="sd">    :param searchpath: A path, or list of paths, to the directory that</span>
+<span class="sd">        contains the templates.</span>
+<span class="sd">    :param encoding: Use this encoding to read the text from template</span>
+<span class="sd">        files.</span>
+<span class="sd">    :param followlinks: Follow symbolic links in the path.</span>
+
+<span class="sd">    .. versionchanged:: 2.8</span>
+<span class="sd">        Added the ``followlinks`` parameter.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">searchpath</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Union</span><span class="p">[</span>
+            <span class="nb">str</span><span class="p">,</span> <span class="s2">&quot;os.PathLike[str]&quot;</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">Sequence</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="s2">&quot;os.PathLike[str]&quot;</span><span class="p">]]</span>
+        <span class="p">],</span>
+        <span class="n">encoding</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;utf-8&quot;</span><span class="p">,</span>
+        <span class="n">followlinks</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">searchpath</span><span class="p">,</span> <span class="n">abc</span><span class="o">.</span><span class="n">Iterable</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">searchpath</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">searchpath</span> <span class="o">=</span> <span class="p">[</span><span class="n">searchpath</span><span class="p">]</span>
+
+<div class="viewcode-block" id="FileSystemLoader.searchpath">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.FileSystemLoader.searchpath">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">searchpath</span> <span class="o">=</span> <span class="p">[</span><span class="n">os</span><span class="o">.</span><span class="n">fspath</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">searchpath</span><span class="p">]</span></div>
+
+<div class="viewcode-block" id="FileSystemLoader.encoding">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.FileSystemLoader.encoding">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">encoding</span> <span class="o">=</span> <span class="n">encoding</span></div>
+
+<div class="viewcode-block" id="FileSystemLoader.followlinks">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.FileSystemLoader.followlinks">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">followlinks</span> <span class="o">=</span> <span class="n">followlinks</span></div>
+
+
+<div class="viewcode-block" id="FileSystemLoader.get_source">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.FileSystemLoader.get_source">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_source</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">environment</span><span class="p">:</span> <span class="s2">&quot;Environment&quot;</span><span class="p">,</span> <span class="n">template</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">t</span><span class="o">.</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">Callable</span><span class="p">[[],</span> <span class="nb">bool</span><span class="p">]]:</span>
+        <span class="n">pieces</span> <span class="o">=</span> <span class="n">split_template_path</span><span class="p">(</span><span class="n">template</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">searchpath</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">searchpath</span><span class="p">:</span>
+            <span class="c1"># Use posixpath even on Windows to avoid &quot;drive:&quot; or UNC</span>
+            <span class="c1"># segments breaking out of the search directory.</span>
+            <span class="n">filename</span> <span class="o">=</span> <span class="n">posixpath</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">searchpath</span><span class="p">,</span> <span class="o">*</span><span class="n">pieces</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+                <span class="k">break</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">plural</span> <span class="o">=</span> <span class="s2">&quot;path&quot;</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">searchpath</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span> <span class="k">else</span> <span class="s2">&quot;paths&quot;</span>
+            <span class="n">paths_str</span> <span class="o">=</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">searchpath</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">TemplateNotFound</span><span class="p">(</span>
+                <span class="n">template</span><span class="p">,</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">template</span><span class="si">!r}</span><span class="s2"> not found in search </span><span class="si">{</span><span class="n">plural</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">paths_str</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">encoding</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">contents</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+
+        <span class="n">mtime</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">getmtime</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">uptodate</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">getmtime</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span> <span class="o">==</span> <span class="n">mtime</span>
+            <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="c1"># Use normpath to convert Windows altsep to sep.</span>
+        <span class="k">return</span> <span class="n">contents</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span><span class="n">filename</span><span class="p">),</span> <span class="n">uptodate</span></div>
+
+
+<div class="viewcode-block" id="FileSystemLoader.list_templates">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.FileSystemLoader.list_templates">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">list_templates</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">t</span><span class="o">.</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+        <span class="n">found</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">searchpath</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">searchpath</span><span class="p">:</span>
+            <span class="n">walk_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">walk</span><span class="p">(</span><span class="n">searchpath</span><span class="p">,</span> <span class="n">followlinks</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">followlinks</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">dirpath</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">filenames</span> <span class="ow">in</span> <span class="n">walk_dir</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">filename</span> <span class="ow">in</span> <span class="n">filenames</span><span class="p">:</span>
+                    <span class="n">template</span> <span class="o">=</span> <span class="p">(</span>
+                        <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">dirpath</span><span class="p">,</span> <span class="n">filename</span><span class="p">)[</span><span class="nb">len</span><span class="p">(</span><span class="n">searchpath</span><span class="p">)</span> <span class="p">:]</span>
+                        <span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">sep</span><span class="p">)</span>
+                        <span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">sep</span><span class="p">,</span> <span class="s2">&quot;/&quot;</span><span class="p">)</span>
+                    <span class="p">)</span>
+                    <span class="k">if</span> <span class="n">template</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;./&quot;</span><span class="p">:</span>
+                        <span class="n">template</span> <span class="o">=</span> <span class="n">template</span><span class="p">[</span><span class="mi">2</span><span class="p">:]</span>
+                    <span class="k">if</span> <span class="n">template</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">found</span><span class="p">:</span>
+                        <span class="n">found</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">template</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">found</span><span class="p">)</span></div>
+</div>
+
+
+
+<span class="k">if</span> <span class="n">sys</span><span class="o">.</span><span class="n">version_info</span> <span class="o">&gt;=</span> <span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">13</span><span class="p">):</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_zipimporter_files</span><span class="p">(</span><span class="n">z</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">t</span><span class="o">.</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">object</span><span class="p">]:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">get_files</span> <span class="o">=</span> <span class="n">z</span><span class="o">.</span><span class="n">_get_files</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
+                <span class="s2">&quot;This zip import does not have the required&quot;</span>
+                <span class="s2">&quot; metadata to list templates.&quot;</span>
+            <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
+        <span class="k">return</span> <span class="n">get_files</span><span class="p">()</span>
+
+<span class="k">else</span><span class="p">:</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_zipimporter_files</span><span class="p">(</span><span class="n">z</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">t</span><span class="o">.</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">object</span><span class="p">]:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">files</span> <span class="o">=</span> <span class="n">z</span><span class="o">.</span><span class="n">_files</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
+                <span class="s2">&quot;This zip import does not have the required&quot;</span>
+                <span class="s2">&quot; metadata to list templates.&quot;</span>
+            <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
+        <span class="k">return</span> <span class="n">files</span>  <span class="c1"># type: ignore[no-any-return]</span>
+
+
+<div class="viewcode-block" id="PackageLoader">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.PackageLoader">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">PackageLoader</span><span class="p">(</span><span class="n">BaseLoader</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Load templates from a directory in a Python package.</span>
+
+<span class="sd">    :param package_name: Import name of the package that contains the</span>
+<span class="sd">        template directory.</span>
+<span class="sd">    :param package_path: Directory within the imported package that</span>
+<span class="sd">        contains the templates.</span>
+<span class="sd">    :param encoding: Encoding of template files.</span>
+
+<span class="sd">    The following example looks up templates in the ``pages`` directory</span>
+<span class="sd">    within the ``project.ui`` package.</span>
+
+<span class="sd">    .. code-block:: python</span>
+
+<span class="sd">        loader = PackageLoader(&quot;project.ui&quot;, &quot;pages&quot;)</span>
+
+<span class="sd">    Only packages installed as directories (standard pip behavior) or</span>
+<span class="sd">    zip/egg files (less common) are supported. The Python API for</span>
+<span class="sd">    introspecting data in packages is too limited to support other</span>
+<span class="sd">    installation methods the way this loader requires.</span>
+
+<span class="sd">    There is limited support for :pep:`420` namespace packages. The</span>
+<span class="sd">    template directory is assumed to only be in one namespace</span>
+<span class="sd">    contributor. Zip files contributing to a namespace are not</span>
+<span class="sd">    supported.</span>
+
+<span class="sd">    .. versionchanged:: 3.0</span>
+<span class="sd">        No longer uses ``setuptools`` as a dependency.</span>
+
+<span class="sd">    .. versionchanged:: 3.0</span>
+<span class="sd">        Limited PEP 420 namespace package support.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">package_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">package_path</span><span class="p">:</span> <span class="s2">&quot;str&quot;</span> <span class="o">=</span> <span class="s2">&quot;templates&quot;</span><span class="p">,</span>
+        <span class="n">encoding</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;utf-8&quot;</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">package_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span><span class="n">package_path</span><span class="p">)</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">sep</span><span class="p">)</span>
+
+        <span class="c1"># normpath preserves &quot;.&quot;, which isn&#39;t valid in zip paths.</span>
+        <span class="k">if</span> <span class="n">package_path</span> <span class="o">==</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">curdir</span><span class="p">:</span>
+            <span class="n">package_path</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+        <span class="k">elif</span> <span class="n">package_path</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">curdir</span> <span class="o">+</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">sep</span><span class="p">:</span>
+            <span class="n">package_path</span> <span class="o">=</span> <span class="n">package_path</span><span class="p">[</span><span class="mi">2</span><span class="p">:]</span>
+
+<div class="viewcode-block" id="PackageLoader.package_path">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.PackageLoader.package_path">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">package_path</span> <span class="o">=</span> <span class="n">package_path</span></div>
+
+<div class="viewcode-block" id="PackageLoader.package_name">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.PackageLoader.package_name">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">package_name</span> <span class="o">=</span> <span class="n">package_name</span></div>
+
+<div class="viewcode-block" id="PackageLoader.encoding">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.PackageLoader.encoding">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">encoding</span> <span class="o">=</span> <span class="n">encoding</span></div>
+
+
+        <span class="c1"># Make sure the package exists. This also makes namespace</span>
+        <span class="c1"># packages work, otherwise get_loader returns None.</span>
+        <span class="n">import_module</span><span class="p">(</span><span class="n">package_name</span><span class="p">)</span>
+        <span class="n">spec</span> <span class="o">=</span> <span class="n">importlib</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">find_spec</span><span class="p">(</span><span class="n">package_name</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">spec</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;An import spec was not found for the package.&quot;</span>
+        <span class="n">loader</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">loader</span>
+        <span class="k">assert</span> <span class="n">loader</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;A loader was not found for the package.&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_loader</span> <span class="o">=</span> <span class="n">loader</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_archive</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">loader</span><span class="p">,</span> <span class="n">zipimport</span><span class="o">.</span><span class="n">zipimporter</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_archive</span> <span class="o">=</span> <span class="n">loader</span><span class="o">.</span><span class="n">archive</span>
+            <span class="n">pkgdir</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">spec</span><span class="o">.</span><span class="n">submodule_search_locations</span><span class="p">))</span>  <span class="c1"># type: ignore</span>
+            <span class="n">template_root</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">pkgdir</span><span class="p">,</span> <span class="n">package_path</span><span class="p">)</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">sep</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">roots</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+
+            <span class="c1"># One element for regular packages, multiple for namespace</span>
+            <span class="c1"># packages, or None for single module file.</span>
+            <span class="k">if</span> <span class="n">spec</span><span class="o">.</span><span class="n">submodule_search_locations</span><span class="p">:</span>
+                <span class="n">roots</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">spec</span><span class="o">.</span><span class="n">submodule_search_locations</span><span class="p">)</span>
+            <span class="c1"># A single module file, use the parent directory instead.</span>
+            <span class="k">elif</span> <span class="n">spec</span><span class="o">.</span><span class="n">origin</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">roots</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">spec</span><span class="o">.</span><span class="n">origin</span><span class="p">))</span>
+
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">roots</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;The </span><span class="si">{</span><span class="n">package_name</span><span class="si">!r}</span><span class="s2"> package was not installed in a&quot;</span>
+                    <span class="s2">&quot; way that PackageLoader understands.&quot;</span>
+                <span class="p">)</span>
+
+            <span class="k">for</span> <span class="n">root</span> <span class="ow">in</span> <span class="n">roots</span><span class="p">:</span>
+                <span class="n">root</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">package_path</span><span class="p">)</span>
+
+                <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">root</span><span class="p">):</span>
+                    <span class="n">template_root</span> <span class="o">=</span> <span class="n">root</span>
+                    <span class="k">break</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;PackageLoader could not find a </span><span class="si">{</span><span class="n">package_path</span><span class="si">!r}</span><span class="s2"> directory&quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot; in the </span><span class="si">{</span><span class="n">package_name</span><span class="si">!r}</span><span class="s2"> package.&quot;</span>
+                <span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_template_root</span> <span class="o">=</span> <span class="n">template_root</span>
+
+<div class="viewcode-block" id="PackageLoader.get_source">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.PackageLoader.get_source">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_source</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">environment</span><span class="p">:</span> <span class="s2">&quot;Environment&quot;</span><span class="p">,</span> <span class="n">template</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">t</span><span class="o">.</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">Optional</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">Callable</span><span class="p">[[],</span> <span class="nb">bool</span><span class="p">]]]:</span>
+        <span class="c1"># Use posixpath even on Windows to avoid &quot;drive:&quot; or UNC</span>
+        <span class="c1"># segments breaking out of the search directory. Use normpath to</span>
+        <span class="c1"># convert Windows altsep to sep.</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span>
+            <span class="n">posixpath</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_template_root</span><span class="p">,</span> <span class="o">*</span><span class="n">split_template_path</span><span class="p">(</span><span class="n">template</span><span class="p">))</span>
+        <span class="p">)</span>
+        <span class="n">up_to_date</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Optional</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">Callable</span><span class="p">[[],</span> <span class="nb">bool</span><span class="p">]]</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_archive</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Package is a directory.</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">p</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="n">TemplateNotFound</span><span class="p">(</span><span class="n">template</span><span class="p">)</span>
+
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="s2">&quot;rb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                <span class="n">source</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+
+            <span class="n">mtime</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">getmtime</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>
+
+            <span class="k">def</span><span class="w"> </span><span class="nf">up_to_date</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="ow">and</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">getmtime</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="o">==</span> <span class="n">mtime</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Package is a zip file.</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">source</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_loader</span><span class="o">.</span><span class="n">get_data</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>  <span class="c1"># type: ignore</span>
+            <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">TemplateNotFound</span><span class="p">(</span><span class="n">template</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
+
+            <span class="c1"># Could use the zip&#39;s mtime for all template mtimes, but</span>
+            <span class="c1"># would need to safely reload the module if it&#39;s out of</span>
+            <span class="c1"># date, so just report it as always current.</span>
+            <span class="n">up_to_date</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="k">return</span> <span class="n">source</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">encoding</span><span class="p">),</span> <span class="n">p</span><span class="p">,</span> <span class="n">up_to_date</span></div>
+
+
+<div class="viewcode-block" id="PackageLoader.list_templates">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.PackageLoader.list_templates">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">list_templates</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">t</span><span class="o">.</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+        <span class="n">results</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_archive</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Package is a directory.</span>
+            <span class="n">offset</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_template_root</span><span class="p">)</span>
+
+            <span class="k">for</span> <span class="n">dirpath</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">filenames</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">walk</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_template_root</span><span class="p">):</span>
+                <span class="n">dirpath</span> <span class="o">=</span> <span class="n">dirpath</span><span class="p">[</span><span class="n">offset</span><span class="p">:]</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">sep</span><span class="p">)</span>
+                <span class="n">results</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span>
+                    <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">dirpath</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">sep</span><span class="p">,</span> <span class="s2">&quot;/&quot;</span><span class="p">)</span>
+                    <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">filenames</span>
+                <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">files</span> <span class="o">=</span> <span class="n">_get_zipimporter_files</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_loader</span><span class="p">)</span>
+
+            <span class="c1"># Package is a zip file.</span>
+            <span class="n">prefix</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_template_root</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_archive</span><span class="p">)</span> <span class="p">:]</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">sep</span><span class="p">)</span>
+                <span class="o">+</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">sep</span>
+            <span class="p">)</span>
+            <span class="n">offset</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">prefix</span><span class="p">)</span>
+
+            <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">files</span><span class="p">:</span>
+                <span class="c1"># Find names under the templates directory that aren&#39;t directories.</span>
+                <span class="k">if</span> <span class="n">name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">prefix</span><span class="p">)</span> <span class="ow">and</span> <span class="n">name</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">sep</span><span class="p">:</span>
+                    <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">name</span><span class="p">[</span><span class="n">offset</span><span class="p">:]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">sep</span><span class="p">,</span> <span class="s2">&quot;/&quot;</span><span class="p">))</span>
+
+        <span class="n">results</span><span class="o">.</span><span class="n">sort</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">results</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="DictLoader">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.DictLoader">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DictLoader</span><span class="p">(</span><span class="n">BaseLoader</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Loads a template from a Python dict mapping template names to</span>
+<span class="sd">    template source.  This loader is useful for unittesting:</span>
+
+<span class="sd">    &gt;&gt;&gt; loader = DictLoader({&#39;index.html&#39;: &#39;source here&#39;})</span>
+
+<span class="sd">    Because auto reloading is rarely useful this is disabled by default.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mapping</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<div class="viewcode-block" id="DictLoader.mapping">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.DictLoader.mapping">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mapping</span> <span class="o">=</span> <span class="n">mapping</span></div>
+
+
+<div class="viewcode-block" id="DictLoader.get_source">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.DictLoader.get_source">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_source</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">environment</span><span class="p">:</span> <span class="s2">&quot;Environment&quot;</span><span class="p">,</span> <span class="n">template</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">t</span><span class="o">.</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">Callable</span><span class="p">[[],</span> <span class="nb">bool</span><span class="p">]]:</span>
+        <span class="k">if</span> <span class="n">template</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">mapping</span><span class="p">:</span>
+            <span class="n">source</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mapping</span><span class="p">[</span><span class="n">template</span><span class="p">]</span>
+            <span class="k">return</span> <span class="n">source</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="k">lambda</span><span class="p">:</span> <span class="n">source</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">mapping</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">template</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">TemplateNotFound</span><span class="p">(</span><span class="n">template</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DictLoader.list_templates">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.DictLoader.list_templates">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">list_templates</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">t</span><span class="o">.</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mapping</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="FunctionLoader">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.FunctionLoader">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">FunctionLoader</span><span class="p">(</span><span class="n">BaseLoader</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A loader that is passed a function which does the loading.  The</span>
+<span class="sd">    function receives the name of the template and has to return either</span>
+<span class="sd">    a string with the template source, a tuple in the form ``(source,</span>
+<span class="sd">    filename, uptodatefunc)`` or `None` if the template does not exist.</span>
+
+<span class="sd">    &gt;&gt;&gt; def load_template(name):</span>
+<span class="sd">    ...     if name == &#39;index.html&#39;:</span>
+<span class="sd">    ...         return &#39;...&#39;</span>
+<span class="sd">    ...</span>
+<span class="sd">    &gt;&gt;&gt; loader = FunctionLoader(load_template)</span>
+
+<span class="sd">    The `uptodatefunc` is a function that is called if autoreload is enabled</span>
+<span class="sd">    and has to return `True` if the template is still up to date.  For more</span>
+<span class="sd">    details have a look at :meth:`BaseLoader.get_source` which has the same</span>
+<span class="sd">    return value.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">load_func</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Callable</span><span class="p">[</span>
+            <span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+            <span class="n">t</span><span class="o">.</span><span class="n">Optional</span><span class="p">[</span>
+                <span class="n">t</span><span class="o">.</span><span class="n">Union</span><span class="p">[</span>
+                    <span class="nb">str</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">t</span><span class="o">.</span><span class="n">Optional</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">Callable</span><span class="p">[[],</span> <span class="nb">bool</span><span class="p">]]]</span>
+                <span class="p">]</span>
+            <span class="p">],</span>
+        <span class="p">],</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<div class="viewcode-block" id="FunctionLoader.load_func">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.FunctionLoader.load_func">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">load_func</span> <span class="o">=</span> <span class="n">load_func</span></div>
+
+
+<div class="viewcode-block" id="FunctionLoader.get_source">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.FunctionLoader.get_source">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_source</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">environment</span><span class="p">:</span> <span class="s2">&quot;Environment&quot;</span><span class="p">,</span> <span class="n">template</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">t</span><span class="o">.</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">t</span><span class="o">.</span><span class="n">Optional</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">Callable</span><span class="p">[[],</span> <span class="nb">bool</span><span class="p">]]]:</span>
+        <span class="n">rv</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">load_func</span><span class="p">(</span><span class="n">template</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">rv</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TemplateNotFound</span><span class="p">(</span><span class="n">template</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">rv</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">rv</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+
+        <span class="k">return</span> <span class="n">rv</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="PrefixLoader">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.PrefixLoader">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">PrefixLoader</span><span class="p">(</span><span class="n">BaseLoader</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A loader that is passed a dict of loaders where each loader is bound</span>
+<span class="sd">    to a prefix.  The prefix is delimited from the template by a slash per</span>
+<span class="sd">    default, which can be changed by setting the `delimiter` argument to</span>
+<span class="sd">    something else::</span>
+
+<span class="sd">        loader = PrefixLoader({</span>
+<span class="sd">            &#39;app1&#39;:     PackageLoader(&#39;mypackage.app1&#39;),</span>
+<span class="sd">            &#39;app2&#39;:     PackageLoader(&#39;mypackage.app2&#39;)</span>
+<span class="sd">        })</span>
+
+<span class="sd">    By loading ``&#39;app1/index.html&#39;`` the file from the app1 package is loaded,</span>
+<span class="sd">    by loading ``&#39;app2/index.html&#39;`` the file from the second.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">mapping</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">BaseLoader</span><span class="p">],</span> <span class="n">delimiter</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;/&quot;</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<div class="viewcode-block" id="PrefixLoader.mapping">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.PrefixLoader.mapping">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mapping</span> <span class="o">=</span> <span class="n">mapping</span></div>
+
+<div class="viewcode-block" id="PrefixLoader.delimiter">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.PrefixLoader.delimiter">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">delimiter</span> <span class="o">=</span> <span class="n">delimiter</span></div>
+
+
+<div class="viewcode-block" id="PrefixLoader.get_loader">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.PrefixLoader.get_loader">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_loader</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">template</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">t</span><span class="o">.</span><span class="n">Tuple</span><span class="p">[</span><span class="n">BaseLoader</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">prefix</span><span class="p">,</span> <span class="n">name</span> <span class="o">=</span> <span class="n">template</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">delimiter</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">loader</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mapping</span><span class="p">[</span><span class="n">prefix</span><span class="p">]</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">KeyError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TemplateNotFound</span><span class="p">(</span><span class="n">template</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
+        <span class="k">return</span> <span class="n">loader</span><span class="p">,</span> <span class="n">name</span></div>
+
+
+<div class="viewcode-block" id="PrefixLoader.get_source">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.PrefixLoader.get_source">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_source</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">environment</span><span class="p">:</span> <span class="s2">&quot;Environment&quot;</span><span class="p">,</span> <span class="n">template</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">t</span><span class="o">.</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">t</span><span class="o">.</span><span class="n">Optional</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">Callable</span><span class="p">[[],</span> <span class="nb">bool</span><span class="p">]]]:</span>
+        <span class="n">loader</span><span class="p">,</span> <span class="n">name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_loader</span><span class="p">(</span><span class="n">template</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">loader</span><span class="o">.</span><span class="n">get_source</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">TemplateNotFound</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="c1"># re-raise the exception with the correct filename here.</span>
+            <span class="c1"># (the one that includes the prefix)</span>
+            <span class="k">raise</span> <span class="n">TemplateNotFound</span><span class="p">(</span><span class="n">template</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span></div>
+
+
+    <span class="nd">@internalcode</span>
+<div class="viewcode-block" id="PrefixLoader.load">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.PrefixLoader.load">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">environment</span><span class="p">:</span> <span class="s2">&quot;Environment&quot;</span><span class="p">,</span>
+        <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="nb">globals</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Optional</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">MutableMapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Template&quot;</span><span class="p">:</span>
+        <span class="n">loader</span><span class="p">,</span> <span class="n">local_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_loader</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">loader</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">local_name</span><span class="p">,</span> <span class="nb">globals</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">TemplateNotFound</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="c1"># re-raise the exception with the correct filename here.</span>
+            <span class="c1"># (the one that includes the prefix)</span>
+            <span class="k">raise</span> <span class="n">TemplateNotFound</span><span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span></div>
+
+
+<div class="viewcode-block" id="PrefixLoader.list_templates">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.PrefixLoader.list_templates">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">list_templates</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">t</span><span class="o">.</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">prefix</span><span class="p">,</span> <span class="n">loader</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">mapping</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">for</span> <span class="n">template</span> <span class="ow">in</span> <span class="n">loader</span><span class="o">.</span><span class="n">list_templates</span><span class="p">():</span>
+                <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">prefix</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">delimiter</span> <span class="o">+</span> <span class="n">template</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="ChoiceLoader">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.ChoiceLoader">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ChoiceLoader</span><span class="p">(</span><span class="n">BaseLoader</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;This loader works like the `PrefixLoader` just that no prefix is</span>
+<span class="sd">    specified.  If a template could not be found by one loader the next one</span>
+<span class="sd">    is tried.</span>
+
+<span class="sd">    &gt;&gt;&gt; loader = ChoiceLoader([</span>
+<span class="sd">    ...     FileSystemLoader(&#39;/path/to/user/templates&#39;),</span>
+<span class="sd">    ...     FileSystemLoader(&#39;/path/to/system/templates&#39;)</span>
+<span class="sd">    ... ])</span>
+
+<span class="sd">    This is useful if you want to allow users to override builtin templates</span>
+<span class="sd">    from a different location.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">loaders</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Sequence</span><span class="p">[</span><span class="n">BaseLoader</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<div class="viewcode-block" id="ChoiceLoader.loaders">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.ChoiceLoader.loaders">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">loaders</span> <span class="o">=</span> <span class="n">loaders</span></div>
+
+
+<div class="viewcode-block" id="ChoiceLoader.get_source">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.ChoiceLoader.get_source">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_source</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">environment</span><span class="p">:</span> <span class="s2">&quot;Environment&quot;</span><span class="p">,</span> <span class="n">template</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">t</span><span class="o">.</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">t</span><span class="o">.</span><span class="n">Optional</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">Callable</span><span class="p">[[],</span> <span class="nb">bool</span><span class="p">]]]:</span>
+        <span class="k">for</span> <span class="n">loader</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">loaders</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">loader</span><span class="o">.</span><span class="n">get_source</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">template</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">TemplateNotFound</span><span class="p">:</span>
+                <span class="k">pass</span>
+        <span class="k">raise</span> <span class="n">TemplateNotFound</span><span class="p">(</span><span class="n">template</span><span class="p">)</span></div>
+
+
+    <span class="nd">@internalcode</span>
+<div class="viewcode-block" id="ChoiceLoader.load">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.ChoiceLoader.load">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">environment</span><span class="p">:</span> <span class="s2">&quot;Environment&quot;</span><span class="p">,</span>
+        <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="nb">globals</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Optional</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">MutableMapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Template&quot;</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">loader</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">loaders</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">loader</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="nb">globals</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">TemplateNotFound</span><span class="p">:</span>
+                <span class="k">pass</span>
+        <span class="k">raise</span> <span class="n">TemplateNotFound</span><span class="p">(</span><span class="n">name</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ChoiceLoader.list_templates">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.ChoiceLoader.list_templates">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">list_templates</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">t</span><span class="o">.</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+        <span class="n">found</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">loader</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">loaders</span><span class="p">:</span>
+            <span class="n">found</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">loader</span><span class="o">.</span><span class="n">list_templates</span><span class="p">())</span>
+        <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">found</span><span class="p">)</span></div>
+</div>
+
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_TemplateModule</span><span class="p">(</span><span class="n">ModuleType</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Like a normal module but with support for weak references&quot;&quot;&quot;</span>
+
+
+<div class="viewcode-block" id="ModuleLoader">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.ModuleLoader">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ModuleLoader</span><span class="p">(</span><span class="n">BaseLoader</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;This loader loads templates from precompiled templates.</span>
+
+<span class="sd">    Example usage:</span>
+
+<span class="sd">    &gt;&gt;&gt; loader = ModuleLoader(&#39;/path/to/compiled/templates&#39;)</span>
+
+<span class="sd">    Templates can be precompiled with :meth:`Environment.compile_templates`.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="ModuleLoader.has_source_access">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.ModuleLoader.has_source_access">[docs]</a>
+    <span class="n">has_source_access</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">path</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Union</span><span class="p">[</span>
+            <span class="nb">str</span><span class="p">,</span> <span class="s2">&quot;os.PathLike[str]&quot;</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">Sequence</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="s2">&quot;os.PathLike[str]&quot;</span><span class="p">]]</span>
+        <span class="p">],</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">package_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;_jinja2_module_templates_</span><span class="si">{</span><span class="nb">id</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="si">:</span><span class="s2">x</span><span class="si">}</span><span class="s2">&quot;</span>
+
+        <span class="c1"># create a fake module that looks for the templates in the</span>
+        <span class="c1"># path given.</span>
+        <span class="n">mod</span> <span class="o">=</span> <span class="n">_TemplateModule</span><span class="p">(</span><span class="n">package_name</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">abc</span><span class="o">.</span><span class="n">Iterable</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="p">[</span><span class="n">path</span><span class="p">]</span>
+
+        <span class="n">mod</span><span class="o">.</span><span class="n">__path__</span> <span class="o">=</span> <span class="p">[</span><span class="n">os</span><span class="o">.</span><span class="n">fspath</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">path</span><span class="p">]</span>
+
+        <span class="n">sys</span><span class="o">.</span><span class="n">modules</span><span class="p">[</span><span class="n">package_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">weakref</span><span class="o">.</span><span class="n">proxy</span><span class="p">(</span>
+            <span class="n">mod</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">sys</span><span class="o">.</span><span class="n">modules</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">package_name</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="c1"># the only strong reference, the sys.modules entry is weak</span>
+        <span class="c1"># so that the garbage collector can remove it once the</span>
+        <span class="c1"># loader that created it goes out of business.</span>
+<div class="viewcode-block" id="ModuleLoader.module">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.ModuleLoader.module">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">module</span> <span class="o">=</span> <span class="n">mod</span></div>
+
+<div class="viewcode-block" id="ModuleLoader.package_name">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.ModuleLoader.package_name">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">package_name</span> <span class="o">=</span> <span class="n">package_name</span></div>
+
+
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="ModuleLoader.get_template_key">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.ModuleLoader.get_template_key">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_template_key</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;tmpl_&quot;</span> <span class="o">+</span> <span class="n">sha1</span><span class="p">(</span><span class="n">name</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span></div>
+
+
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="ModuleLoader.get_module_filename">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.ModuleLoader.get_module_filename">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_module_filename</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">ModuleLoader</span><span class="o">.</span><span class="n">get_template_key</span><span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;.py&quot;</span></div>
+
+
+    <span class="nd">@internalcode</span>
+<div class="viewcode-block" id="ModuleLoader.load">
+<a class="viewcode-back" href="../../autoapi/jinja2/loaders/index.html#jinja2.loaders.ModuleLoader.load">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">environment</span><span class="p">:</span> <span class="s2">&quot;Environment&quot;</span><span class="p">,</span>
+        <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="nb">globals</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Optional</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">MutableMapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Template&quot;</span><span class="p">:</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_template_key</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="n">module</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">package_name</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="n">mod</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">module</span><span class="p">,</span> <span class="n">module</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">mod</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">mod</span> <span class="o">=</span> <span class="nb">__import__</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;root&quot;</span><span class="p">])</span>
+            <span class="k">except</span> <span class="ne">ImportError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">TemplateNotFound</span><span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
+
+            <span class="c1"># remove the entry from sys.modules, we only want the attribute</span>
+            <span class="c1"># on the module object we have stored on the loader.</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">modules</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">globals</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="nb">globals</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="k">return</span> <span class="n">environment</span><span class="o">.</span><span class="n">template_class</span><span class="o">.</span><span class="n">from_module_dict</span><span class="p">(</span>
+            <span class="n">environment</span><span class="p">,</span> <span class="n">mod</span><span class="o">.</span><span class="vm">__dict__</span><span class="p">,</span> <span class="nb">globals</span>
+        <span class="p">)</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

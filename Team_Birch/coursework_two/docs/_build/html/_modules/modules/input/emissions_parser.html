@@ -1,0 +1,532 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>modules.input.emissions_parser &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">modules.input.emissions_parser</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for modules.input.emissions_parser</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Handles extraction of CSR indicators from PDF files using DeepSeek API.</span>
+
+<span class="sd">Includes text parsing, relevance detection, DeepSeek querying, postprocessing, and CSV output.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">csv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">difflib</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">datetime</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">io</span><span class="w"> </span><span class="kn">import</span> <span class="n">BytesIO</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">dotenv</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_dotenv</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pypdf</span><span class="w"> </span><span class="kn">import</span> <span class="n">PdfReader</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">modules.input.indicator_config</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_indicator_config</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">modules.input.postprocess</span><span class="w"> </span><span class="kn">import</span> <span class="n">postprocess_value</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="n">level</span><span class="o">=</span><span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">)</span>
+<div class="viewcode-block" id="logger">
+<a class="viewcode-back" href="../../../autoapi/modules/input/emissions_parser/index.html#modules.input.emissions_parser.logger">[docs]</a>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="UNIT_PATTERN">
+<a class="viewcode-back" href="../../../autoapi/modules/input/emissions_parser/index.html#modules.input.emissions_parser.UNIT_PATTERN">[docs]</a>
+<span class="n">UNIT_PATTERN</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span>
+    <span class="sa">r</span><span class="s2">&quot;\b\d{1,3}(?:,\d</span><span class="si">{3}</span><span class="s2">)*(?:\.\d+)?\s*&quot;</span>
+    <span class="sa">r</span><span class="s2">&quot;(?:&quot;</span>
+    <span class="sa">r</span><span class="s2">&quot;%|percent|&quot;</span>
+    <span class="sa">r</span><span class="s2">&quot;tonnes?|tons?|mtco2e?|&quot;</span>
+    <span class="sa">r</span><span class="s2">&quot;co2[ e]?|co₂[ e]?|ghg|&quot;</span>
+    <span class="sa">r</span><span class="s2">&quot;cubic\s?meters?|m³|&quot;</span>
+    <span class="sa">r</span><span class="s2">&quot;mwh|kwh|gwh|&quot;</span>
+    <span class="sa">r</span><span class="s2">&quot;kg|kilo(?:grams?)?|&quot;</span>
+    <span class="sa">r</span><span class="s2">&quot;lit(?:ers?|res?)|gallons?|&quot;</span>
+    <span class="sa">r</span><span class="s2">&quot;btu|joules?|&quot;</span>
+    <span class="sa">r</span><span class="s2">&quot;ppm|ppb|&quot;</span>
+    <span class="sa">r</span><span class="s2">&quot;kw|mw|gw&quot;</span>
+    <span class="sa">r</span><span class="s2">&quot;)\b&quot;</span><span class="p">,</span>
+    <span class="n">flags</span><span class="o">=</span><span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">,</span>
+<span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="build_alias_map">
+<a class="viewcode-back" href="../../../autoapi/modules/input/emissions_parser/index.html#modules.input.emissions_parser.build_alias_map">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">build_alias_map</span><span class="p">(</span><span class="n">indicator_config</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Builds a mapping from indicator aliases to canonical indicator names.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        indicator_config (list): List of indicator group configurations.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        dict: Mapping from alias (lowercase) to canonical indicator name.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">alias_map</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">indicator_config</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">ind</span> <span class="ow">in</span> <span class="n">group</span><span class="p">[</span><span class="s2">&quot;indicators&quot;</span><span class="p">]:</span>
+            <span class="n">canonical</span> <span class="o">=</span> <span class="n">ind</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+            <span class="n">alias_map</span><span class="p">[</span><span class="n">canonical</span><span class="o">.</span><span class="n">lower</span><span class="p">()]</span> <span class="o">=</span> <span class="n">canonical</span>
+            <span class="k">for</span> <span class="n">alias</span> <span class="ow">in</span> <span class="n">ind</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;aliases&quot;</span><span class="p">,</span> <span class="p">[]):</span>
+                <span class="n">alias_map</span><span class="p">[</span><span class="n">alias</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()]</span> <span class="o">=</span> <span class="n">canonical</span>
+    <span class="k">return</span> <span class="n">alias_map</span></div>
+
+
+
+<div class="viewcode-block" id="build_indicator_labels">
+<a class="viewcode-back" href="../../../autoapi/modules/input/emissions_parser/index.html#modules.input.emissions_parser.build_indicator_labels">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">build_indicator_labels</span><span class="p">(</span><span class="n">indicator_config</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Builds a flat list of all indicator names and aliases.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        indicator_config (list): List of indicator group configurations.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        list: List of indicator names and aliases.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">labels</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">indicator_config</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">ind</span> <span class="ow">in</span> <span class="n">group</span><span class="p">[</span><span class="s2">&quot;indicators&quot;</span><span class="p">]:</span>
+            <span class="n">labels</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ind</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">])</span>
+            <span class="k">for</span> <span class="n">alias</span> <span class="ow">in</span> <span class="n">ind</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;aliases&quot;</span><span class="p">,</span> <span class="p">[]):</span>
+                <span class="n">labels</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">alias</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">labels</span></div>
+
+
+
+<div class="viewcode-block" id="extract_keywords">
+<a class="viewcode-back" href="../../../autoapi/modules/input/emissions_parser/index.html#modules.input.emissions_parser.extract_keywords">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">extract_keywords</span><span class="p">(</span><span class="n">indicator_config</span><span class="p">:</span> <span class="nb">list</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Extracts all indicator names and aliases into a set of lowercase keywords.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        indicator_config (list): List of indicator group configurations.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        set: Set of keywords for indicator matching.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">keywords</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">indicator_config</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">ind</span> <span class="ow">in</span> <span class="n">group</span><span class="p">[</span><span class="s2">&quot;indicators&quot;</span><span class="p">]:</span>
+            <span class="n">keywords</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">ind</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">())</span>
+            <span class="k">for</span> <span class="n">alias</span> <span class="ow">in</span> <span class="n">ind</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;aliases&quot;</span><span class="p">,</span> <span class="p">[]):</span>
+                <span class="n">keywords</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">alias</span><span class="o">.</span><span class="n">lower</span><span class="p">())</span>
+    <span class="k">return</span> <span class="n">keywords</span></div>
+
+
+
+<div class="viewcode-block" id="is_relevant_chunk">
+<a class="viewcode-back" href="../../../autoapi/modules/input/emissions_parser/index.html#modules.input.emissions_parser.is_relevant_chunk">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_relevant_chunk</span><span class="p">(</span><span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">keywords</span><span class="p">:</span> <span class="nb">set</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Determines if a text chunk is relevant based on presence of keywords and units.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        text (str): Text chunk to evaluate.</span>
+<span class="sd">        keywords (set): Set of indicator keywords.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        bool: True if the chunk is relevant, False otherwise.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">text_lower</span> <span class="o">=</span> <span class="n">text</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="n">has_keyword</span> <span class="o">=</span> <span class="nb">any</span><span class="p">(</span>
+        <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">rf</span><span class="s2">&quot;\b</span><span class="si">{</span><span class="n">re</span><span class="o">.</span><span class="n">escape</span><span class="p">(</span><span class="n">keyword</span><span class="p">)</span><span class="si">}</span><span class="s2">\b&quot;</span><span class="p">,</span> <span class="n">text_lower</span><span class="p">)</span> <span class="k">for</span> <span class="n">keyword</span> <span class="ow">in</span> <span class="n">keywords</span>
+    <span class="p">)</span>
+    <span class="n">has_unit</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">UNIT_PATTERN</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">text_lower</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">has_keyword</span> <span class="ow">and</span> <span class="n">has_unit</span></div>
+
+
+
+<div class="viewcode-block" id="session">
+<a class="viewcode-back" href="../../../autoapi/modules/input/emissions_parser/index.html#modules.input.emissions_parser.session">[docs]</a>
+<span class="n">session</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">Session</span><span class="p">()</span></div>
+
+
+
+<div class="viewcode-block" id="query_deepseek">
+<a class="viewcode-back" href="../../../autoapi/modules/input/emissions_parser/index.html#modules.input.emissions_parser.query_deepseek">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">query_deepseek</span><span class="p">(</span>
+    <span class="n">api_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">pdf_text</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">indicator_config</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span> <span class="n">extract_header</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Sends extracted PDF text to DeepSeek API for CSR indicator extraction.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        api_key (str): DeepSeek API key.</span>
+<span class="sd">        pdf_text (str): Text extracted from the PDF.</span>
+<span class="sd">        indicator_config (list): Indicator configuration for prompts.</span>
+<span class="sd">        extract_header (bool, optional): Whether to only extract header metadata. Defaults to False.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        str: DeepSeek API extracted text response.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">all_labels</span> <span class="o">=</span> <span class="n">build_indicator_labels</span><span class="p">(</span><span class="n">indicator_config</span><span class="p">)</span>
+    <span class="n">indicator_prompt_list</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="sa">f</span><span class="s2">&quot;- </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">all_labels</span><span class="p">])</span>
+
+    <span class="k">if</span> <span class="n">extract_header</span><span class="p">:</span>
+        <span class="n">prompt</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">Extract the **report year** from the first page of this CSR report.</span>
+
+<span class="s2">Respond in this format:</span>
+<span class="s2">Report Year: [year]</span>
+
+<span class="s2">--- BEGIN TEXT ---</span>
+<span class="si">{</span><span class="n">pdf_text</span><span class="si">}</span>
+<span class="s2">--- END TEXT ---</span>
+<span class="s2">&quot;&quot;&quot;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">prompt</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">Extract the **company name** and the **latest available numeric value** for **each indicator**, using the main name or any listed alias (even if not a perfect match).</span>
+
+<span class="s2">Respond in this format:</span>
+
+<span class="s2">Company Name: [company name]</span>
+<span class="s2">- Indicator Name: [numeric value] [unit]</span>
+
+<span class="si">{</span><span class="n">indicator_prompt_list</span><span class="si">}</span>
+
+<span class="s2">** Guidelines for extraction:**</span>
+<span class="s2">   - Use exact or close semantic matches (e.g., &quot;Waste Recycled&quot; ≈ &quot;Recycling Rate&quot;).</span>
+<span class="s2">   - Prioritize **absolute values** for absolute metrics ((Carbon Emissions, Water Use, Renewable Energy) and percentages for ratio based metrics (Recycling Rate, Sustainable Materials)  .</span>
+<span class="s2">   - If only percentages are found, return them (e.g., &quot;23%&quot;).</span>
+<span class="s2">   - If multiple aliases appear, pick the **most precise** number.</span>
+<span class="s2">   - Do NOT return unrelated stats (e.g., GDP, revenue, employee count, monetary values).</span>
+<span class="s2">   - Accept estimates if unit is missing but context suggests correctness.</span>
+<span class="s2">   - If **no valid data exists**, return &quot;N/A&quot;.</span>
+<span class="s2">   - Never return qualitative terms like “pledged”, “projects”, or “initiatives”.</span>
+
+<span class="s2">--- BEGIN TEXT ---</span>
+<span class="si">{</span><span class="n">pdf_text</span><span class="si">}</span>
+<span class="s2">--- END TEXT ---</span>
+<span class="s2">&quot;&quot;&quot;</span>
+
+    <span class="n">url</span> <span class="o">=</span> <span class="s2">&quot;https://api.deepseek.com/v1/chat/completions&quot;</span>
+    <span class="n">headers</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;Authorization&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;Bearer </span><span class="si">{</span><span class="n">api_key</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;Content-Type&quot;</span><span class="p">:</span> <span class="s2">&quot;application/json&quot;</span><span class="p">}</span>
+    <span class="n">payload</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;deepseek-chat&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;messages&quot;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;system&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;You are a sustainability data analyst.&quot;</span><span class="p">},</span>
+            <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="n">prompt</span><span class="p">},</span>
+        <span class="p">],</span>
+        <span class="s2">&quot;temperature&quot;</span><span class="p">:</span> <span class="mf">0.2</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="n">response</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">json</span><span class="o">=</span><span class="n">payload</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">headers</span><span class="p">)</span>
+    <span class="n">response</span><span class="o">.</span><span class="n">raise_for_status</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">response</span><span class="o">.</span><span class="n">json</span><span class="p">()[</span><span class="s2">&quot;choices&quot;</span><span class="p">][</span><span class="mi">0</span><span class="p">][</span><span class="s2">&quot;message&quot;</span><span class="p">][</span><span class="s2">&quot;content&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span></div>
+
+
+
+<div class="viewcode-block" id="extract_indicators_from_bytes">
+<a class="viewcode-back" href="../../../autoapi/modules/input/emissions_parser/index.html#modules.input.emissions_parser.extract_indicators_from_bytes">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">extract_indicators_from_bytes</span><span class="p">(</span>
+    <span class="n">company_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">pdf_bytes</span><span class="p">:</span> <span class="n">BytesIO</span><span class="p">,</span>
+    <span class="n">config_path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
+    <span class="n">output_csv</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
+    <span class="n">log_path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
+    <span class="n">source_filename</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;unknown_file.pdf&quot;</span><span class="p">,</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Extracts CSR indicators from a PDF byte stream and saves results to CSV.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        company_name (str): Company name for labeling extracted data.</span>
+<span class="sd">        pdf_bytes (BytesIO): Byte stream of the PDF file.</span>
+<span class="sd">        config_path (Path): Path to the indicators configuration YAML.</span>
+<span class="sd">        output_csv (Path): Path to save extracted CSV output.</span>
+<span class="sd">        log_path (Path): Path to save extraction logs.</span>
+<span class="sd">        source_filename (str, optional): Source file name for lineage tracking. Defaults to &quot;unknown_file.pdf&quot;.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        tuple[dict, list]:</span>
+<span class="sd">            - Dictionary mapping indicator names to extracted values.</span>
+<span class="sd">            - List of extracted lineage records for audit purposes.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">load_dotenv</span><span class="p">()</span>
+    <span class="n">api_key</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;DEEPSEEK_API&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">api_key</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">EnvironmentError</span><span class="p">(</span><span class="s2">&quot;DEEPSEEK_API not found in environment.&quot;</span><span class="p">)</span>
+
+    <span class="n">reader</span> <span class="o">=</span> <span class="n">PdfReader</span><span class="p">(</span><span class="n">pdf_bytes</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">indicator_config</span> <span class="o">=</span> <span class="n">load_indicator_config</span><span class="p">(</span><span class="n">config_path</span><span class="p">)</span>
+    <span class="n">alias_map</span> <span class="o">=</span> <span class="n">build_alias_map</span><span class="p">(</span><span class="n">indicator_config</span><span class="p">)</span>
+    <span class="n">keywords</span> <span class="o">=</span> <span class="n">extract_keywords</span><span class="p">(</span><span class="n">indicator_config</span><span class="p">)</span>
+
+    <span class="n">first_page_text</span> <span class="o">=</span> <span class="n">reader</span><span class="o">.</span><span class="n">pages</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">extract_text</span><span class="p">()</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">header_result</span> <span class="o">=</span> <span class="n">query_deepseek</span><span class="p">(</span>
+        <span class="n">api_key</span><span class="p">,</span> <span class="n">first_page_text</span><span class="p">,</span> <span class="n">indicator_config</span><span class="p">,</span> <span class="n">extract_header</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">)</span>
+
+    <span class="n">extracted_company_name</span> <span class="o">=</span> <span class="n">company_name</span>
+    <span class="n">extracted_year</span> <span class="o">=</span> <span class="s2">&quot;N/A&quot;</span>
+    <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">header_result</span><span class="o">.</span><span class="n">splitlines</span><span class="p">():</span>
+        <span class="n">line</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;company name:&quot;</span><span class="p">):</span>
+            <span class="n">extracted_company_name</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="n">line</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;report year:&quot;</span><span class="p">):</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">re</span><span class="o">.</span><span class="n">fullmatch</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;\d</span><span class="si">{4}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+                <span class="n">extracted_year</span> <span class="o">=</span> <span class="n">value</span>
+
+    <span class="n">relevant_text</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">page</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">reader</span><span class="o">.</span><span class="n">pages</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="n">page</span><span class="o">.</span><span class="n">extract_text</span><span class="p">()</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span>
+            <span class="k">if</span> <span class="n">is_relevant_chunk</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">keywords</span><span class="p">):</span>
+                <span class="n">relevant_text</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed to extract text from a page: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">continue</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">relevant_text</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No relevant text found in </span><span class="si">{</span><span class="n">source_filename</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{},</span> <span class="p">[]</span>
+
+    <span class="n">big_text</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">relevant_text</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">result_text</span> <span class="o">=</span> <span class="n">query_deepseek</span><span class="p">(</span><span class="n">api_key</span><span class="p">,</span> <span class="n">big_text</span><span class="p">,</span> <span class="n">indicator_config</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Deepseek query failed: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{},</span> <span class="p">[]</span>
+
+    <span class="n">temp_lineage_map</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">final_response</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">lineage_records</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">result_text</span><span class="o">.</span><span class="n">splitlines</span><span class="p">():</span>
+        <span class="n">line</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;company name:&quot;</span><span class="p">):</span>
+                <span class="n">extracted_company_name</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+                <span class="k">continue</span>
+            <span class="k">elif</span> <span class="n">line</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;report year:&quot;</span><span class="p">):</span>
+                <span class="k">continue</span>
+            <span class="n">match</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;^-?\s*(.*?):\s*(.*)&quot;</span><span class="p">,</span> <span class="n">line</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">match</span><span class="p">:</span>
+                <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="o">=</span> <span class="n">match</span><span class="o">.</span><span class="n">groups</span><span class="p">()</span>
+                <span class="n">normalized_name</span> <span class="o">=</span> <span class="n">name</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+                <span class="n">canonical_name</span> <span class="o">=</span> <span class="n">alias_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">normalized_name</span><span class="p">)</span>
+
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">canonical_name</span><span class="p">:</span>
+                    <span class="n">fuzzy_match</span> <span class="o">=</span> <span class="n">difflib</span><span class="o">.</span><span class="n">get_close_matches</span><span class="p">(</span>
+                        <span class="n">normalized_name</span><span class="p">,</span> <span class="n">alias_map</span><span class="o">.</span><span class="n">keys</span><span class="p">(),</span> <span class="n">n</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">cutoff</span><span class="o">=</span><span class="mf">0.8</span>
+                    <span class="p">)</span>
+                    <span class="k">if</span> <span class="n">fuzzy_match</span><span class="p">:</span>
+                        <span class="n">canonical_name</span> <span class="o">=</span> <span class="n">alias_map</span><span class="p">[</span><span class="n">fuzzy_match</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span>
+
+                <span class="k">if</span> <span class="n">canonical_name</span><span class="p">:</span>
+                    <span class="n">matched_ind</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span>
+                        <span class="p">(</span>
+                            <span class="n">ind</span>
+                            <span class="k">for</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">indicator_config</span>
+                            <span class="k">for</span> <span class="n">ind</span> <span class="ow">in</span> <span class="n">group</span><span class="p">[</span><span class="s2">&quot;indicators&quot;</span><span class="p">]</span>
+                            <span class="k">if</span> <span class="n">ind</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">canonical_name</span>
+                        <span class="p">),</span>
+                        <span class="kc">None</span><span class="p">,</span>
+                    <span class="p">)</span>
+                    <span class="k">if</span> <span class="n">matched_ind</span><span class="p">:</span>
+                        <span class="n">expected_unit</span> <span class="o">=</span> <span class="n">matched_ind</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;unit&quot;</span><span class="p">)</span>
+                        <span class="n">rules</span> <span class="o">=</span> <span class="n">matched_ind</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;validation&quot;</span><span class="p">,</span> <span class="p">{})</span>
+                        <span class="n">expected_type</span> <span class="o">=</span> <span class="n">matched_ind</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;expected_type&quot;</span><span class="p">,</span> <span class="s2">&quot;float&quot;</span><span class="p">)</span>
+                        <span class="n">aim</span> <span class="o">=</span> <span class="n">matched_ind</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;aim&quot;</span><span class="p">,</span> <span class="s2">&quot;reduction&quot;</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">expected_unit</span><span class="p">,</span> <span class="n">rules</span> <span class="o">=</span> <span class="kc">None</span>
+                        <span class="n">rules</span> <span class="o">=</span> <span class="p">{}</span>
+                        <span class="n">expected_type</span> <span class="o">=</span> <span class="s2">&quot;float&quot;</span>
+                        <span class="n">aim</span> <span class="o">=</span> <span class="s2">&quot;reduction&quot;</span>
+
+                    <span class="n">postprocessed</span> <span class="o">=</span> <span class="n">postprocess_value</span><span class="p">(</span>
+                        <span class="n">value</span><span class="p">,</span>
+                        <span class="n">expected_unit</span><span class="p">,</span>
+                        <span class="n">rules</span><span class="p">,</span>
+                        <span class="n">expected_type</span><span class="o">=</span><span class="n">expected_type</span><span class="p">,</span>
+                        <span class="n">aim</span><span class="o">=</span><span class="n">aim</span><span class="p">,</span>
+                    <span class="p">)</span>
+
+                    <span class="k">if</span> <span class="p">(</span>
+                        <span class="n">canonical_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">final_response</span>
+                        <span class="ow">or</span> <span class="n">final_response</span><span class="p">[</span><span class="n">canonical_name</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;N/A&quot;</span>
+                    <span class="p">):</span>
+                        <span class="n">final_response</span><span class="p">[</span><span class="n">canonical_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">postprocessed</span><span class="p">[</span><span class="s2">&quot;normalized&quot;</span><span class="p">]</span>
+                        <span class="n">temp_lineage_map</span><span class="p">[</span><span class="n">canonical_name</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                            <span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">postprocessed</span><span class="p">[</span><span class="s2">&quot;normalized&quot;</span><span class="p">],</span>
+                            <span class="s2">&quot;source_file&quot;</span><span class="p">:</span> <span class="n">source_filename</span><span class="p">,</span>
+                            <span class="s2">&quot;extracted_at&quot;</span><span class="p">:</span> <span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">isoformat</span><span class="p">(),</span>
+                        <span class="p">}</span>
+
+                    <span class="k">if</span> <span class="n">postprocessed</span><span class="p">[</span><span class="s2">&quot;normalized&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span> <span class="o">!=</span> <span class="s2">&quot;N/A&quot;</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="ow">not</span> <span class="n">postprocessed</span><span class="p">[</span><span class="s2">&quot;valid&quot;</span><span class="p">]:</span>
+                            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[</span><span class="si">{</span><span class="n">canonical_name</span><span class="si">}</span><span class="s2">] &#39;</span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">&#39; → Invalid&quot;</span><span class="p">)</span>
+                        <span class="k">elif</span> <span class="n">postprocessed</span><span class="p">[</span><span class="s2">&quot;warning&quot;</span><span class="p">]:</span>
+                            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                                <span class="sa">f</span><span class="s2">&quot;[</span><span class="si">{</span><span class="n">canonical_name</span><span class="si">}</span><span class="s2">] &#39;</span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">&#39; → Exceeds threshold&quot;</span>
+                            <span class="p">)</span>
+
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Line failed: &#39;</span><span class="si">{</span><span class="n">line</span><span class="si">}</span><span class="s2">&#39; → </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">log_path</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">log_path</span><span class="p">,</span> <span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">log_file</span><span class="p">:</span>
+        <span class="n">log_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">======== </span><span class="si">{</span><span class="n">extracted_company_name</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">extracted_year</span><span class="si">}</span><span class="s2">) ========</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">final_response</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">log_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">k</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">header</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;Company Name&quot;</span><span class="p">,</span> <span class="s2">&quot;Report Year&quot;</span><span class="p">]</span>
+    <span class="n">output_data</span> <span class="o">=</span> <span class="p">[</span><span class="n">extracted_company_name</span><span class="p">,</span> <span class="n">extracted_year</span><span class="p">]</span>
+
+    <span class="k">for</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">indicator_config</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">ind</span> <span class="ow">in</span> <span class="n">group</span><span class="p">[</span><span class="s2">&quot;indicators&quot;</span><span class="p">]:</span>
+            <span class="n">indicator_name</span> <span class="o">=</span> <span class="n">ind</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">]</span>
+            <span class="n">header</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">indicator_name</span><span class="p">)</span>
+            <span class="n">matched_value</span> <span class="o">=</span> <span class="n">final_response</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">indicator_name</span><span class="p">,</span> <span class="s2">&quot;N/A&quot;</span><span class="p">)</span>
+            <span class="n">output_data</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">matched_value</span><span class="p">)</span>
+
+    <span class="n">output_csv</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">write_header</span> <span class="o">=</span> <span class="ow">not</span> <span class="n">output_csv</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span>
+
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">output_csv</span><span class="p">,</span> <span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="n">newline</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">writer</span> <span class="o">=</span> <span class="n">csv</span><span class="o">.</span><span class="n">writer</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">write_header</span><span class="p">:</span>
+            <span class="n">writer</span><span class="o">.</span><span class="n">writerow</span><span class="p">(</span><span class="n">header</span><span class="p">)</span>
+        <span class="n">writer</span><span class="o">.</span><span class="n">writerow</span><span class="p">(</span><span class="n">output_data</span><span class="p">)</span>
+
+    <span class="n">lineage_output_csv</span> <span class="o">=</span> <span class="n">output_csv</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="s2">&quot;lineage_output.csv&quot;</span>
+    <span class="n">write_lineage_header</span> <span class="o">=</span> <span class="ow">not</span> <span class="n">lineage_output_csv</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span>
+
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">lineage_output_csv</span><span class="p">,</span> <span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="n">newline</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">writer</span> <span class="o">=</span> <span class="n">csv</span><span class="o">.</span><span class="n">DictWriter</span><span class="p">(</span>
+            <span class="n">f</span><span class="p">,</span>
+            <span class="n">fieldnames</span><span class="o">=</span><span class="p">[</span>
+                <span class="s2">&quot;company_name&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;report_year&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;indicator&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;value&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;source_file&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;extracted_at&quot;</span><span class="p">,</span>
+            <span class="p">],</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">write_lineage_header</span><span class="p">:</span>
+            <span class="n">writer</span><span class="o">.</span><span class="n">writeheader</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">canonical_name</span><span class="p">,</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">temp_lineage_map</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">row</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">&quot;company_name&quot;</span><span class="p">:</span> <span class="n">extracted_company_name</span><span class="p">,</span>
+                <span class="s2">&quot;report_year&quot;</span><span class="p">:</span> <span class="n">extracted_year</span><span class="p">,</span>
+                <span class="s2">&quot;indicator&quot;</span><span class="p">:</span> <span class="n">canonical_name</span><span class="p">,</span>
+                <span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">record</span><span class="p">[</span><span class="s2">&quot;value&quot;</span><span class="p">],</span>
+                <span class="s2">&quot;source_file&quot;</span><span class="p">:</span> <span class="n">record</span><span class="p">[</span><span class="s2">&quot;source_file&quot;</span><span class="p">],</span>
+                <span class="s2">&quot;extracted_at&quot;</span><span class="p">:</span> <span class="n">record</span><span class="p">[</span><span class="s2">&quot;extracted_at&quot;</span><span class="p">],</span>
+            <span class="p">}</span>
+            <span class="n">writer</span><span class="o">.</span><span class="n">writerow</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+            <span class="n">lineage_records</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Lineage CSV saved for </span><span class="si">{</span><span class="n">extracted_company_name</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">extracted_year</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">final_response</span><span class="p">,</span> <span class="n">lineage_records</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

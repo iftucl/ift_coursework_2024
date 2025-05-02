@@ -1,0 +1,489 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.utils.regex_helper &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../django.html">django</a></li>
+      <li class="breadcrumb-item active">django.utils.regex_helper</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.utils.regex_helper</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Functions for reversing a regular expression (used in reverse URL resolving).</span>
+<span class="sd">Used internally by Django and not intended for external use.</span>
+
+<span class="sd">This is not, and is not intended to be, a complete reg-exp decompiler. It</span>
+<span class="sd">should be good enough for a large class of URLS, however.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">SimpleLazyObject</span>
+
+<span class="c1"># Mapping of an escape character to a representative of that class. So, e.g.,</span>
+<span class="c1"># &quot;\w&quot; is replaced by &quot;x&quot; in a reverse URL. A value of None means to ignore</span>
+<span class="c1"># this sequence. Any missing key is mapped to itself.</span>
+<div class="viewcode-block" id="ESCAPE_MAPPINGS">
+<a class="viewcode-back" href="../../../autoapi/django/utils/regex_helper/index.html#django.utils.regex_helper.ESCAPE_MAPPINGS">[docs]</a>
+<span class="n">ESCAPE_MAPPINGS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;A&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="s2">&quot;b&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="s2">&quot;B&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="s2">&quot;d&quot;</span><span class="p">:</span> <span class="s2">&quot;0&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;D&quot;</span><span class="p">:</span> <span class="s2">&quot;x&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;s&quot;</span><span class="p">:</span> <span class="s2">&quot; &quot;</span><span class="p">,</span>
+    <span class="s2">&quot;S&quot;</span><span class="p">:</span> <span class="s2">&quot;x&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;w&quot;</span><span class="p">:</span> <span class="s2">&quot;x&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;W&quot;</span><span class="p">:</span> <span class="s2">&quot;!&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Z&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">}</span></div>
+
+
+
+<div class="viewcode-block" id="Choice">
+<a class="viewcode-back" href="../../../autoapi/django/utils/regex_helper/index.html#django.utils.regex_helper.Choice">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Choice</span><span class="p">(</span><span class="nb">list</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Represent multiple possibilities at this point in a pattern string.&quot;&quot;&quot;</span></div>
+
+
+
+<div class="viewcode-block" id="Group">
+<a class="viewcode-back" href="../../../autoapi/django/utils/regex_helper/index.html#django.utils.regex_helper.Group">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Group</span><span class="p">(</span><span class="nb">list</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Represent a capturing group in the pattern string.&quot;&quot;&quot;</span></div>
+
+
+
+<div class="viewcode-block" id="NonCapture">
+<a class="viewcode-back" href="../../../autoapi/django/utils/regex_helper/index.html#django.utils.regex_helper.NonCapture">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NonCapture</span><span class="p">(</span><span class="nb">list</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Represent a non-capturing group in the pattern string.&quot;&quot;&quot;</span></div>
+
+
+
+<div class="viewcode-block" id="normalize">
+<a class="viewcode-back" href="../../../autoapi/django/utils/regex_helper/index.html#django.utils.regex_helper.normalize">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">normalize</span><span class="p">(</span><span class="n">pattern</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Given a reg-exp pattern, normalize it to an iterable of forms that</span>
+<span class="sd">    suffice for reverse matching. This does the following:</span>
+
+<span class="sd">    (1) For any repeating sections, keeps the minimum number of occurrences</span>
+<span class="sd">        permitted (this means zero for optional groups).</span>
+<span class="sd">    (2) If an optional group includes parameters, include one occurrence of</span>
+<span class="sd">        that group (along with the zero occurrence case from step (1)).</span>
+<span class="sd">    (3) Select the first (essentially an arbitrary) element from any character</span>
+<span class="sd">        class. Select an arbitrary character for any unordered class (e.g. &#39;.&#39;</span>
+<span class="sd">        or &#39;\w&#39;) in the pattern.</span>
+<span class="sd">    (4) Ignore look-ahead and look-behind assertions.</span>
+<span class="sd">    (5) Raise an error on any disjunctive (&#39;|&#39;) constructs.</span>
+
+<span class="sd">    Django&#39;s URLs for forward resolving are either all positional arguments or</span>
+<span class="sd">    all keyword arguments. That is assumed here, as well. Although reverse</span>
+<span class="sd">    resolving can be done using positional args when keyword args are</span>
+<span class="sd">    specified, the two cannot be mixed in the same reverse() call.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Do a linear scan to work out the special features of this pattern. The</span>
+    <span class="c1"># idea is that we scan once here and collect all the information we need to</span>
+    <span class="c1"># make future decisions.</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">non_capturing_groups</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">consume_next</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">pattern_iter</span> <span class="o">=</span> <span class="n">next_char</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">pattern</span><span class="p">))</span>
+    <span class="n">num_args</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="c1"># A &quot;while&quot; loop is used here because later on we need to be able to peek</span>
+    <span class="c1"># at the next character and possibly go around without consuming another</span>
+    <span class="c1"># one at the top of the loop.</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">ch</span><span class="p">,</span> <span class="n">escaped</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">pattern_iter</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">StopIteration</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[(</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="p">[])]</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">escaped</span><span class="p">:</span>
+                <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ch</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">ch</span> <span class="o">==</span> <span class="s2">&quot;.&quot;</span><span class="p">:</span>
+                <span class="c1"># Replace &quot;any character&quot; with an arbitrary representative.</span>
+                <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">ch</span> <span class="o">==</span> <span class="s2">&quot;|&quot;</span><span class="p">:</span>
+                <span class="c1"># FIXME: One day we&#39;ll should do this, but not in 1.0.</span>
+                <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;Awaiting Implementation&quot;</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">ch</span> <span class="o">==</span> <span class="s2">&quot;^&quot;</span><span class="p">:</span>
+                <span class="k">pass</span>
+            <span class="k">elif</span> <span class="n">ch</span> <span class="o">==</span> <span class="s2">&quot;$&quot;</span><span class="p">:</span>
+                <span class="k">break</span>
+            <span class="k">elif</span> <span class="n">ch</span> <span class="o">==</span> <span class="s2">&quot;)&quot;</span><span class="p">:</span>
+                <span class="c1"># This can only be the end of a non-capturing group, since all</span>
+                <span class="c1"># other unescaped parentheses are handled by the grouping</span>
+                <span class="c1"># section later (and the full group is handled there).</span>
+                <span class="c1">#</span>
+                <span class="c1"># We regroup everything inside the capturing group so that it</span>
+                <span class="c1"># can be quantified, if necessary.</span>
+                <span class="n">start</span> <span class="o">=</span> <span class="n">non_capturing_groups</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+                <span class="n">inner</span> <span class="o">=</span> <span class="n">NonCapture</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="n">start</span><span class="p">:])</span>
+                <span class="n">result</span> <span class="o">=</span> <span class="n">result</span><span class="p">[:</span><span class="n">start</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="n">inner</span><span class="p">]</span>
+            <span class="k">elif</span> <span class="n">ch</span> <span class="o">==</span> <span class="s2">&quot;[&quot;</span><span class="p">:</span>
+                <span class="c1"># Replace ranges with the first character in the range.</span>
+                <span class="n">ch</span><span class="p">,</span> <span class="n">escaped</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">pattern_iter</span><span class="p">)</span>
+                <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ch</span><span class="p">)</span>
+                <span class="n">ch</span><span class="p">,</span> <span class="n">escaped</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">pattern_iter</span><span class="p">)</span>
+                <span class="k">while</span> <span class="n">escaped</span> <span class="ow">or</span> <span class="n">ch</span> <span class="o">!=</span> <span class="s2">&quot;]&quot;</span><span class="p">:</span>
+                    <span class="n">ch</span><span class="p">,</span> <span class="n">escaped</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">pattern_iter</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">ch</span> <span class="o">==</span> <span class="s2">&quot;(&quot;</span><span class="p">:</span>
+                <span class="c1"># Some kind of group.</span>
+                <span class="n">ch</span><span class="p">,</span> <span class="n">escaped</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">pattern_iter</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">ch</span> <span class="o">!=</span> <span class="s2">&quot;?&quot;</span> <span class="ow">or</span> <span class="n">escaped</span><span class="p">:</span>
+                    <span class="c1"># A positional group</span>
+                    <span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;_</span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">num_args</span>
+                    <span class="n">num_args</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Group</span><span class="p">(((</span><span class="s2">&quot;</span><span class="si">%%</span><span class="s2">(</span><span class="si">%s</span><span class="s2">)s&quot;</span> <span class="o">%</span> <span class="n">name</span><span class="p">),</span> <span class="n">name</span><span class="p">)))</span>
+                    <span class="n">walk_to_end</span><span class="p">(</span><span class="n">ch</span><span class="p">,</span> <span class="n">pattern_iter</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">ch</span><span class="p">,</span> <span class="n">escaped</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">pattern_iter</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">ch</span> <span class="ow">in</span> <span class="s2">&quot;!=&lt;&quot;</span><span class="p">:</span>
+                        <span class="c1"># All of these are ignorable. Walk to the end of the</span>
+                        <span class="c1"># group.</span>
+                        <span class="n">walk_to_end</span><span class="p">(</span><span class="n">ch</span><span class="p">,</span> <span class="n">pattern_iter</span><span class="p">)</span>
+                    <span class="k">elif</span> <span class="n">ch</span> <span class="o">==</span> <span class="s2">&quot;:&quot;</span><span class="p">:</span>
+                        <span class="c1"># Non-capturing group</span>
+                        <span class="n">non_capturing_groups</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">))</span>
+                    <span class="k">elif</span> <span class="n">ch</span> <span class="o">!=</span> <span class="s2">&quot;P&quot;</span><span class="p">:</span>
+                        <span class="c1"># Anything else, other than a named group, is something</span>
+                        <span class="c1"># we cannot reverse.</span>
+                        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Non-reversible reg-exp portion: &#39;(?</span><span class="si">%s</span><span class="s2">&#39;&quot;</span> <span class="o">%</span> <span class="n">ch</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">ch</span><span class="p">,</span> <span class="n">escaped</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">pattern_iter</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="n">ch</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;&lt;&quot;</span><span class="p">,</span> <span class="s2">&quot;=&quot;</span><span class="p">):</span>
+                            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                                <span class="s2">&quot;Non-reversible reg-exp portion: &#39;(?P</span><span class="si">%s</span><span class="s2">&#39;&quot;</span> <span class="o">%</span> <span class="n">ch</span>
+                            <span class="p">)</span>
+                        <span class="c1"># We are in a named capturing group. Extra the name and</span>
+                        <span class="c1"># then skip to the end.</span>
+                        <span class="k">if</span> <span class="n">ch</span> <span class="o">==</span> <span class="s2">&quot;&lt;&quot;</span><span class="p">:</span>
+                            <span class="n">terminal_char</span> <span class="o">=</span> <span class="s2">&quot;&gt;&quot;</span>
+                        <span class="c1"># We are in a named backreference.</span>
+                        <span class="k">else</span><span class="p">:</span>
+                            <span class="n">terminal_char</span> <span class="o">=</span> <span class="s2">&quot;)&quot;</span>
+                        <span class="n">name</span> <span class="o">=</span> <span class="p">[]</span>
+                        <span class="n">ch</span><span class="p">,</span> <span class="n">escaped</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">pattern_iter</span><span class="p">)</span>
+                        <span class="k">while</span> <span class="n">ch</span> <span class="o">!=</span> <span class="n">terminal_char</span><span class="p">:</span>
+                            <span class="n">name</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ch</span><span class="p">)</span>
+                            <span class="n">ch</span><span class="p">,</span> <span class="n">escaped</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">pattern_iter</span><span class="p">)</span>
+                        <span class="n">param</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+                        <span class="c1"># Named backreferences have already consumed the</span>
+                        <span class="c1"># parenthesis.</span>
+                        <span class="k">if</span> <span class="n">terminal_char</span> <span class="o">!=</span> <span class="s2">&quot;)&quot;</span><span class="p">:</span>
+                            <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Group</span><span class="p">(((</span><span class="s2">&quot;</span><span class="si">%%</span><span class="s2">(</span><span class="si">%s</span><span class="s2">)s&quot;</span> <span class="o">%</span> <span class="n">param</span><span class="p">),</span> <span class="n">param</span><span class="p">)))</span>
+                            <span class="n">walk_to_end</span><span class="p">(</span><span class="n">ch</span><span class="p">,</span> <span class="n">pattern_iter</span><span class="p">)</span>
+                        <span class="k">else</span><span class="p">:</span>
+                            <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Group</span><span class="p">(((</span><span class="s2">&quot;</span><span class="si">%%</span><span class="s2">(</span><span class="si">%s</span><span class="s2">)s&quot;</span> <span class="o">%</span> <span class="n">param</span><span class="p">),</span> <span class="kc">None</span><span class="p">)))</span>
+            <span class="k">elif</span> <span class="n">ch</span> <span class="ow">in</span> <span class="s2">&quot;*?+{&quot;</span><span class="p">:</span>
+                <span class="c1"># Quantifiers affect the previous item in the result list.</span>
+                <span class="n">count</span><span class="p">,</span> <span class="n">ch</span> <span class="o">=</span> <span class="n">get_quantifier</span><span class="p">(</span><span class="n">ch</span><span class="p">,</span> <span class="n">pattern_iter</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">ch</span><span class="p">:</span>
+                    <span class="c1"># We had to look ahead, but it wasn&#39;t need to compute the</span>
+                    <span class="c1"># quantifier, so use this character next time around the</span>
+                    <span class="c1"># main loop.</span>
+                    <span class="n">consume_next</span> <span class="o">=</span> <span class="kc">False</span>
+
+                <span class="k">if</span> <span class="n">count</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">contains</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">Group</span><span class="p">):</span>
+                        <span class="c1"># If we are quantifying a capturing group (or</span>
+                        <span class="c1"># something containing such a group) and the minimum is</span>
+                        <span class="c1"># zero, we must also handle the case of one occurrence</span>
+                        <span class="c1"># being present. All the quantifiers (except {0,0},</span>
+                        <span class="c1"># which we conveniently ignore) that have a 0 minimum</span>
+                        <span class="c1"># also allow a single occurrence.</span>
+                        <span class="n">result</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">Choice</span><span class="p">([</span><span class="kc">None</span><span class="p">,</span> <span class="n">result</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]])</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">result</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+                <span class="k">elif</span> <span class="n">count</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="n">result</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="n">result</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span> <span class="o">*</span> <span class="p">(</span><span class="n">count</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Anything else is a literal.</span>
+                <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ch</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">consume_next</span><span class="p">:</span>
+                <span class="n">ch</span><span class="p">,</span> <span class="n">escaped</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">pattern_iter</span><span class="p">)</span>
+            <span class="n">consume_next</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="k">except</span> <span class="ne">StopIteration</span><span class="p">:</span>
+        <span class="k">pass</span>
+    <span class="k">except</span> <span class="ne">NotImplementedError</span><span class="p">:</span>
+        <span class="c1"># A case of using the disjunctive form. No results for you!</span>
+        <span class="k">return</span> <span class="p">[(</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="p">[])]</span>
+
+    <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="o">*</span><span class="n">flatten_result</span><span class="p">(</span><span class="n">result</span><span class="p">)))</span></div>
+
+
+
+<div class="viewcode-block" id="next_char">
+<a class="viewcode-back" href="../../../autoapi/django/utils/regex_helper/index.html#django.utils.regex_helper.next_char">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">next_char</span><span class="p">(</span><span class="n">input_iter</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    An iterator that yields the next character from &quot;pattern_iter&quot;, respecting</span>
+<span class="sd">    escape sequences. An escaped character is replaced by a representative of</span>
+<span class="sd">    its class (e.g. \w -&gt; &quot;x&quot;). If the escaped character is one that is</span>
+<span class="sd">    skipped, it is not returned (the next character is returned instead).</span>
+
+<span class="sd">    Yield the next character, along with a boolean indicating whether it is a</span>
+<span class="sd">    raw (unescaped) character or not.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">ch</span> <span class="ow">in</span> <span class="n">input_iter</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">ch</span> <span class="o">!=</span> <span class="s2">&quot;</span><span class="se">\\</span><span class="s2">&quot;</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="n">ch</span><span class="p">,</span> <span class="kc">False</span>
+            <span class="k">continue</span>
+        <span class="n">ch</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">input_iter</span><span class="p">)</span>
+        <span class="n">representative</span> <span class="o">=</span> <span class="n">ESCAPE_MAPPINGS</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">ch</span><span class="p">,</span> <span class="n">ch</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">representative</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="k">yield</span> <span class="n">representative</span><span class="p">,</span> <span class="kc">True</span></div>
+
+
+
+<div class="viewcode-block" id="walk_to_end">
+<a class="viewcode-back" href="../../../autoapi/django/utils/regex_helper/index.html#django.utils.regex_helper.walk_to_end">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">walk_to_end</span><span class="p">(</span><span class="n">ch</span><span class="p">,</span> <span class="n">input_iter</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    The iterator is currently inside a capturing group. Walk to the close of</span>
+<span class="sd">    this group, skipping over any nested groups and handling escaped</span>
+<span class="sd">    parentheses correctly.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">ch</span> <span class="o">==</span> <span class="s2">&quot;(&quot;</span><span class="p">:</span>
+        <span class="n">nesting</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">nesting</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">ch</span><span class="p">,</span> <span class="n">escaped</span> <span class="ow">in</span> <span class="n">input_iter</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">escaped</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="k">elif</span> <span class="n">ch</span> <span class="o">==</span> <span class="s2">&quot;(&quot;</span><span class="p">:</span>
+            <span class="n">nesting</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">elif</span> <span class="n">ch</span> <span class="o">==</span> <span class="s2">&quot;)&quot;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">nesting</span><span class="p">:</span>
+                <span class="k">return</span>
+            <span class="n">nesting</span> <span class="o">-=</span> <span class="mi">1</span></div>
+
+
+
+<div class="viewcode-block" id="get_quantifier">
+<a class="viewcode-back" href="../../../autoapi/django/utils/regex_helper/index.html#django.utils.regex_helper.get_quantifier">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_quantifier</span><span class="p">(</span><span class="n">ch</span><span class="p">,</span> <span class="n">input_iter</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Parse a quantifier from the input, where &quot;ch&quot; is the first character in the</span>
+<span class="sd">    quantifier.</span>
+
+<span class="sd">    Return the minimum number of occurrences permitted by the quantifier and</span>
+<span class="sd">    either None or the next character from the input_iter if the next character</span>
+<span class="sd">    is not part of the quantifier.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">ch</span> <span class="ow">in</span> <span class="s2">&quot;*?+&quot;</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">ch2</span><span class="p">,</span> <span class="n">escaped</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">input_iter</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">StopIteration</span><span class="p">:</span>
+            <span class="n">ch2</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">ch2</span> <span class="o">==</span> <span class="s2">&quot;?&quot;</span><span class="p">:</span>
+            <span class="n">ch2</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">ch</span> <span class="o">==</span> <span class="s2">&quot;+&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="mi">1</span><span class="p">,</span> <span class="n">ch2</span>
+        <span class="k">return</span> <span class="mi">0</span><span class="p">,</span> <span class="n">ch2</span>
+
+    <span class="n">quant</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">while</span> <span class="n">ch</span> <span class="o">!=</span> <span class="s2">&quot;}&quot;</span><span class="p">:</span>
+        <span class="n">ch</span><span class="p">,</span> <span class="n">escaped</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">input_iter</span><span class="p">)</span>
+        <span class="n">quant</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ch</span><span class="p">)</span>
+    <span class="n">quant</span> <span class="o">=</span> <span class="n">quant</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">values</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">quant</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Consume the trailing &#39;?&#39;, if necessary.</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">ch</span><span class="p">,</span> <span class="n">escaped</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">input_iter</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">StopIteration</span><span class="p">:</span>
+        <span class="n">ch</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">ch</span> <span class="o">==</span> <span class="s2">&quot;?&quot;</span><span class="p">:</span>
+        <span class="n">ch</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">values</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="n">ch</span></div>
+
+
+
+<div class="viewcode-block" id="contains">
+<a class="viewcode-back" href="../../../autoapi/django/utils/regex_helper/index.html#django.utils.regex_helper.contains">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">contains</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">inst</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return True if the &quot;source&quot; contains an instance of &quot;inst&quot;. False,</span>
+<span class="sd">    otherwise.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">inst</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">NonCapture</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">elt</span> <span class="ow">in</span> <span class="n">source</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">contains</span><span class="p">(</span><span class="n">elt</span><span class="p">,</span> <span class="n">inst</span><span class="p">):</span>
+                <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">return</span> <span class="kc">False</span></div>
+
+
+
+<div class="viewcode-block" id="flatten_result">
+<a class="viewcode-back" href="../../../autoapi/django/utils/regex_helper/index.html#django.utils.regex_helper.flatten_result">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">flatten_result</span><span class="p">(</span><span class="n">source</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Turn the given source sequence into a list of reg-exp possibilities and</span>
+<span class="sd">    their arguments. Return a list of strings and a list of argument lists.</span>
+<span class="sd">    Each of the two lists will be of the same length.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">source</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[</span><span class="s2">&quot;&quot;</span><span class="p">],</span> <span class="p">[[]]</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">Group</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">source</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">params</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">params</span> <span class="o">=</span> <span class="p">[</span><span class="n">source</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">source</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span> <span class="p">[</span><span class="n">params</span><span class="p">]</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;&quot;</span><span class="p">]</span>
+    <span class="n">result_args</span> <span class="o">=</span> <span class="p">[[]]</span>
+    <span class="n">pos</span> <span class="o">=</span> <span class="n">last</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">pos</span><span class="p">,</span> <span class="n">elt</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">source</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">elt</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="k">continue</span>
+        <span class="n">piece</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">source</span><span class="p">[</span><span class="n">last</span><span class="p">:</span><span class="n">pos</span><span class="p">])</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">elt</span><span class="p">,</span> <span class="n">Group</span><span class="p">):</span>
+            <span class="n">piece</span> <span class="o">+=</span> <span class="n">elt</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">param</span> <span class="o">=</span> <span class="n">elt</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">param</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">last</span> <span class="o">=</span> <span class="n">pos</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">)):</span>
+            <span class="n">result</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="n">piece</span>
+            <span class="k">if</span> <span class="n">param</span><span class="p">:</span>
+                <span class="n">result_args</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">param</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">elt</span><span class="p">,</span> <span class="p">(</span><span class="n">Choice</span><span class="p">,</span> <span class="n">NonCapture</span><span class="p">)):</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">elt</span><span class="p">,</span> <span class="n">NonCapture</span><span class="p">):</span>
+                <span class="n">elt</span> <span class="o">=</span> <span class="p">[</span><span class="n">elt</span><span class="p">]</span>
+            <span class="n">inner_result</span><span class="p">,</span> <span class="n">inner_args</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">elt</span><span class="p">:</span>
+                <span class="n">res</span><span class="p">,</span> <span class="n">args</span> <span class="o">=</span> <span class="n">flatten_result</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+                <span class="n">inner_result</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">res</span><span class="p">)</span>
+                <span class="n">inner_args</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+            <span class="n">new_result</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">new_args</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">item</span><span class="p">,</span> <span class="n">args</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">result_args</span><span class="p">):</span>
+                <span class="k">for</span> <span class="n">i_item</span><span class="p">,</span> <span class="n">i_args</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">inner_result</span><span class="p">,</span> <span class="n">inner_args</span><span class="p">):</span>
+                    <span class="n">new_result</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">item</span> <span class="o">+</span> <span class="n">i_item</span><span class="p">)</span>
+                    <span class="n">new_args</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">args</span><span class="p">[:]</span> <span class="o">+</span> <span class="n">i_args</span><span class="p">)</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">new_result</span>
+            <span class="n">result_args</span> <span class="o">=</span> <span class="n">new_args</span>
+    <span class="k">if</span> <span class="n">pos</span> <span class="o">&gt;=</span> <span class="n">last</span><span class="p">:</span>
+        <span class="n">piece</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">source</span><span class="p">[</span><span class="n">last</span><span class="p">:])</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">)):</span>
+            <span class="n">result</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="n">piece</span>
+    <span class="k">return</span> <span class="n">result</span><span class="p">,</span> <span class="n">result_args</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_lazy_re_compile</span><span class="p">(</span><span class="n">regex</span><span class="p">,</span> <span class="n">flags</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Lazily compile a regex with flags.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_compile</span><span class="p">():</span>
+        <span class="c1"># Compile the regex if it was not passed pre-compiled.</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">regex</span><span class="p">,</span> <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">regex</span><span class="p">,</span> <span class="n">flags</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="ow">not</span> <span class="n">flags</span><span class="p">,</span> <span class="s2">&quot;flags must be empty if regex is passed pre-compiled&quot;</span>
+            <span class="k">return</span> <span class="n">regex</span>
+
+    <span class="k">return</span> <span class="n">SimpleLazyObject</span><span class="p">(</span><span class="n">_compile</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

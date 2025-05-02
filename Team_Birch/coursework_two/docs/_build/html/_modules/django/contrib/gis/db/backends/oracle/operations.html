@@ -1,0 +1,453 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.contrib.gis.db.backends.oracle.operations &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../../../django.html">django</a></li>
+      <li class="breadcrumb-item active">django.contrib.gis.db.backends.oracle.operations</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.contrib.gis.db.backends.oracle.operations</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd"> This module contains the spatial lookup types, and the `get_geo_where_clause`</span>
+<span class="sd"> routine for Oracle Spatial.</span>
+
+<span class="sd"> Please note that WKT support is broken on the XE version, and thus</span>
+<span class="sd"> this backend will not work on such platforms.  Specifically, XE lacks</span>
+<span class="sd"> support for an internal JVM, and Java libraries are required to use</span>
+<span class="sd"> the WKT constructors.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">models</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.db.backends.base.operations</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseSpatialOperations</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.db.backends.oracle.adapter</span><span class="w"> </span><span class="kn">import</span> <span class="n">OracleSpatialAdapter</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.db.backends.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">SpatialOperator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.geos.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">GEOSGeometry</span><span class="p">,</span> <span class="n">GEOSGeometryBase</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.geos.prototypes.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">wkb_r</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.measure</span><span class="w"> </span><span class="kn">import</span> <span class="n">Distance</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.oracle.operations</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseOperations</span>
+
+<div class="viewcode-block" id="DEFAULT_TOLERANCE">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.DEFAULT_TOLERANCE">[docs]</a>
+<span class="n">DEFAULT_TOLERANCE</span> <span class="o">=</span> <span class="s2">&quot;0.05&quot;</span></div>
+
+
+
+<div class="viewcode-block" id="SDOOperator">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.SDOOperator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SDOOperator</span><span class="p">(</span><span class="n">SpatialOperator</span><span class="p">):</span>
+<div class="viewcode-block" id="SDOOperator.sql_template">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.SDOOperator.sql_template">[docs]</a>
+    <span class="n">sql_template</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%(func)s</span><span class="s2">(</span><span class="si">%(lhs)s</span><span class="s2">, </span><span class="si">%(rhs)s</span><span class="s2">) = &#39;TRUE&#39;&quot;</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="SDODWithin">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.SDODWithin">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SDODWithin</span><span class="p">(</span><span class="n">SpatialOperator</span><span class="p">):</span>
+<div class="viewcode-block" id="SDODWithin.sql_template">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.SDODWithin.sql_template">[docs]</a>
+    <span class="n">sql_template</span> <span class="o">=</span> <span class="s2">&quot;SDO_WITHIN_DISTANCE(</span><span class="si">%(lhs)s</span><span class="s2">, </span><span class="si">%(rhs)s</span><span class="s2">, </span><span class="si">%%</span><span class="s2">s) = &#39;TRUE&#39;&quot;</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="SDODisjoint">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.SDODisjoint">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SDODisjoint</span><span class="p">(</span><span class="n">SpatialOperator</span><span class="p">):</span>
+<div class="viewcode-block" id="SDODisjoint.sql_template">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.SDODisjoint.sql_template">[docs]</a>
+    <span class="n">sql_template</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="s2">&quot;SDO_GEOM.RELATE(</span><span class="si">%%</span><span class="s2">(lhs)s, &#39;DISJOINT&#39;, </span><span class="si">%%</span><span class="s2">(rhs)s, </span><span class="si">%s</span><span class="s2">) = &#39;DISJOINT&#39;&quot;</span>
+        <span class="o">%</span> <span class="n">DEFAULT_TOLERANCE</span>
+    <span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="SDORelate">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.SDORelate">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SDORelate</span><span class="p">(</span><span class="n">SpatialOperator</span><span class="p">):</span>
+<div class="viewcode-block" id="SDORelate.sql_template">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.SDORelate.sql_template">[docs]</a>
+    <span class="n">sql_template</span> <span class="o">=</span> <span class="s2">&quot;SDO_RELATE(</span><span class="si">%(lhs)s</span><span class="s2">, </span><span class="si">%(rhs)s</span><span class="s2">, &#39;mask=</span><span class="si">%(mask)s</span><span class="s2">&#39;) = &#39;TRUE&#39;&quot;</span></div>
+
+
+<div class="viewcode-block" id="SDORelate.check_relate_argument">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.SDORelate.check_relate_argument">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_relate_argument</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">arg</span><span class="p">):</span>
+        <span class="n">masks</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="s2">&quot;TOUCH|OVERLAPBDYDISJOINT|OVERLAPBDYINTERSECT|EQUAL|INSIDE|COVEREDBY|&quot;</span>
+            <span class="s2">&quot;CONTAINS|COVERS|ANYINTERACT|ON&quot;</span>
+        <span class="p">)</span>
+        <span class="n">mask_regex</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;^(</span><span class="si">%s</span><span class="s2">)(\+(</span><span class="si">%s</span><span class="s2">))*$&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">masks</span><span class="p">,</span> <span class="n">masks</span><span class="p">),</span> <span class="n">re</span><span class="o">.</span><span class="n">I</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">mask_regex</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">arg</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Invalid SDO_RELATE mask: &quot;</span><span class="si">%s</span><span class="s1">&quot;&#39;</span> <span class="o">%</span> <span class="n">arg</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SDORelate.as_sql">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.SDORelate.as_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">as_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">connection</span><span class="p">,</span> <span class="n">lookup</span><span class="p">,</span> <span class="n">template_params</span><span class="p">,</span> <span class="n">sql_params</span><span class="p">):</span>
+        <span class="n">template_params</span><span class="p">[</span><span class="s2">&quot;mask&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">sql_params</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">as_sql</span><span class="p">(</span><span class="n">connection</span><span class="p">,</span> <span class="n">lookup</span><span class="p">,</span> <span class="n">template_params</span><span class="p">,</span> <span class="n">sql_params</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="OracleOperations">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.OracleOperations">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">OracleOperations</span><span class="p">(</span><span class="n">BaseSpatialOperations</span><span class="p">,</span> <span class="n">DatabaseOperations</span><span class="p">):</span>
+<div class="viewcode-block" id="OracleOperations.name">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.OracleOperations.name">[docs]</a>
+    <span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;oracle&quot;</span></div>
+
+<div class="viewcode-block" id="OracleOperations.oracle">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.OracleOperations.oracle">[docs]</a>
+    <span class="n">oracle</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+<div class="viewcode-block" id="OracleOperations.disallowed_aggregates">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.OracleOperations.disallowed_aggregates">[docs]</a>
+    <span class="n">disallowed_aggregates</span> <span class="o">=</span> <span class="p">(</span><span class="n">models</span><span class="o">.</span><span class="n">Collect</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">Extent3D</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">MakeLine</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="OracleOperations.Adapter">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.OracleOperations.Adapter">[docs]</a>
+    <span class="n">Adapter</span> <span class="o">=</span> <span class="n">OracleSpatialAdapter</span></div>
+
+
+<div class="viewcode-block" id="OracleOperations.extent">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.OracleOperations.extent">[docs]</a>
+    <span class="n">extent</span> <span class="o">=</span> <span class="s2">&quot;SDO_AGGR_MBR&quot;</span></div>
+
+<div class="viewcode-block" id="OracleOperations.unionagg">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.OracleOperations.unionagg">[docs]</a>
+    <span class="n">unionagg</span> <span class="o">=</span> <span class="s2">&quot;SDO_AGGR_UNION&quot;</span></div>
+
+
+<div class="viewcode-block" id="OracleOperations.from_text">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.OracleOperations.from_text">[docs]</a>
+    <span class="n">from_text</span> <span class="o">=</span> <span class="s2">&quot;SDO_GEOMETRY&quot;</span></div>
+
+
+<div class="viewcode-block" id="OracleOperations.function_names">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.OracleOperations.function_names">[docs]</a>
+    <span class="n">function_names</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;Area&quot;</span><span class="p">:</span> <span class="s2">&quot;SDO_GEOM.SDO_AREA&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;AsGeoJSON&quot;</span><span class="p">:</span> <span class="s2">&quot;SDO_UTIL.TO_GEOJSON&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;AsWKB&quot;</span><span class="p">:</span> <span class="s2">&quot;SDO_UTIL.TO_WKBGEOMETRY&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;AsWKT&quot;</span><span class="p">:</span> <span class="s2">&quot;SDO_UTIL.TO_WKTGEOMETRY&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;BoundingCircle&quot;</span><span class="p">:</span> <span class="s2">&quot;SDO_GEOM.SDO_MBC&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Centroid&quot;</span><span class="p">:</span> <span class="s2">&quot;SDO_GEOM.SDO_CENTROID&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Difference&quot;</span><span class="p">:</span> <span class="s2">&quot;SDO_GEOM.SDO_DIFFERENCE&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Distance&quot;</span><span class="p">:</span> <span class="s2">&quot;SDO_GEOM.SDO_DISTANCE&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Envelope&quot;</span><span class="p">:</span> <span class="s2">&quot;SDO_GEOM_MBR&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;FromWKB&quot;</span><span class="p">:</span> <span class="s2">&quot;SDO_UTIL.FROM_WKBGEOMETRY&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;FromWKT&quot;</span><span class="p">:</span> <span class="s2">&quot;SDO_UTIL.FROM_WKTGEOMETRY&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Intersection&quot;</span><span class="p">:</span> <span class="s2">&quot;SDO_GEOM.SDO_INTERSECTION&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;IsValid&quot;</span><span class="p">:</span> <span class="s2">&quot;SDO_GEOM.VALIDATE_GEOMETRY_WITH_CONTEXT&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Length&quot;</span><span class="p">:</span> <span class="s2">&quot;SDO_GEOM.SDO_LENGTH&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;NumGeometries&quot;</span><span class="p">:</span> <span class="s2">&quot;SDO_UTIL.GETNUMELEM&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;NumPoints&quot;</span><span class="p">:</span> <span class="s2">&quot;SDO_UTIL.GETNUMVERTICES&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Perimeter&quot;</span><span class="p">:</span> <span class="s2">&quot;SDO_GEOM.SDO_LENGTH&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;PointOnSurface&quot;</span><span class="p">:</span> <span class="s2">&quot;SDO_GEOM.SDO_POINTONSURFACE&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Reverse&quot;</span><span class="p">:</span> <span class="s2">&quot;SDO_UTIL.REVERSE_LINESTRING&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;SymDifference&quot;</span><span class="p">:</span> <span class="s2">&quot;SDO_GEOM.SDO_XOR&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Transform&quot;</span><span class="p">:</span> <span class="s2">&quot;SDO_CS.TRANSFORM&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Union&quot;</span><span class="p">:</span> <span class="s2">&quot;SDO_GEOM.SDO_UNION&quot;</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+
+    <span class="c1"># We want to get SDO Geometries as WKT because it is much easier to</span>
+    <span class="c1"># instantiate GEOS proxies from WKT than SDO_GEOMETRY(...) strings.</span>
+    <span class="c1"># However, this adversely affects performance (i.e., Java is called</span>
+    <span class="c1"># to convert to WKT on every query).  If someone wishes to write a</span>
+    <span class="c1"># SDO_GEOMETRY(...) parser in Python, let me know =)</span>
+<div class="viewcode-block" id="OracleOperations.select">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.OracleOperations.select">[docs]</a>
+    <span class="n">select</span> <span class="o">=</span> <span class="s2">&quot;SDO_UTIL.TO_WKBGEOMETRY(</span><span class="si">%s</span><span class="s2">)&quot;</span></div>
+
+
+<div class="viewcode-block" id="OracleOperations.gis_operators">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.OracleOperations.gis_operators">[docs]</a>
+    <span class="n">gis_operators</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;contains&quot;</span><span class="p">:</span> <span class="n">SDOOperator</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="s2">&quot;SDO_CONTAINS&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;coveredby&quot;</span><span class="p">:</span> <span class="n">SDOOperator</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="s2">&quot;SDO_COVEREDBY&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;covers&quot;</span><span class="p">:</span> <span class="n">SDOOperator</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="s2">&quot;SDO_COVERS&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;disjoint&quot;</span><span class="p">:</span> <span class="n">SDODisjoint</span><span class="p">(),</span>
+        <span class="s2">&quot;intersects&quot;</span><span class="p">:</span> <span class="n">SDOOperator</span><span class="p">(</span>
+            <span class="n">func</span><span class="o">=</span><span class="s2">&quot;SDO_OVERLAPBDYINTERSECT&quot;</span>
+        <span class="p">),</span>  <span class="c1"># TODO: Is this really the same as ST_Intersects()?</span>
+        <span class="s2">&quot;equals&quot;</span><span class="p">:</span> <span class="n">SDOOperator</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="s2">&quot;SDO_EQUAL&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;exact&quot;</span><span class="p">:</span> <span class="n">SDOOperator</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="s2">&quot;SDO_EQUAL&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;overlaps&quot;</span><span class="p">:</span> <span class="n">SDOOperator</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="s2">&quot;SDO_OVERLAPS&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;same_as&quot;</span><span class="p">:</span> <span class="n">SDOOperator</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="s2">&quot;SDO_EQUAL&quot;</span><span class="p">),</span>
+        <span class="c1"># Oracle uses a different syntax, e.g., &#39;mask=inside+touch&#39;</span>
+        <span class="s2">&quot;relate&quot;</span><span class="p">:</span> <span class="n">SDORelate</span><span class="p">(),</span>
+        <span class="s2">&quot;touches&quot;</span><span class="p">:</span> <span class="n">SDOOperator</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="s2">&quot;SDO_TOUCH&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;within&quot;</span><span class="p">:</span> <span class="n">SDOOperator</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="s2">&quot;SDO_INSIDE&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;dwithin&quot;</span><span class="p">:</span> <span class="n">SDODWithin</span><span class="p">(),</span>
+    <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="OracleOperations.unsupported_functions">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.OracleOperations.unsupported_functions">[docs]</a>
+    <span class="n">unsupported_functions</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;AsKML&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;AsSVG&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Azimuth&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;ForcePolygonCW&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;GeoHash&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;GeometryDistance&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;IsEmpty&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;LineLocatePoint&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;MakeValid&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;MemSize&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Scale&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;SnapToGrid&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Translate&quot;</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="OracleOperations.geo_quote_name">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.OracleOperations.geo_quote_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">geo_quote_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">geo_quote_name</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="OracleOperations.convert_extent">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.OracleOperations.convert_extent">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">convert_extent</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">clob</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">clob</span><span class="p">:</span>
+            <span class="c1"># Generally, Oracle returns a polygon for the extent -- however,</span>
+            <span class="c1"># it can return a single point if there&#39;s only one Point in the</span>
+            <span class="c1"># table.</span>
+            <span class="n">ext_geom</span> <span class="o">=</span> <span class="n">GEOSGeometry</span><span class="p">(</span><span class="nb">memoryview</span><span class="p">(</span><span class="n">clob</span><span class="o">.</span><span class="n">read</span><span class="p">()))</span>
+            <span class="n">gtype</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">ext_geom</span><span class="o">.</span><span class="n">geom_type</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">gtype</span> <span class="o">==</span> <span class="s2">&quot;Polygon&quot;</span><span class="p">:</span>
+                <span class="c1"># Construct the 4-tuple from the coordinates in the polygon.</span>
+                <span class="n">shell</span> <span class="o">=</span> <span class="n">ext_geom</span><span class="o">.</span><span class="n">shell</span>
+                <span class="n">ll</span><span class="p">,</span> <span class="n">ur</span> <span class="o">=</span> <span class="n">shell</span><span class="p">[</span><span class="mi">0</span><span class="p">][:</span><span class="mi">2</span><span class="p">],</span> <span class="n">shell</span><span class="p">[</span><span class="mi">2</span><span class="p">][:</span><span class="mi">2</span><span class="p">]</span>
+            <span class="k">elif</span> <span class="n">gtype</span> <span class="o">==</span> <span class="s2">&quot;Point&quot;</span><span class="p">:</span>
+                <span class="n">ll</span> <span class="o">=</span> <span class="n">ext_geom</span><span class="o">.</span><span class="n">coords</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span>
+                <span class="n">ur</span> <span class="o">=</span> <span class="n">ll</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span>
+                    <span class="s2">&quot;Unexpected geometry type returned for extent: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">gtype</span>
+                <span class="p">)</span>
+            <span class="n">xmin</span><span class="p">,</span> <span class="n">ymin</span> <span class="o">=</span> <span class="n">ll</span>
+            <span class="n">xmax</span><span class="p">,</span> <span class="n">ymax</span> <span class="o">=</span> <span class="n">ur</span>
+            <span class="k">return</span> <span class="p">(</span><span class="n">xmin</span><span class="p">,</span> <span class="n">ymin</span><span class="p">,</span> <span class="n">xmax</span><span class="p">,</span> <span class="n">ymax</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="OracleOperations.geo_db_type">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.OracleOperations.geo_db_type">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">geo_db_type</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the geometry database type for Oracle. Unlike other spatial</span>
+<span class="sd">        backends, no stored procedure is necessary and it&#39;s the same for all</span>
+<span class="sd">        geometry types.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s2">&quot;MDSYS.SDO_GEOMETRY&quot;</span></div>
+
+
+<div class="viewcode-block" id="OracleOperations.get_distance">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.OracleOperations.get_distance">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_distance</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the distance parameters given the value and the lookup type.</span>
+<span class="sd">        On Oracle, geometry columns with a geodetic coordinate system behave</span>
+<span class="sd">        implicitly like a geography column, and thus meters will be used as</span>
+<span class="sd">        the distance parameter on them.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">value</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="n">value</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">Distance</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">geodetic</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="p">):</span>
+                <span class="n">dist_param</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">m</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">dist_param</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span>
+                    <span class="n">value</span><span class="p">,</span> <span class="n">Distance</span><span class="o">.</span><span class="n">unit_attname</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">units_name</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="p">))</span>
+                <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">dist_param</span> <span class="o">=</span> <span class="n">value</span>
+
+        <span class="c1"># dwithin lookups on Oracle require a special string parameter</span>
+        <span class="c1"># that starts with &quot;distance=&quot;.</span>
+        <span class="k">if</span> <span class="n">lookup_type</span> <span class="o">==</span> <span class="s2">&quot;dwithin&quot;</span><span class="p">:</span>
+            <span class="n">dist_param</span> <span class="o">=</span> <span class="s2">&quot;distance=</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">dist_param</span>
+
+        <span class="k">return</span> <span class="p">[</span><span class="n">dist_param</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="OracleOperations.get_geom_placeholder">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.OracleOperations.get_geom_placeholder">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_geom_placeholder</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">compiler</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;NULL&quot;</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">get_geom_placeholder</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">compiler</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="OracleOperations.spatial_aggregate_name">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.OracleOperations.spatial_aggregate_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">spatial_aggregate_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">agg_name</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the spatial aggregate SQL name.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">agg_name</span> <span class="o">=</span> <span class="s2">&quot;unionagg&quot;</span> <span class="k">if</span> <span class="n">agg_name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;union&quot;</span> <span class="k">else</span> <span class="n">agg_name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">agg_name</span><span class="p">)</span></div>
+
+
+    <span class="c1"># Routines for getting the OGC-compliant models.</span>
+<div class="viewcode-block" id="OracleOperations.geometry_columns">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.OracleOperations.geometry_columns">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">geometry_columns</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.db.backends.oracle.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">OracleGeometryColumns</span>
+
+        <span class="k">return</span> <span class="n">OracleGeometryColumns</span></div>
+
+
+<div class="viewcode-block" id="OracleOperations.spatial_ref_sys">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.OracleOperations.spatial_ref_sys">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">spatial_ref_sys</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.db.backends.oracle.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">OracleSpatialRefSys</span>
+
+        <span class="k">return</span> <span class="n">OracleSpatialRefSys</span></div>
+
+
+<div class="viewcode-block" id="OracleOperations.modify_insert_params">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.OracleOperations.modify_insert_params">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">modify_insert_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">placeholder</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Drop out insert parameters for NULL placeholder. Needed for Oracle Spatial</span>
+<span class="sd">        backend due to #10888.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">placeholder</span> <span class="o">==</span> <span class="s2">&quot;NULL&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">modify_insert_params</span><span class="p">(</span><span class="n">placeholder</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="OracleOperations.get_geometry_converter">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.OracleOperations.get_geometry_converter">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_geometry_converter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expression</span><span class="p">):</span>
+        <span class="n">read</span> <span class="o">=</span> <span class="n">wkb_r</span><span class="p">()</span><span class="o">.</span><span class="n">read</span>
+        <span class="n">srid</span> <span class="o">=</span> <span class="n">expression</span><span class="o">.</span><span class="n">output_field</span><span class="o">.</span><span class="n">srid</span>
+        <span class="k">if</span> <span class="n">srid</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+            <span class="n">srid</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">geom_class</span> <span class="o">=</span> <span class="n">expression</span><span class="o">.</span><span class="n">output_field</span><span class="o">.</span><span class="n">geom_class</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">converter</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">geom</span> <span class="o">=</span> <span class="n">GEOSGeometryBase</span><span class="p">(</span><span class="n">read</span><span class="p">(</span><span class="nb">memoryview</span><span class="p">(</span><span class="n">value</span><span class="o">.</span><span class="n">read</span><span class="p">())),</span> <span class="n">geom_class</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">srid</span><span class="p">:</span>
+                    <span class="n">geom</span><span class="o">.</span><span class="n">srid</span> <span class="o">=</span> <span class="n">srid</span>
+                <span class="k">return</span> <span class="n">geom</span>
+
+        <span class="k">return</span> <span class="n">converter</span></div>
+
+
+<div class="viewcode-block" id="OracleOperations.get_area_att_for_field">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/oracle/operations/index.html#django.contrib.gis.db.backends.oracle.operations.OracleOperations.get_area_att_for_field">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_area_att_for_field</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;sq_m&quot;</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

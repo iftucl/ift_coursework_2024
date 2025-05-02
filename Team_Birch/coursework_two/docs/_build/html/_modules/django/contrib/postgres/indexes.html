@@ -1,0 +1,468 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.contrib.postgres.indexes &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../django.html">django</a></li>
+      <li class="breadcrumb-item active">django.contrib.postgres.indexes</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.contrib.postgres.indexes</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">NotSupportedError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">Func</span><span class="p">,</span> <span class="n">Index</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">cached_property</span>
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;BloomIndex&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;BrinIndex&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;BTreeIndex&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;GinIndex&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;GistIndex&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;HashIndex&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;SpGistIndex&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">PostgresIndex</span><span class="p">(</span><span class="n">Index</span><span class="p">):</span>
+    <span class="nd">@cached_property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">max_name_length</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Allow an index name longer than 30 characters when the suffix is</span>
+        <span class="c1"># longer than the usual 3 character limit. The 30 character limit for</span>
+        <span class="c1"># cross-database compatibility isn&#39;t applicable to PostgreSQL-specific</span>
+        <span class="c1"># indexes.</span>
+        <span class="k">return</span> <span class="n">Index</span><span class="o">.</span><span class="n">max_name_length</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">Index</span><span class="o">.</span><span class="n">suffix</span><span class="p">)</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">suffix</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">schema_editor</span><span class="p">,</span> <span class="n">using</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">check_supported</span><span class="p">(</span><span class="n">schema_editor</span><span class="p">)</span>
+        <span class="n">statement</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">create_sql</span><span class="p">(</span>
+            <span class="n">model</span><span class="p">,</span> <span class="n">schema_editor</span><span class="p">,</span> <span class="n">using</span><span class="o">=</span><span class="s2">&quot; USING </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">using</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">suffix</span><span class="p">),</span> <span class="o">**</span><span class="n">kwargs</span>
+        <span class="p">)</span>
+        <span class="n">with_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_with_params</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">with_params</span><span class="p">:</span>
+            <span class="n">statement</span><span class="o">.</span><span class="n">parts</span><span class="p">[</span><span class="s2">&quot;extra&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot; WITH (</span><span class="si">%s</span><span class="s2">)</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span>
+                <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">with_params</span><span class="p">),</span>
+                <span class="n">statement</span><span class="o">.</span><span class="n">parts</span><span class="p">[</span><span class="s2">&quot;extra&quot;</span><span class="p">],</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">statement</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_supported</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">schema_editor</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_with_params</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[]</span>
+
+
+<div class="viewcode-block" id="BloomIndex">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.BloomIndex">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BloomIndex</span><span class="p">(</span><span class="n">PostgresIndex</span><span class="p">):</span>
+<div class="viewcode-block" id="BloomIndex.suffix">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.BloomIndex.suffix">[docs]</a>
+    <span class="n">suffix</span> <span class="o">=</span> <span class="s2">&quot;bloom&quot;</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">expressions</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="p">(),</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">expressions</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fields</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">32</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Bloom indexes support a maximum of 32 fields.&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">columns</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;BloomIndex.columns must be a list or tuple.&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">columns</span><span class="p">)</span> <span class="o">&gt;</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fields</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;BloomIndex.columns cannot have more values than fields.&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">(</span><span class="mi">0</span> <span class="o">&lt;</span> <span class="n">col</span> <span class="o">&lt;=</span> <span class="mi">4095</span> <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">columns</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;BloomIndex.columns must contain integers from 1 to 4095.&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">length</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="mi">0</span> <span class="o">&lt;</span> <span class="n">length</span> <span class="o">&lt;=</span> <span class="mi">4096</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;BloomIndex.length must be None or an integer from 1 to 4096.&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+<div class="viewcode-block" id="BloomIndex.length">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.BloomIndex.length">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">length</span> <span class="o">=</span> <span class="n">length</span></div>
+
+<div class="viewcode-block" id="BloomIndex.columns">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.BloomIndex.columns">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="n">columns</span></div>
+
+
+<div class="viewcode-block" id="BloomIndex.deconstruct">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.BloomIndex.deconstruct">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">deconstruct</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">path</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">deconstruct</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">length</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;length&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">length</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;columns&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">columns</span>
+        <span class="k">return</span> <span class="n">path</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span></div>
+
+
+<div class="viewcode-block" id="BloomIndex.get_with_params">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.BloomIndex.get_with_params">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_with_params</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">with_params</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">length</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">with_params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;length = </span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">length</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="n">with_params</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span>
+                <span class="s2">&quot;col</span><span class="si">%d</span><span class="s2"> = </span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">columns</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">with_params</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="BrinIndex">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.BrinIndex">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BrinIndex</span><span class="p">(</span><span class="n">PostgresIndex</span><span class="p">):</span>
+<div class="viewcode-block" id="BrinIndex.suffix">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.BrinIndex.suffix">[docs]</a>
+    <span class="n">suffix</span> <span class="o">=</span> <span class="s2">&quot;brin&quot;</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">expressions</span><span class="p">,</span> <span class="n">autosummarize</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">pages_per_range</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">):</span>
+        <span class="k">if</span> <span class="n">pages_per_range</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">pages_per_range</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;pages_per_range must be None or a positive integer&quot;</span><span class="p">)</span>
+<div class="viewcode-block" id="BrinIndex.autosummarize">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.BrinIndex.autosummarize">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">autosummarize</span> <span class="o">=</span> <span class="n">autosummarize</span></div>
+
+<div class="viewcode-block" id="BrinIndex.pages_per_range">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.BrinIndex.pages_per_range">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pages_per_range</span> <span class="o">=</span> <span class="n">pages_per_range</span></div>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">expressions</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="BrinIndex.deconstruct">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.BrinIndex.deconstruct">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">deconstruct</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">path</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">deconstruct</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">autosummarize</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;autosummarize&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">autosummarize</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">pages_per_range</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;pages_per_range&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pages_per_range</span>
+        <span class="k">return</span> <span class="n">path</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span></div>
+
+
+<div class="viewcode-block" id="BrinIndex.get_with_params">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.BrinIndex.get_with_params">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_with_params</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">with_params</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">autosummarize</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">with_params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="s2">&quot;autosummarize = </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="s2">&quot;on&quot;</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">autosummarize</span> <span class="k">else</span> <span class="s2">&quot;off&quot;</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">pages_per_range</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">with_params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;pages_per_range = </span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">pages_per_range</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">with_params</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="BTreeIndex">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.BTreeIndex">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BTreeIndex</span><span class="p">(</span><span class="n">PostgresIndex</span><span class="p">):</span>
+<div class="viewcode-block" id="BTreeIndex.suffix">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.BTreeIndex.suffix">[docs]</a>
+    <span class="n">suffix</span> <span class="o">=</span> <span class="s2">&quot;btree&quot;</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">expressions</span><span class="p">,</span> <span class="n">fillfactor</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<div class="viewcode-block" id="BTreeIndex.fillfactor">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.BTreeIndex.fillfactor">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fillfactor</span> <span class="o">=</span> <span class="n">fillfactor</span></div>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">expressions</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="BTreeIndex.deconstruct">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.BTreeIndex.deconstruct">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">deconstruct</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">path</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">deconstruct</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">fillfactor</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;fillfactor&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fillfactor</span>
+        <span class="k">return</span> <span class="n">path</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span></div>
+
+
+<div class="viewcode-block" id="BTreeIndex.get_with_params">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.BTreeIndex.get_with_params">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_with_params</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">with_params</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">fillfactor</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">with_params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;fillfactor = </span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">fillfactor</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">with_params</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="GinIndex">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.GinIndex">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">GinIndex</span><span class="p">(</span><span class="n">PostgresIndex</span><span class="p">):</span>
+<div class="viewcode-block" id="GinIndex.suffix">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.GinIndex.suffix">[docs]</a>
+    <span class="n">suffix</span> <span class="o">=</span> <span class="s2">&quot;gin&quot;</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">expressions</span><span class="p">,</span> <span class="n">fastupdate</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">gin_pending_list_limit</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">):</span>
+<div class="viewcode-block" id="GinIndex.fastupdate">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.GinIndex.fastupdate">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fastupdate</span> <span class="o">=</span> <span class="n">fastupdate</span></div>
+
+<div class="viewcode-block" id="GinIndex.gin_pending_list_limit">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.GinIndex.gin_pending_list_limit">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">gin_pending_list_limit</span> <span class="o">=</span> <span class="n">gin_pending_list_limit</span></div>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">expressions</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="GinIndex.deconstruct">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.GinIndex.deconstruct">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">deconstruct</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">path</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">deconstruct</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">fastupdate</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;fastupdate&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fastupdate</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">gin_pending_list_limit</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;gin_pending_list_limit&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">gin_pending_list_limit</span>
+        <span class="k">return</span> <span class="n">path</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span></div>
+
+
+<div class="viewcode-block" id="GinIndex.get_with_params">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.GinIndex.get_with_params">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_with_params</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">with_params</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">gin_pending_list_limit</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">with_params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="s2">&quot;gin_pending_list_limit = </span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">gin_pending_list_limit</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">fastupdate</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">with_params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;fastupdate = </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="s2">&quot;on&quot;</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">fastupdate</span> <span class="k">else</span> <span class="s2">&quot;off&quot;</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">with_params</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="GistIndex">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.GistIndex">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">GistIndex</span><span class="p">(</span><span class="n">PostgresIndex</span><span class="p">):</span>
+<div class="viewcode-block" id="GistIndex.suffix">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.GistIndex.suffix">[docs]</a>
+    <span class="n">suffix</span> <span class="o">=</span> <span class="s2">&quot;gist&quot;</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">expressions</span><span class="p">,</span> <span class="n">buffering</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">fillfactor</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<div class="viewcode-block" id="GistIndex.buffering">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.GistIndex.buffering">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">buffering</span> <span class="o">=</span> <span class="n">buffering</span></div>
+
+<div class="viewcode-block" id="GistIndex.fillfactor">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.GistIndex.fillfactor">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fillfactor</span> <span class="o">=</span> <span class="n">fillfactor</span></div>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">expressions</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="GistIndex.deconstruct">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.GistIndex.deconstruct">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">deconstruct</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">path</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">deconstruct</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">buffering</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;buffering&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">buffering</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">fillfactor</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;fillfactor&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fillfactor</span>
+        <span class="k">return</span> <span class="n">path</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span></div>
+
+
+<div class="viewcode-block" id="GistIndex.get_with_params">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.GistIndex.get_with_params">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_with_params</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">with_params</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">buffering</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">with_params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;buffering = </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="s2">&quot;on&quot;</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">buffering</span> <span class="k">else</span> <span class="s2">&quot;off&quot;</span><span class="p">))</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">fillfactor</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">with_params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;fillfactor = </span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">fillfactor</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">with_params</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="HashIndex">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.HashIndex">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">HashIndex</span><span class="p">(</span><span class="n">PostgresIndex</span><span class="p">):</span>
+<div class="viewcode-block" id="HashIndex.suffix">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.HashIndex.suffix">[docs]</a>
+    <span class="n">suffix</span> <span class="o">=</span> <span class="s2">&quot;hash&quot;</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">expressions</span><span class="p">,</span> <span class="n">fillfactor</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<div class="viewcode-block" id="HashIndex.fillfactor">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.HashIndex.fillfactor">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fillfactor</span> <span class="o">=</span> <span class="n">fillfactor</span></div>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">expressions</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="HashIndex.deconstruct">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.HashIndex.deconstruct">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">deconstruct</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">path</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">deconstruct</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">fillfactor</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;fillfactor&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fillfactor</span>
+        <span class="k">return</span> <span class="n">path</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span></div>
+
+
+<div class="viewcode-block" id="HashIndex.get_with_params">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.HashIndex.get_with_params">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_with_params</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">with_params</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">fillfactor</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">with_params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;fillfactor = </span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">fillfactor</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">with_params</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="SpGistIndex">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.SpGistIndex">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SpGistIndex</span><span class="p">(</span><span class="n">PostgresIndex</span><span class="p">):</span>
+<div class="viewcode-block" id="SpGistIndex.suffix">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.SpGistIndex.suffix">[docs]</a>
+    <span class="n">suffix</span> <span class="o">=</span> <span class="s2">&quot;spgist&quot;</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">expressions</span><span class="p">,</span> <span class="n">fillfactor</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<div class="viewcode-block" id="SpGistIndex.fillfactor">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.SpGistIndex.fillfactor">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fillfactor</span> <span class="o">=</span> <span class="n">fillfactor</span></div>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">expressions</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="SpGistIndex.deconstruct">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.SpGistIndex.deconstruct">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">deconstruct</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">path</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">deconstruct</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">fillfactor</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;fillfactor&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fillfactor</span>
+        <span class="k">return</span> <span class="n">path</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span></div>
+
+
+<div class="viewcode-block" id="SpGistIndex.get_with_params">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.SpGistIndex.get_with_params">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_with_params</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">with_params</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">fillfactor</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">with_params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;fillfactor = </span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">fillfactor</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">with_params</span></div>
+
+
+<div class="viewcode-block" id="SpGistIndex.check_supported">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/postgres/indexes/index.html#django.contrib.postgres.indexes.SpGistIndex.check_supported">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_supported</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">schema_editor</span><span class="p">):</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">include</span>
+            <span class="ow">and</span> <span class="ow">not</span> <span class="n">schema_editor</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">supports_covering_spgist_indexes</span>
+        <span class="p">):</span>
+            <span class="k">raise</span> <span class="n">NotSupportedError</span><span class="p">(</span><span class="s2">&quot;Covering SP-GiST indexes require PostgreSQL 14+.&quot;</span><span class="p">)</span></div>
+</div>
+
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">OpClass</span><span class="p">(</span><span class="n">Func</span><span class="p">):</span>
+    <span class="n">template</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%(expressions)s</span><span class="s2"> </span><span class="si">%(name)s</span><span class="s2">&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
