@@ -1,0 +1,153 @@
+Indicator Framework
+===================
+===================
+
+
+Sustainability Indicator Framework
+--------------------------------------
+
+Indicators Chosen
+^^^^^^^^^^^^^^^^^^^^^^^
+To enable structured extraction and analysis of Corporate Sustainability Reports (CSRs), the system adopts a classification framework that organizes sustainability data into three well-established categories: Environmental, Social, and Governance (ESG). This tripartite structure is not arbitrary—it reflects a globally recognized convention adopted by leading frameworks such as the Global Reporting Initiative (GRI), Sustainability Accounting Standards Board (SASB), and the Task Force on Climate-related Financial Disclosures (TCFD). Together, these categories offer a holistic view of a corporation’s sustainability posture, encompassing operational, ethical, and strategic dimensions (GRI, 2023; Kotsantonis et al., 2016).
+Rationale for ESG Categorization
+Environmental (E) indicators assess a company’s impact on the natural world. These include greenhouse gas (GHG) emissions, energy and water use, and waste generation. Such metrics are central to evaluating climate risk exposure and compliance with decarbonization targets (IPCC, 2021).
+Social (S) indicators measure an organization’s treatment of its employees, communities, and stakeholders. This includes workforce diversity, health and safety, training, and community investment—key signals of social responsibility and long-term reputation (McKinsey , 2022).
+Governance (G) indicators capture decision-making structures, board composition, transparency, and accountability. Strong governance enhances investor confidence and is often linked to financial resilience (OECD, 2020).
+Rationale for Indicators included in the framework
+Prevalence in CSR Reports across diverse industries.
+Alignment with Global Standards, ensuring consistency with GRI, SASB, CDP, etc.
+Extractability - preference for metrics presented in structured formats like tables.
+Comparability, supported by unit standardization and definitional clarity.
+Material Relevance, reflecting stakeholder priorities and regulatory scrutiny.
+Applied Example: Environmental Metric Extraction
+For environmental metrics, greenhouse gas (GHG) emissions serve as a central focus. A practical case from Apple Inc.’s 2024 CSR report illustrates the system’s extraction process in action:
+Scope 1 emissions data, covering the years 2017 to 2021, were extracted from page 2 of the source PDF. The values—ranging from 47,050 to 57,440 metric tons of CO₂ equivalent (tCO₂e)—were parsed from tabular formats, standardized to a unified unit (tCO₂e), and persisted into MongoDB under the csr_reports collection. Each entry is linked to a lineage record (csr_lineage) capturing pipeline execution metadata: the source path (minio/2024/Apple Inc..pdf), processing duration (36.75 seconds), and output file locations (filtered PDF and structured JSON). This design guarantees full traceability, auditability, and data lineage control for ESG analytics.
+
+.. raw:: html
+
+    <table border="1" style="border-collapse: collapse;">
+    <thead>
+        <tr><th>Theme</th><th>Indicator Name</th><th>Rationale for Selection</th></tr>
+    </thead>
+    <tbody>
+        <tr><td>Environmental</td><td>Scope 1 Emissions</td><td>Universally disclosed; key to climate risk assessments</td></tr>
+        <tr><td>Environmental</td><td>Scope 2 Emissions (Location-Based)</td><td>Captures indirect emissions linked to electricity consumption</td></tr>
+        <tr><td>Environmental</td><td>Scope 2 Emissions (Market-Based)</td><td>Required under GHG Protocol for emission factor selection</td></tr>
+        <tr><td>Environmental</td><td>Scope 3 Emissions</td><td>Represents majority of total emissions for most companies</td></tr>
+        <tr><td>Environmental</td><td>GHG Reduction Target</td><td>Tracks forward-looking climate ambitions</td></tr>
+        <tr><td>Environmental</td><td>Total Energy Consumption</td><td>Material for energy-intensive industries</td></tr>
+        <tr><td>Environmental</td><td>Total Water Consumption</td><td>Relevant for sectors with high water dependency</td></tr>
+        <tr><td>Environmental</td><td>Total Waste Generated</td><td>Baseline for circularity and waste reduction efforts</td></tr>
+        <tr><td>Environmental</td><td>Waste Diversion Rate</td><td>Reflects waste management effectiveness</td></tr>
+        <tr><td>Social</td><td>Gender Representation (Women %)</td><td>Proxy for diversity, equity, and inclusion metrics</td></tr>
+        <tr><td>Social</td><td>Training Hours per Employee</td><td>Indicates investment in human capital</td></tr>
+        <tr><td>Social</td><td>Community Investment (Cash)</td><td>Social responsibility indicator; aligns with GRI 203</td></tr>
+        <tr><td>Governance</td><td>Number of Board Members</td><td>Structural attribute supporting board analysis</td></tr>
+        <tr><td>Governance</td><td>Women on Board (%)</td><td>Common governance transparency metric</td></tr>
+        <tr><td>Governance</td><td>Independent Directors (%)</td><td>Assesses board independence and accountability</td></tr>
+    </tbody>
+    </table>
+
+Table 1 : Representative ESG Indicators and Justification
+
+Data Catalogue
+^^^^^^^^^^^^^^^^^^^^
+The data catalogue serves as a centralized reference for all sustainability indicators recognized and processed by the pipeline. It is a critical component in the semantic normalization and validation phase (Pass-2), ensuring that extracted records align with predefined sustainability concepts. Each indicator entry defines the expected thematic area, record type (metric or target), unit of measurement, and a brief description.
+This catalogue supports several key system functions:
+Indicator name validation to prevent erroneous extractions
+Record classification as either a metric or target
+Unit standardization across documents
+Filtering of invalid or out-of-scope content during post-processing
+Below is the summary of sustainability indicator catalogue:
+
+.. raw:: html
+
+    <table border="1" style="border-collapse: collapse;">
+    <thead>
+        <tr><th>Indicator_id</th><th>Indicator_name</th><th>Thematic_area</th><th>Record_type</th><th>Unit</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+        <tr><td>scope1_emissions</td><td>Scope 1 Emissions</td><td>Environment</td><td>metric</td><td>tCO₂e</td><td>Direct emissions from owned or controlled sources</td></tr>
+        <tr><td>scope2_emissions_location_based</td><td>Scope 2 Emissions (Location-Based)</td><td>Environment</td><td>metric</td><td>tCO₂e</td><td>Indirect emissions from purchased electricity, heat, or steam</td></tr>
+        <tr><td>scope2_emissions_market_based</td><td>Scope 2 Emissions (Market-Based)</td><td>Environment</td><td>metric</td><td>tCO₂e</td><td>Indirect emissions using market-based accounting</td></tr>
+        <tr><td>scope3_emissions</td><td>Scope 3 Emissions</td><td>Environment</td><td>metric</td><td>tCO₂e</td><td>All other indirect emissions in the value chain</td></tr>
+        <tr><td>ghg_reduction_target</td><td>GHG Reduction Target</td><td>Environment</td><td>target</td><td>%</td><td>Commitment to reduce GHG emissions by a specified percentage</td></tr>
+        <tr><td>net_zero_target_year</td><td>Net-Zero Target Year</td><td>Environment</td><td>target</td><td>year</td><td>Year by which the company aims to reach net-zero emissions</td></tr>
+        <tr><td>total_electricity_consumption</td><td>Total Electricity Consumption</td><td>Environment</td><td>metric</td><td>MWh</td><td>Total annual electricity usage</td></tr>
+        <tr><td>renewable_electricity_share</td><td>Renewable Electricity Share</td><td>Environment</td><td>metric</td><td>%</td><td>Percentage of electricity from renewable sources</td></tr>
+        <tr><td>energy_intensity_per_revenue</td><td>Energy Intensity per Revenue</td><td>Environment</td><td>metric</td><td>MWh/$M</td><td>Electricity consumption normalized by revenue</td></tr>
+        <tr><td>total_water_withdrawal</td><td>Total Water Withdrawal</td><td>Environment</td><td>metric</td><td>ML</td><td>Total volume of water withdrawn</td></tr>
+        <tr><td>water_recycled_reused</td><td>Water Recycled / Reused</td><td>Environment</td><td>metric</td><td>ML</td><td>Amount of water reused or recycled</td></tr>
+        <tr><td>total_waste_generated</td><td>Total Waste Generated</td><td>Environment</td><td>metric</td><td>tonnes</td><td>Total operational waste generated</td></tr>
+        <tr><td>waste_diversion_rate</td><td>Waste Diversion Rate</td><td>Environment</td><td>metric</td><td>%</td><td>Percentage of waste diverted from landfills</td></tr>
+        <tr><td>gender_representation_women_percent</td><td>Gender Representation (Women %)</td><td>Social</td><td>metric</td><td>%</td><td>Female representation in workforce</td></tr>
+        <tr><td>avg_training_hours_per_employee</td><td>Average Training Hours per Employee</td><td>Social</td><td>metric</td><td>hours</td><td>Average annual training hours per employee</td></tr>
+        <tr><td>community_investment_cash</td><td>Community Investment (Cash)</td><td>Social</td><td>metric</td><td>$</td><td>Total monetary donations or investments in communities</td></tr>
+        <tr><td>employee_volunteering_hours</td><td>Employee Volunteering Hours</td><td>Social</td><td>metric</td><td>hours</td><td>Cumulative hours employees spent volunteering</td></tr>
+        <tr><td>board_members_count</td><td>Number of Board Members</td><td>Governance</td><td>metric</td><td>count</td><td>Total board size</td></tr>
+        <tr><td>women_directors_percent</td><td>Women Directors (%)</td><td>Governance</td><td>metric</td><td>%</td><td>Percentage of board members who are women</td></tr>
+        <tr><td>independent_directors_percent</td><td>Independent Directors (%)</td><td>Governance</td><td>metric</td><td>%</td><td>Percentage of board composed of independent directors</td></tr>
+    </tbody>
+    </table>
+
+Table 2: Sustainability Indicator Catalogue Summary
+
+Data Dictionary
+^^^^^^^^^^^^^^^^^^^^^
+This section outlines the data schema used in the csr_reports MongoDB collection, which serves as the final structured output of the CSR parsing pipeline. As seen from Figure 4, rhe data dictionary provides a complete definition of each field within the JSON documents, including field name, data type, whether the field is required, and a concise description. It ensures clarity and consistency across all processed records, supports downstream analytics, and facilitates schema validation and auditability.
+
+.. raw:: html
+
+    <table border="1" style="border-collapse: collapse;">
+    <thead>
+        <tr><th>Field</th><th>Type</th><th>Requirement</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+        <tr><td>company_id</td><td>ObjectId</td><td>Yes</td><td>Foreign key referencing dim_companies._id</td></tr>
+        <tr><td>company_name</td><td>string</td><td>Yes</td><td>Human-readable company name</td></tr>
+        <tr><td>report_year</td><td>integer</td><td>Yes</td><td>Fiscal year of the sustainability report</td></tr>
+        <tr><td>thematic_area</td><td>string</td><td>Yes</td><td>One of “Environment”, “Social”, or “Governance”</td></tr>
+        <tr><td>sub_category</td><td>string</td><td>Yes</td><td>LLM-derived subcategory or fallback to indicator_name</td></tr>
+        <tr><td>indicator_id</td><td>string</td><td>Yes</td><td>Slugified machine-readable ID based on indicator_name</td></tr>
+        <tr><td>indicator_name</td><td>string</td><td>Yes</td><td>Human-readable name of the KPI or commitment</td></tr>
+        <tr><td>indicator_year</td><td>integer</td><td>Yes</td><td>Year this indicator refers to (derived from years[]; fallback logic applies)</td></tr>
+        <tr><td>years</td><td>integer / integer[]</td><td>Conditional</td><td>Applies to metric records; null for target records</td></tr>
+        <tr><td>values_numeric</td><td>number / number[]</td><td>Conditional</td><td>Numeric value(s) for metrics; null if not extractable</td></tr>
+        <tr><td>values_text</td><td>string / string[]</td><td>Conditional</td><td>Raw textual data when numeric parsing fails</td></tr>
+        <tr><td>unit</td><td>string</td><td>Conditional</td><td>Measurement unit (e.g., “tCO₂e”, “MWh”, “%”); may be null for commitments</td></tr>
+        <tr><td>goal_text</td><td>string</td><td>Conditional</td><td>Narrative description of the target commitment</td></tr>
+        <tr><td>progress_text</td><td>string / null</td><td>No</td><td>Summary of progress toward the target</td></tr>
+        <tr><td>target_value</td><td>number / null</td><td>Conditional</td><td>Numerical representation of target (e.g., 30 for ‘30% reduction’)</td></tr>
+        <tr><td>target_unit</td><td>string / null</td><td>Conditional</td><td>Unit of the target value</td></tr>
+        <tr><td>baseline_year</td><td>integer / null</td><td>No</td><td>Year used as baseline for comparison</td></tr>
+        <tr><td>target_year</td><td>integer / null</td><td>No</td><td>Deadline year for the target</td></tr>
+        <tr><td>page_number</td><td>integer[]</td><td>Yes</td><td>Page number(s) where the data appears in the source PDF</td></tr>
+        <tr><td>source</td><td>string / null</td><td>No</td><td>Section title or table caption from the PDF</td></tr>
+        <tr><td>ingested_at</td><td>date</td><td>Yes</td><td>Timestamp of data ingestion into the system</td></tr>
+    </tbody>
+    </table>
+
+Table 3:Data Dictionary Summary
+
+Data Lineage
+^^^^^^^^^^^^^^^^^^
+To ensure transparency, traceability, and auditability in ESG data extraction, the framework embeds metadata tracking at every stage of the pipeline. Every document processed by the system results in a dedicated lineage entry in the csr_lineage collection within MongoDB, capturing both technical execution details and validation outcomes.
+Lineage Metadata Contents
+The following metadata fields are recorded for each document:
+Object Key: Unique file identifier within MinIO (e.g., csr/2023/CompanyA_Report.pdf)
+Runtime Timestamp: ISO timestamp of pipeline execution (e.g., 2025-04-29T10:15:00Z)
+Model Versions: Specific LLM models used during Pass-1 and Pass-2 (e.g., ‘pass1’: scout-17b-16e, ‘pass2’: maverick-17b-128e)
+Output Paths: Locations of intermediate and final outputs (e.g., raw and standardized JSON files)
+Validation Summary: Summary of extraction results (e.g., 12 passed, 1 failed)
+Status: Success or failure flag; includes error tracebacks if extraction fails
+Version Tag: Version number of the pipeline (e.g., v1.0), used to track changes in extraction logic over time
+
+Lineage Use Cases and Benefits
+This lineage data is essential for supporting system transparency (Larrucea et al., 2021). It enables precise auditing of each indicator’s source and transformation history. In debugging contexts, developers can isolate problematic files, understand the conditions under which errors occurred, and rerun extractions with revised settings. In long-term operations, lineage records form the basis for selective reprocessing as models evolve or additional indicators are introduced.
+Lineage metadata enables a wide range of critical system functions:
+Auditability: Analysts and auditors can trace each extracted indicator back to its original PDF source, extraction method, model version, and execution time.
+Change Tracking: When CSR reports are updated or the extraction logic evolves, version-tagged lineage allows comparison of new and previous outputs, aiding in impact assessment.
+Selective Reprocessing: Instead of reprocessing the entire database, lineage metadata allows targeted re-ingestion of only those documents affected by schema changes, model updates, or extraction errors.
+Error Diagnosis: In debugging contexts, developers can inspect failed validation logs or traceback messages to isolate specific failure modes.
+Integration with Validation and Reporting Logic
+The csr_lineage records are tightly coupled with entries in the csr_reports collection, ensuring that each structured metric has a fully traceable origin. Metadata fields such as page_number, source, and ingested_at provide additional resolution, linking individual indicators to their document location and processing context. This level of granularity supports robust ESG auditing, version control, and confidence in longitudinal data analysis.

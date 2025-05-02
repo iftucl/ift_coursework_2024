@@ -1,0 +1,8 @@
+Introduction
+============
+============
+
+Introduction
+Environmental, Social, and Governance (ESG) information plays an increasingly important role for investors, regulators, and other stakeholders. Yet despite its significance, most Corporate Sustainability Reports (CSRs) are still published in unstructured formats like PDFs, making it difficult to extract and analyze the data efficiently. Manual extraction not only consumes time and resources but also leads to inconsistencies in key metrics across companies and industries.
+To overcome these challenges, we developed an automated processing pipeline designed to turn raw CSR files into structured datasets. The system starts by uploading reports into MinIO, a scalable object store, and uses a batch-processing engine to handle each document. Optical Character Recognition (OCR) and layout analysis are performed using Docling and TableFormer, after which a two-stage language model process extracts and standardizes relevant data. The first model identifies potential metrics and figures, while the second refines the results by applying consistent definitions, units, and formats. Processed data is saved into MongoDB, along with metadata that tracks the source, processing details, and model versions. The system also includes fallback logic to fill in missing values and ensure quality.
+Overall, this solution offers a practical way to improve the speed, consistency, and transparency of ESG data extraction, making it more suitable for real-world analysis and reporting.
