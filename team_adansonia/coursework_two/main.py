@@ -311,5 +311,5 @@ def main():
 
 # Entry point
 if __name__ == "__main__":
-    symbols_with_years = [("BLL", "2022")]
+    symbols_with_years = [("MMM", "2022")]
     asyncio.run(run_main_for_symbols(symbols_with_years))
