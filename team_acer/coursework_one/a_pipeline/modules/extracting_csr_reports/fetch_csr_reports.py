@@ -15,8 +15,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 
 from ..minio_writer.store_minio import ensure_minio_bucket, check_minio_exists, upload_to_minio
-from ..postgres_writer.store_postgres import check_if_report_exists, store_metadata_in_postgres
-
+from ..postgres_writer.store_postgres import check_if_report_exists, store_metadata_in_postgres, create_csr_metadata_table_if_not_exists, store_indicators_in_postgres, create_csr_indicators_table_if_not_exists, indicators_exist
+from ..indicators.indicator_extractors import IndicatorExtractor
 # =============================
 #        CONFIGURATION
 # =============================
@@ -141,37 +141,58 @@ def extract_year_from_url(url):
 
 def validate_report(file_path, expected_security, expected_year):
     """
-    Validate CSR report by checking pages progressively.
-    
-    1. Parse the first page → if match, save.
-    2. If no match, parse first 2 pages → if match, save.
-    3. If no match, parse first 3 pages → if match, save.
-    4. If no match, parse first 4 pages → if match, save.
-    5. If no match, parse first 5 pages → if match, save.
-    6. If no match, switch to backup.
-    7. If backup also fails, print 'Report Not Found'.
+    Validates a CSR report by checking:
+    - Expected (shortened) name and year on early pages.
+    - CSR/ESG/Sustainability keywords.
+    - PDF metadata or strong report header detection.
     """
-    print(f"🔍 Validating report: {file_path} for {expected_security} ({expected_year})...")
+
+    print(f"🔍 Validating: {file_path} for {expected_security} ({expected_year})")
+
+    # Use only the first word of the company name for relaxed matching
+    short_name = expected_security.split()[0].lower()
+
+    keywords = [
+        "sustainability report", "csr report", "esg report",
+        "corporate responsibility report", "non-financial report",
+        "environmental social governance", "corporate social responsibility",
+        "sustainability", "corporate responsibility", "impact report",
+        "sustainability review"
+    ]
 
     try:
         with pdfplumber.open(file_path) as pdf:
-            text = ""
+            # --- 1. Metadata Title ---
+            meta_title = pdf.metadata.get("Title", "") or ""
+            if short_name in meta_title.lower() and str(expected_year) in meta_title:
+                print("✅ Matched in PDF metadata title")
+                return True
 
-            for i in range(1, 6):  # ✅ Parse progressively (1 → 2 → 3 → 4 → 5 pages)
-                for page_num in range(i):  
-                    page_text = pdf.pages[page_num].extract_text() if len(pdf.pages) > page_num else ""
-                    if page_text:
-                        text += page_text.lower()
+            # --- 2. First 5 pages ---
+            for i in range(min(5, len(pdf.pages))):
+                text = pdf.pages[i].extract_text()
+                if not text:
+                    continue
+                lower_text = text.lower()
 
-                if expected_security.lower() in text and str(expected_year) in text:
-                    print(f"✅ Report {file_path} is VALID after checking {i} page(s).")
-                    return True  # ✅ Save the report if match found
+                has_name = short_name in lower_text
+                has_year = str(expected_year) in lower_text
+                has_csr_kw = any(kw in lower_text for kw in keywords)
 
-        print(f"❌ Report {file_path} is INVALID. Trying backup...")
-        return False  # ❌ Move to backup
+                strong_header = re.search(
+                    r"(sustainability|csr|esg|non-financial|responsibility|impact)[\s\-:]*report[\s\-:]*20[0-9]{2}",
+                    lower_text
+                )
+
+                if has_name and has_year and (has_csr_kw or strong_header):
+                    print(f"✅ Matched on page {i+1} with CSR indicators and name '{short_name}'")
+                    return True
+
+            print("❌ Failed robust validation: CSR content or company name/year not found.")
+            return False
 
     except Exception as e:
-        print(f"❌ Validation Error for {file_path}: {e}")
+        print(f"❌ Error while validating report: {e}")
         return False
     
 # =============================
@@ -223,9 +244,40 @@ def process_company(symbol, security, region, country, sector, industry):
         print(f"🔄 Processing {security} ({year})...")
 
         if report_already_exists(region, country, sector, industry, symbol, year):
-            print(f"✅ Report already exists for {security} ({year}), skipping.")
-            continue
+            if indicators_exist(symbol, year):
+                print(f"✅ Report and indicators already exist for {security} ({year}), skipping.")
+                continue
 
+            print(f"🟡 Report exists for {security} ({year}), but indicators are missing. Re-extracting...")
+
+            # Attempt to load the saved report from downloaded_reports
+            file_path = f"downloaded_reports/{security.replace(' ', '_')}_{year}.pdf"
+            if not os.path.exists(file_path):
+                print(f"⚠️ Local copy not found: {file_path}")
+                print(f"❌ Skipping {security} ({year}) — local report needed to extract indicators.")
+                continue
+
+            extractor = IndicatorExtractor(file_path)
+            indicators = extractor.extract_all(country=country)
+
+            store_indicators_in_postgres(
+                symbol, security, year, region, country, sector, industry,
+                water_con=indicators["water"].get("standardised_mcm"),
+                donation_amt=indicators["donation"].get("donation"),
+                waste_gen=indicators["waste"].get("standardised_mt"),
+                renewable_mwh=indicators["renewable"].get("amount"),
+                renewable_pct=indicators["renewable"].get("percentage"),
+                air_emissions_nox=indicators["air"].get("nox"),
+                air_emissions_sox=indicators["air"].get("sox"),
+                air_emissions_voc=indicators["air"].get("voc"),
+            )
+
+            print(f"✅ Re-extracted and stored missing indicators for {security} ({year})")
+            continue  # ✅ Skip full scraping pipeline for this year
+
+        # ------------------------
+        # Normal scraping pipeline
+        # ------------------------
         pdf_links = google_search(security, year)
         if not pdf_links:
             print(f"⚠️ Google API failed, using backup scraper for {security} ({year})...")
@@ -240,13 +292,35 @@ def process_company(symbol, security, region, country, sector, industry):
             detected_year = extract_year_from_url(pdf_url) or year
             file_path = download_pdf(pdf_url, security, detected_year)
 
-            if file_path and validate_report(file_path, security, detected_year):  
+            if file_path and validate_report(file_path, security, detected_year):
                 minio_url = upload_to_minio(file_path, region, country, sector, industry, security, detected_year)
                 if minio_url:
                     store_metadata_in_postgres(symbol, security, detected_year, region, country, sector, industry, minio_url)
+
+                    extractor = IndicatorExtractor(file_path)
+                    indicators = extractor.extract_all(country=country, target_year=year)
+
+                    store_indicators_in_postgres(
+                        symbol, security, detected_year, region, country, sector, industry,
+                        scope1=indicators["scope"].get("scope_1"),
+                        scope2=indicators["scope"].get("scope_2"),
+                        scope3=indicators["scope"].get("scope_3"),
+                        total_emissions=indicators["scope"].get("total_emissions"),
+                        water_con=indicators["water"].get("standardised_mcm"),
+                        currency=indicators.get("currency"),
+                        donation_amt=indicators["donation"].get("donation"),
+                        waste_gen=indicators["waste"].get("standardised_mt"),
+                        renewable_mwh=indicators["renewable"].get("standardised_mwh"),
+                        renewable_pct=indicators["renewable"].get("percentage"),
+                        air_emissions_nox=indicators["air"].get("standardised_nox"),
+                        air_emissions_sox=indicators["air"].get("standardised_sox"),
+                        air_emissions_voc=indicators["air"].get("standardised_voc")
+                    )
+
+                    print(f"✅ Stored indicators for {security} ({detected_year}) in PostgreSQL.")
                     os.remove(file_path)
-                    print(f"✅ Stored {security} ({detected_year}) and deleted local copy")
-                    break  # ✅ Stop once a valid report is found
+                    print(f"🧹 Deleted local copy of {security} ({detected_year})")
+                    break
 
         time.sleep(5)
 
@@ -257,6 +331,8 @@ def process_company(symbol, security, region, country, sector, industry):
 def fetch_csr_reports():
     """Fetch CSR reports one company at a time, one year at a time."""
     ensure_minio_bucket()
+    create_csr_metadata_table_if_not_exists()
+    create_csr_indicators_table_if_not_exists()
     companies = get_companies_from_db()
     for company in companies:
         process_company(*company)

@@ -1,6 +1,6 @@
 CSR Report Extraction Pipeline
 
-This project extracts, processes, and stores Corporate Social Responsibility (CSR) reports using Google Search API, Selenium, and BeautifulSoup to retrieve reports, validate them, and store metadata in PostgreSQL and the reports in MinIO.
+This project extracts, processes, and stores Corporate Social Responsibility (CSR) reports. It uses a hybrid search strategy—Google Search API, Selenium, and BeautifulSoup—to locate reports, validate them, and extract indicators. Results are stored in PostgreSQL, and PDF reports are saved in MinIO.
 
 Setup & Installation
 
@@ -81,7 +81,7 @@ This will start processing CSR reports one by one.
 
 To automate report extraction using a scheduler:
 
- poetry run python -m modules.scheduler.scheduler_script
+poetry run python -m modules.scheduler.scheduler_script
 
 This runs in the background, checking for new reports at regular intervals.
 
@@ -93,6 +93,30 @@ To start the FastAPI server, run:
 poetry run uvicorn modules.fast_api.app:app --host 0.0.0.0 --port 8080 --reload
 
 Access API documentation at: http://localhost:8080/docs
+
+Running the Data Visualisation Dashboard
+The visualisation interface allows users to search, analyse, and compare CSR indicators over time or across sectors, industries, or regions.
+
+poetry run python -m modules.data_visualisation.data
+
+The dashboard will run on: http://localhost:5001
+🔹 Dashboard Features
+/search: View CSR trends for a specific company or symbol.
+/sector, /industry, /region: Compare indicators by group with yearly averages.
+/sector_analysis: View total, mean, median, or standard deviation of indicators by sector, industry, or region.
+/yearly_heatmap: View heatmaps of indicator trends across years and sectors/industries.
+
+ Indicators Available
+ Water Consumption (MCM)
+ Waste Generated (tons)
+ Renewable Energy (MWh and %)
+ Donations
+ Air Emissions (NOx, SOx, VOC)
+ Scope 1, 2, 3, Total Emissions (tCO₂e)
+
+All data is dynamically loaded from PostgreSQL (csr_indicators table) and supports full filtering and year range selection.
+
+
 
 🛑 Prevent Laptop from Sleeping ⚡️
 
