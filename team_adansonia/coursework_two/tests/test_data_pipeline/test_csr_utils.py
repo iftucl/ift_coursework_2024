@@ -3,7 +3,7 @@ from unittest.mock import patch, MagicMock, mock_open
 import io
 from io import BytesIO
 import requests
-from team_adansonia.coursework_two.data_pipeline.csr_utils import (
+from data_pipeline.csr_utils import (
     download_pdf, 
     filter_pdf_pages, 
     get_latest_report_year, 

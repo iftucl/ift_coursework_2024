@@ -1,6 +1,6 @@
 import pytest
 from datetime import datetime
-from team_adansonia.coursework_two.mongo_db.company_data import CompanyData, CompanyDatabase
+from mongo_db.company_data import CompanyData, CompanyDatabase
 
 
 class TestCompanyData:

@@ -3,8 +3,8 @@ from unittest.mock import patch, MagicMock
 import json
 import os
 from io import BytesIO
-from team_adansonia.coursework_two.data_pipeline.csr_utils import filter_pdf_pages
-from team_adansonia.coursework_two.validation.validation import validate_and_clean_data, full_validation_pipeline
+from data_pipeline.csr_utils import filter_pdf_pages
+from validation.validation import validate_and_clean_data, full_validation_pipeline
 
 
 class TestDataValidationIntegration:

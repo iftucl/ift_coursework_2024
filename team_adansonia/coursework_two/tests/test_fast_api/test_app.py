@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
-from team_adansonia.coursework_two.fast_api.app import app
+from fast_api.app import app
 
 
 @pytest.fixture

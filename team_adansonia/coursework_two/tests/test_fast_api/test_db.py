@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 from pymongo.errors import ConnectionFailure
 from fastapi import HTTPException
-from team_adansonia.coursework_two.fast_api.db import get_db
+from fast_api.db import get_db
 
 
 class TestDb:

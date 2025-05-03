@@ -3,9 +3,9 @@ from unittest.mock import patch, MagicMock
 import os
 import json
 from io import BytesIO
-from team_adansonia.coursework_two.data_pipeline.csr_utils import download_pdf, filter_pdf_pages, get_latest_report_url
-from team_adansonia.coursework_two.validation.validation import validate_and_clean_data, full_validation_pipeline
-from team_adansonia.coursework_two.mongo_db.company_data import CompanyData, CompanyDatabase
+from data_pipeline.csr_utils import download_pdf, filter_pdf_pages, get_latest_report_url
+from validation.validation import validate_and_clean_data, full_validation_pipeline
+from mongo_db.company_data import CompanyData, CompanyDatabase
 
 
 @pytest.mark.e2e

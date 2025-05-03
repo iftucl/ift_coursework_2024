@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
 import json
-from team_adansonia.coursework_two.validation.validation import (
+from validation.validation import (
     validate_and_clean_data,
     full_validation_pipeline
 )

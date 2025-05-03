@@ -2,8 +2,8 @@ import pytest
 import json
 from fastapi.testclient import TestClient
 from unittest.mock import patch
-from team_adansonia.coursework_two.fast_api.app import app
-from team_adansonia.coursework_two.mongo_db.company_data import CompanyData, CompanyDatabase
+from fast_api.app import app
+from mongo_db.company_data import CompanyData, CompanyDatabase
 
 
 @pytest.mark.e2e

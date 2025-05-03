@@ -1,8 +1,8 @@
 import pytest
 from pymongo import MongoClient
 from fastapi.testclient import TestClient
-from team_adansonia.coursework_two.fast_api.app import app
-from team_adansonia.coursework_two.mongo_db.company_data import CompanyData
+from fast_api.app import app
+from mongo_db.company_data import CompanyData
 import os
 from io import BytesIO
 
