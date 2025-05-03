@@ -2,9 +2,10 @@ Team Adansonia Project Docs
 ===========================
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 4
    :caption: Modules
 
+   main
    data_pipeline
    fast_api
    frontend
@@ -12,3 +13,4 @@ Team Adansonia Project Docs
    scheduler
    utils
    validation
+   
