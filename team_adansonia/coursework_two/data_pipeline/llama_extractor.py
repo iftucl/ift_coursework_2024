@@ -1,11 +1,3 @@
-"""
-LlamaExtractor module for parsing sustainability reports using the LlamaParse API.
-
-This module defines an asynchronous class to extract key environmental metrics
-such as Scope emissions, energy consumption, and water usage from PDF reports.
-
-Requires: llama-parse, loguru, pydantic, dotenv
-"""
 import os
 import re
 import json
@@ -17,13 +9,24 @@ from loguru import logger
 from pydantic import BaseModel
 
 # Load environment variables
-load_dotenv(override=True)
+load_dotenv()
 LLAMA_API_KEY = os.getenv("LLAMA_API_KEY")
 
 class LlamaExtractor(BaseModel):
     """
-    Asynchronous extractor for sustainability metrics (Scope emissions, energy, water)
-    from a filtered PDF using the LlamaParse API.
+
+    An asynchronous PDF extractor that uses the LlamaParse API to extract sustainability-related
+
+    metrics (Scope 1 and 2 emissions, energy consumption, and water usage) from a filtered corporate PDF.
+ 
+    Attributes:
+
+        api_key (str): LlamaParse API key.
+
+        company_name (str): Name of the company being processed.
+
+        filtered_pdf_path (str): Path to the filtered PDF report.
+ 
     """
     api_key: str = LLAMA_API_KEY
     company_name: str
@@ -48,6 +51,16 @@ class LlamaExtractor(BaseModel):
         }
 
     async def extract_scope_emissions(self, pdf_file: str, company_name: str) -> dict:
+        """
+        Extracts Scope 1 and Scope 2 emissions data from the PDF.
+ 
+        Args:
+            pdf_file (str): Path to the PDF file.
+            company_name (str): Name of the company.
+ 
+        Returns:
+            dict: Emissions data in structured JSON format.
+        """
         return await self._extract_with_instruction(
             pdf_file,
             company_name,
@@ -60,6 +73,16 @@ class LlamaExtractor(BaseModel):
         )
 
     async def extract_energy_metrics(self, pdf_file: str, company_name: str) -> dict:
+        """
+        Extracts energy consumption data (total, renewable, non-renewable).
+ 
+        Args:
+            pdf_file (str): Path to the PDF file.
+            company_name (str): Name of the company.
+ 
+        Returns:
+            dict: Energy metrics in structured JSON format.
+        """
         return await self._extract_with_instruction(
             pdf_file,
             company_name,
@@ -70,6 +93,16 @@ class LlamaExtractor(BaseModel):
         )
 
     async def extract_water_metrics(self, pdf_file: str, company_name: str) -> dict:
+        """
+        Extracts water usage or intensity data from the PDF.
+ 
+        Args:
+            pdf_file (str): Path to the PDF file.
+            company_name (str): Name of the company.
+ 
+        Returns:
+            dict: Water usage data in structured JSON format.
+        """
         return await self._extract_with_instruction(
             pdf_file,
             company_name,
@@ -106,7 +139,7 @@ class LlamaExtractor(BaseModel):
             return {}
 
     def _extract_best_json_block(self, documents: list) -> dict:
-        code_fence_pattern = re.compile(r"⁠  json\s*(.*?)  ⁠", re.DOTALL | re.IGNORECASE)
+        code_fence_pattern = re.compile(r"```json\s*(.*?)```", re.DOTALL | re.IGNORECASE)
         best_data = {}
         max_score = 0
 
