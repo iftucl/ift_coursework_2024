@@ -1,12 +1,14 @@
 import json
 import os.path
-from dotenv import load_dotenv
+
+from flask.cli import load_dotenv
+from imageio.testing import ROOT_DIR
 from pymongo import MongoClient, errors
 import datetime
 import sqlite3
 import pandas as pd
 import dotenv
-from team_adansonia.coursework_one.a_link_retrieval.modules.utils.dockercheck import is_running_in_docker
+from ...modules.utils.dockercheck import is_running_in_docker
 load_dotenv()
 
 if is_running_in_docker():
@@ -274,5 +276,5 @@ def main():
     # Access the database (not the collection directly)
     db = mongo_client["csr_reports"]
 
-"""#run main on import 
-main()"""
+#run main on import 
+main()
