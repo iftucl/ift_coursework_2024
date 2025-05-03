@@ -78,7 +78,9 @@ def filter_pdf_pages(pdf_data: BytesIO) -> tuple[BytesIO, str]:
 
     with pdfplumber.open(pdf_data) as pdf:
         for i, page in enumerate(pdf.pages):
+            logger.info(f"Processing page {i+1} of {len(pdf.pages)}")
             text = page.extract_text() or ""
+            #logger.info(f"Extracted text: {text}")
             text_lower = text.lower()
 
             # Check for keyword presence
@@ -206,14 +208,17 @@ def process_csr_report(company_data: dict, year=None):
         return None
 
     # Download the CSR PDF report
+    logger.info(f"Downloading CSR report for {company_data['symbol']}")
     pdf_data = download_pdf(report_url)
+    logger.info(f"Downloaded CSR report for {company_data['symbol']}")
 
     # Filter the pages of the PDF based on keywords and time series
+    logger.info(f"Filtering PDF for {company_data['symbol']}")
     filtered_pdf, filtered_text = filter_pdf_pages(pdf_data)
-
+    logger.info(f"Filtered PDF for {company_data['symbol']}")
     # Ensure that the filtered PDF is not empty
     if filtered_pdf.getbuffer().nbytes == 0:
-        print(f"Filtered PDF is empty for {company_data['symbol']}, no relevant content found.")
+        logger.error(f"Filtered PDF is empty for {company_data['symbol']}, no relevant content found.")
         return None, None
 
     return filtered_pdf, filtered_text
