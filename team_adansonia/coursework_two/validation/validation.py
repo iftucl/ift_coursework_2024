@@ -89,7 +89,7 @@ def validate_and_clean_data(raw_data: dict, filtered_text: str):
 
                 value, unit = pair
 
-                if value is None or unit is None:
+                if value in [None, 'N/A'] or unit in [None, 'N/A']:
                     logger.warning(f"Skipping {metric} for {year} due to missing value or unit.")
                     issues.append({
                         "category": category,
