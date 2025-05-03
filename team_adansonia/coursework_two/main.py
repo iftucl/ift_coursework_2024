@@ -69,6 +69,8 @@ async def run_end_to_end_workflow(company_symbol: str, company_security: str, db
     logger.info(f"Fetching CSR report for {company_data['security']}")
     try:
         filtered_pdf, filtered_text = process_csr_report(company_data, year)
+        #print first few lines
+        print(filtered_text[:10])
     except Exception as e:
         logger.error(f"No report found: {e}")
         return {}, {}
@@ -83,6 +85,11 @@ async def run_end_to_end_workflow(company_symbol: str, company_security: str, db
 
     logger.info(f"Filtered CSR PDF file saved at: {filtered_pdf_path}")
 
+    #try read from filtered_pdf_path
+    with open(filtered_pdf_path, "rb") as pdf_file:
+        print(pdf_file.read(10))
+        print("read ok")
+
     llama_extractor = LlamaExtractor(
         api_key=LLAMA_API_KEY,
         company_name=company_data["security"],
@@ -90,6 +97,8 @@ async def run_end_to_end_workflow(company_symbol: str, company_security: str, db
     )
 
     raw_result = await llama_extractor.process()
+
+    print('raw result', raw_result)
 
     if not raw_result:
         logger.error("No ESG data extracted from the CSR report.")
@@ -118,8 +127,8 @@ def export_updated_seed_file(db, seed_file="seed_data.json"):
     Returns:
     - None
     """
-    ROOT_DIR = os.getenv("ROOT_DIR_lOCAL")
-    path = os.path.join(ROOT_DIR, "team_adansonia/coursework_two/mongo-seed", seed_file)
+    ROOT_DIR = os.getenv("ROOT_DIR_LOCAL")
+    path = os.path.join(ROOT_DIR, "mongo-seed", seed_file)
     print(f"Exporting updated seed file to {seed_file}...")
 
     collection = db["companies"]
@@ -238,6 +247,37 @@ async def run_main_for_symbols(symbols_with_years: list[tuple[str, str | None]])
         logger.info("🛑 MongoDB connection closed.")
 
 
+def get_unextracted_symbol_years_mongo(n=10):
+    """
+    Retrieves a list of company symbols and years for which ESG data has not been extracted.
+
+    This function searches through the companies collection in the MongoDB database and checks
+    each company's CSR report links to find years that have not yet been processed for ESG data.
+    It returns a list of up to n such (symbol, year) pairs.
+    """
+    mongo_client = mongo.connect_to_mongo()
+    if mongo_client is None:
+        return
+
+    db = mongo_client["csr_reports"]
+    companies_collection = db["companies"]
+    
+    unextracted = []
+    cursor = companies_collection.find({}, {"symbol": 1, "csr_reports": 1, "_id": 0})
+
+    for doc in cursor:
+        symbol = doc.get("symbol")
+        csr_reports = doc.get("csr_reports", {})
+
+        for year in sorted(csr_reports):
+            url = csr_reports[year]
+            if url and f"esg_data_{year}" not in doc:
+                unextracted.append((symbol, year))
+                if len(unextracted) == n:
+                    return unextracted
+
+    return sorted(unextracted, key=lambda x: int(x[1]))
+
 def main():
     """
     Runs the full ESG data extraction workflow for every company in the MongoDB database.
@@ -311,5 +351,6 @@ def main():
 
 # Entry point
 if __name__ == "__main__":
-    symbols_with_years = [("MMM", "2023")]
+    symbols_with_years = [("NVDA", "2021")]
+    mongo.import_seed_to_mongo()
     asyncio.run(run_main_for_symbols(symbols_with_years))
