@@ -28,7 +28,7 @@ Run each pipeline individually:
    poetry run python pipeline3/modules/write_lineage.py
 
    # Pipeline 4: Visualization
-   poetry run python pipeline4/modules/dashboard.py
+   poetry run streamlit run pipeline4/modules/dashboard.py
 
 2. Scheduled Execution
 ~~~~~~~~~~~~~~~~~~~~
