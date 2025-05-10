@@ -31,7 +31,7 @@ logging.info("✅ MongoDB client initialized.")
 # 3. MinIO Config
 # ==========================
 MINIO_HOST = os.getenv("MINIO_HOST", "localhost")
-MINIO_BUCKET = "csr-reports"
+MINIO_BUCKET = "csreport"
 
 # ==========================
 # 4. Initialize FastAPI

@@ -1,21 +1,42 @@
-# Use Python 3.9 as the base image
-FROM python:3.9
+# Use Python 3.10-bullseye as the base image
+FROM python:3.10-bullseye
 
-# Set the working directory
+# Set environment variables for Poetry installation and configuration
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    POETRY_VERSION=1.6.1 \
+    POETRY_HOME="/opt/poetry" \
+    POETRY_VIRTUALENVS_CREATE=false \
+    POETRY_NO_INTERACTION=1
+
+# Install system dependencies required for Poetry and Python packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl build-essential libffi-dev libssl-dev && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install Poetry
+RUN pip install poetry
+
+# Create a working directory for the application
 WORKDIR /app
 
-# Copy project files
+# Copy Poetry configuration files first to leverage Docker's caching mechanism
+COPY pyproject.toml ./
+
+# Generate a fresh poetry.lock file and install dependencies
+RUN poetry lock && poetry install
+
+# Download NLTK data for text processing
+RUN poetry run python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords')"
+
+# Copy the rest of the application code into the container
 COPY . .
 
-# Ensure dependencies are installed
-RUN pip install --no-cache-dir -r requirements.txt
-
 # Expose necessary ports
-EXPOSE 8000  # FastAPI
-EXPOSE 8501  # Streamlit
+# FastAPI - Used by fastapi_api.py for API access
+EXPOSE 8000
+# Streamlit - Used by streamlit_app.py for dashboard access
+EXPOSE 8501
 
-# Default command: Run FastAPI + Streamlit
-CMD ["uvicorn", "modules.api.fastapi_api:app", "--host", "0.0.0.0", "--port", "8000"]
-
-WORKDIR /app
-COPY Magnolia/coursework_one/modules/scraper /app/
+# Default command: keep container alive until a command is executed manually
+CMD ["sleep", "infinity"]

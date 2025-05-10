@@ -25,7 +25,7 @@ MINIO_CLIENT = Minio(
     secret_key="minio_password",
     secure=False,
 )
-BUCKET_NAME = "csr-reports"
+BUCKET_NAME = "csreport"
 
 
 def extract_text_from_pdf(pdf_bytes):

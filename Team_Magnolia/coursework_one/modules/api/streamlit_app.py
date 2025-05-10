@@ -29,7 +29,7 @@ minio_client = Minio(
     secret_key="minio_password",
     secure=False,
 )
-BUCKET_NAME = "csr-reports"
+BUCKET_NAME = "csreport"
 
 # -------------------------------
 # 3. Streamlit Page Configuration

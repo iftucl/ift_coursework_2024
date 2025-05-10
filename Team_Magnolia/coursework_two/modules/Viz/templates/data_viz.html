@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <h2>Data Visualization</h2>
+  <p>
+    1) Search & select companies (fuzzy search).<br>
+    2) Select one or more years.<br>
+    3) Select one or more ESG metrics.<br>
+    4) Choose chart type (line / bar / pie).<br>
+    5) Render chart below.
+  </p>
+
+  <!-- 搜索公司 -->
+  <div class="mb-3">
+    <label for="dv-search-box" class="form-label">Search Company:</label>
+    <input id="dv-search-box" type="text" class="form-control" placeholder="Type to search…">
+  </div>
+  <ul id="dv-search-result" class="list-group" style="display:none;"></ul>
+
+  <!-- 已选公司 -->
+  <div id="dv-selected-list" class="mb-3"></div>
+
+  <!-- 选择年份 -->
+  <div class="mb-3">
+    <label for="dv-year-select" class="form-label">Select Years:</label>
+    <select id="dv-year-select" multiple class="form-select" size="6" style="max-width:200px;">
+      {% for y in all_years %}
+        <option value="{{ y }}">{{ y }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- 选择ESG指标 -->
+  <div class="mb-3">
+    <label for="dv-metric-select" class="form-label">Select ESG Metrics:</label>
+    <select id="dv-metric-select" multiple class="form-select" size="5" style="max-width:300px;">
+      {% for m in esg_choices %}
+        <option value="{{ m }}">{{ m }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- 选择图表类型 -->
+  <div class="mb-3">
+    <label for="dv-chart-type" class="form-label">Chart Type:</label>
+    <select id="dv-chart-type" class="form-select" style="max-width:120px;">
+      {% for ct in chart_types %}
+        <option value="{{ ct }}">{{ ct|capitalize }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- 按钮 -->
+  <div class="mb-4">
+    <button class="btn btn-primary" onclick="renderDVChart()">Render Chart</button>
+  </div>
+
+  <!-- 画布 -->
+  <div>
+    <canvas id="dvChart" width="800" height="400" style="background-color:#fff;"></canvas>
+  </div>
+</div>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  let dvTimer = null;
+  const dvSearchBox = document.getElementById("dv-search-box");
+  const dvSearchResult = document.getElementById("dv-search-result");
+  const dvSelectedList = document.getElementById("dv-selected-list");
+
+  dvSearchBox.addEventListener('input', function(){
+    clearTimeout(dvTimer);
+    dvTimer = setTimeout(() => doDVSearch(dvSearchBox.value), 300);
+  });
+
+  function doDVSearch(q){
+    if(!q){
+      dvSearchResult.style.display = 'none';
+      return;
+    }
+    fetch(`/api/dv_search_companies?q=${encodeURIComponent(q)}`)
+      .then(r => r.json())
+      .then(data => {
+        dvSearchResult.innerHTML = '';
+        if(data.length === 0){
+          dvSearchResult.innerHTML = "<li class='list-group-item'>No match</li>";
+        } else {
+          data.forEach(item => {
+            const li = document.createElement('li');
+            li.className = "list-group-item";
+            li.style.cursor = "pointer";
+            li.textContent = item.company_name;
+            li.addEventListener('click', () => dvSelectCompany(item));
+            dvSearchResult.appendChild(li);
+          });
+        }
+        dvSearchResult.style.display = 'block';
+      })
+      .catch(err => console.error(err));
+  }
+
+  function dvSelectCompany(item){
+    const val = item.company_name;
+    const div = document.createElement('div');
+    div.className = "text-white mt-2";
+    div.textContent = item.company_name;
+    div.dataset.value = val;
+    div.onclick = () => dvSelectedList.removeChild(div);
+    dvSelectedList.appendChild(div);
+
+    dvSearchBox.value = '';
+    dvSearchResult.style.display = 'none';
+    dvSearchResult.innerHTML = '';
+  }
+
+  let dvChart = null;
+  function renderDVChart(){
+    const comps = [];
+    dvSelectedList.querySelectorAll('div').forEach(d => {
+      comps.push(d.dataset.value);
+    });
+
+    const yrs = [];
+    Array.from(document.getElementById("dv-year-select").selectedOptions).forEach(opt => {
+      yrs.push(opt.value);
+    });
+
+    const mets = [];
+    Array.from(document.getElementById("dv-metric-select").selectedOptions).forEach(opt => {
+      mets.push(opt.value);
+    });
+
+    const chartType = document.getElementById("dv-chart-type").value;
+
+    if(chartType === "pie" && comps.length > 1){
+      alert("Pie chart only supports 1 company. Please remove extra companies.");
+      return;
+    }
+    if(chartType === "pie" && mets.length > 1){
+      alert("Pie chart only supports 1 scope/metric. Please remove extra metrics.");
+      return;
+    }
+
+    if(!comps.length || !yrs.length || !mets.length){
+      alert("Please select at least one company, year, and metric!");
+      return;
+    }
+
+    fetch("/api/dv_chart_data", {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        company_list: comps,
+        year_list: yrs,
+        metric_list: mets,
+        chart_type: chartType
+      })
+    })
+    .then(r => r.json())
+    .then(resp => drawDVChart(resp))
+    .catch(err => console.error(err));
+  }
+
+  function drawDVChart(resp){
+    const chartType = resp.chart_type;
+    const dataObj = resp.data;
+    const ctx = document.getElementById("dvChart").getContext('2d');
+    if(dvChart){ dvChart.destroy(); }
+
+    let allYears = new Set();
+    for(let key in dataObj){
+      for(let y in dataObj[key]){
+        allYears.add(y);
+      }
+    }
+    const sortedYears = Array.from(allYears).sort();
+    let colorPalette = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b"];
+
+    if(chartType === "pie"){
+      const keys = Object.keys(dataObj);
+      let onlyKey = keys[0];
+      const arr = sortedYears.map(y => dataObj[onlyKey][y] || 0);
+      dvChart = new Chart(ctx, {
+        type: "pie",
+        data: {
+          labels: sortedYears,
+          datasets: [{
+            label: onlyKey,
+            data: arr,
+            backgroundColor: colorPalette
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            title: { display: true, text: "Pie chart by Year", color: "black" },
+            legend: { labels: { color: "black" } }
+          }
+        }
+      });
+      return;
+    }
+
+    let datasets = [];
+    let i = 0;
+    for(let key in dataObj){
+      const arr = sortedYears.map(y => dataObj[key][y] || 0);
+      datasets.push({
+        label: key,
+        data: arr,
+        backgroundColor: colorPalette[i % colorPalette.length],
+        borderColor: colorPalette[i % colorPalette.length],
+        fill: false
+      });
+      i++;
+    }
+
+    dvChart = new Chart(ctx, {
+      type: chartType,
+      data: {
+        labels: sortedYears,
+        datasets: datasets
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          title: { display: true, text: "ESG Data Viz", color: "black" },
+          legend: { labels: { color: "black" } }
+        },
+        scales: {
+          x: { ticks: { color: "black" } },
+          y: { beginAtZero: true, ticks: { color: "black" } }
+        }
+      }
+    });
+  }
+
+  window.renderDVChart = renderDVChart; // 让按钮onclick可以找到
+});
+</script>
+{% endblock %}
