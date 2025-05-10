@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dogwood Search</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<header>
+  <div class="top-bar">
+    <h1><a href="#">Dogwood&nbsp;Search</a></h1>
+    <button id="theme-toggle" class="theme-btn">Light / Dark</button>
+  </div>
+</header>
+
+<main class="search-page-container">
+  <div class="logo-container">
+    <span class="logo-text">DOGWOOD</span>
+  </div>
+
+  <form class="search-form">
+    <input
+      type="text"
+      name="company_name"
+      class="search-input"
+      placeholder="Enter Company Name or ISIN"
+      autocomplete="off"
+    />
+
+    <div class="button-row">
+      <button type="submit" class="btn-search">Search</button>
+      <button type="reset"  class="btn-clear">Clear All</button>
+    </div>
+  </form>
+</main>
+
+<div class="plots-container" style="display: flex; flex-direction: column; align-items: center; gap: 2rem; margin-top: 2rem;">
+  <div>
+    <h2>Company ESG Metrics</h2>
+    <img id="company-plot" src="" alt="Company ESG Plot" style="max-width: 100%; display: none; border: 1px solid #ccc;"/>
+  </div>
+  <div>
+    <h2>Company Comparison</h2>
+    <img id="compare-plot" src="" alt="Company Comparison Plot" style="max-width: 100%; display: none; border: 1px solid #ccc;"/>
+  </div>
+</div>
+
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <p id="progress-text">Initializing search…</p>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const form        = document.querySelector(".search-form");
+  const overlay     = document.getElementById("loading-overlay");
+  const progressTxt = document.getElementById("progress-text");
+  const toggleBtn   = document.getElementById("theme-toggle");
+  const companyPlot = document.getElementById("company-plot");
+  const comparePlot = document.getElementById("compare-plot");
+
+  const messages = [
+    "Initializing search…",
+    "Connecting to data sources…",
+    "Fetching sustainability data…",
+    "Almost done…"
+  ];
+
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    overlay.style.visibility = "visible";
+    overlay.style.opacity    = 1;
+
+    let i = 0;
+    progressTxt.textContent = messages[i];
+
+    const interval = setInterval(() => {
+      i = (i+1) % messages.length;
+      progressTxt.textContent = messages[i];
+    }, 1500);
+
+    // Get company name from input
+    const companyInput = form.elements["company_name"];
+    const companyName = companyInput.value.trim();
+    if (!companyName) {
+      clearInterval(interval);
+      overlay.style.opacity    = 0;
+      overlay.style.visibility = "hidden";
+      alert("Please enter a company name.");
+      return;
+    }
+
+    // Hide previous plots
+    companyPlot.style.display = "none";
+    comparePlot.style.display = "none";
+    companyPlot.src = "";
+    comparePlot.src = "";
+
+    // 1. Fetch company plot
+    let companyPlotLoaded = false;
+    let comparePlotLoaded = false;
+
+    try {
+      const resp1 = await fetch("/plot-company", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ company_name: companyName })
+      });
+      const data1 = await resp1.json();
+      if (data1.image) {
+        companyPlot.src = "data:image/png;base64," + data1.image;
+        companyPlot.style.display = "block";
+        companyPlotLoaded = true;
+      } else {
+        companyPlot.alt = "No plot available for this company.";
+        companyPlot.style.display = "block";
+      }
+    } catch (err) {
+      companyPlot.alt = "Error loading company plot.";
+      companyPlot.style.display = "block";
+    }
+
+    // 2. Fetch comparison plot (using only this company and all indicators)
+    try {
+      const resp2 = await fetch("/compare-companies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_names: [companyName],
+          indicators: [] // empty means all indicators on backend
+        })
+      });
+      const data2 = await resp2.json();
+      if (data2.image) {
+        comparePlot.src = "data:image/png;base64," + data2.image;
+        comparePlot.style.display = "block";
+        comparePlotLoaded = true;
+      } else {
+        comparePlot.alt = "No comparison plot available.";
+        comparePlot.style.display = "block";
+      }
+    } catch (err) {
+      comparePlot.alt = "Error loading comparison plot.";
+      comparePlot.style.display = "block";
+    }
+
+    clearInterval(interval);
+    overlay.style.opacity    = 0;
+    overlay.style.visibility = "hidden";
+  });
+
+  toggleBtn.addEventListener("click", () => {
+    document.body.classList.toggle("dark-mode");
+  });
+});
+</script>
+</body>
+</html>
