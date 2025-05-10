@@ -19,6 +19,7 @@ def get_processing_list(collection, populated_data, api_limit):
     # Initialize the processing list
     processing_list = []
 
+
     # Iterate over the collection to find documents not in populated_data
     for document in collection.find():
         symbol = document.get('symbol')

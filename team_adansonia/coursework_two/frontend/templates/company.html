@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}{{ data.security }} ESG Report{% endblock %}
+
+{% block content %}
+{% set current_year = 2025 %}
+{% set latest_year = data.csr_reports.keys() | map('int') | max if data.csr_reports else current_year %}
+{% set esg_years = range(latest_year, latest_year - 11, -1) %}
+
+<div class="govuk-grid-row">
+  <div class="govuk-grid-column-one-quarter">
+    <nav class="govuk-!-margin-bottom-6" aria-label="Page navigation" style="position: sticky; top: 1rem;">
+      <h2 class="govuk-heading-m">Content</h2>
+      <ul class="govuk-list">
+        <li><a class="govuk-link" href="#csr-reports">Corporate Sustainability Reports</a></li>
+        <li>
+          <a class="govuk-link" href="#esg-metrics">ESG Data</a>
+          <ul class="govuk-list govuk-!-margin-left-3">
+            {% for year in esg_years %}
+              <li><a class="govuk-link" href="#esg-metrics-{{ year }}">{{ year }}</a></li>
+            {% endfor %}
+          </ul>
+        </li>
+      </ul>
+      <a href="/" class="govuk-button govuk-button--secondary govuk-!-margin-bottom-4">Back to Home</a>
+    </nav>
+  </div>
+
+  <div class="govuk-grid-column-three-quarters">
+    <div class="govuk-width-container">
+      <h1 class="govuk-heading-xl">{{ data.security }} <span class="govuk-!-font-weight-regular">({{ data.symbol }})</span></h1>
+
+      <p class="govuk-body"><strong>Sector:</strong> {{ data.gics_sector }} – {{ data.gics_industry }}</p>
+      <p class="govuk-body"><strong>Region:</strong> {{ data.region }}</p>
+
+      {# ---------------- CSR REPORT LINKS ---------------- #}
+      <h2 class="govuk-heading-l" id="csr-reports">Corporate Sustainability Reports</h2>
+      {% if data.csr_reports %}
+        <ul class="govuk-list govuk-list--bullet">
+          {% for year, link in data.csr_reports|dictsort(reverse=True) %}
+            <li>{% if link %}<a class="govuk-link" href="{{ link }}" target="_blank" rel="noopener noreferrer">{{ year }}</a>{% else %}{{ year }} – report not available{% endif %}</li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="govuk-body">No corporate sustainability reports were found for this company.</p>
+      {% endif %}
+
+      {# ---------------- ESG PLACEHOLDER & DATA ---------------- #}
+      <h2 class="govuk-heading-l govuk-!-margin-top-8" id="esg-metrics">ESG Data</h2>
+
+      {% for year in esg_years %}
+        <details class="govuk-details govuk-!-margin-bottom-6" data-module="govuk-details" id="esg-metrics-{{ year }}">
+          <summary class="govuk-details__summary">
+            <span class="govuk-details__summary-text">ESG Metrics ({{ year }})</span>
+          </summary>
+          <div class="govuk-details__text" id="content-box-{{ year }}">
+            {% set y = year|string %}
+            {% set goals_key = 'esg_goals_' ~ y %}
+            {% set data_key = 'esg_data_' ~ y %}
+
+            {% if y not in data.csr_reports %}
+              <p class="govuk-body">No report exists for {{ y }}.</p>
+            {% elif data[data_key] is not defined and data[goals_key] is not defined %}
+              <p class="govuk-body">No ESG data extracted yet for {{ y }}.</p>
+              <button class="govuk-button govuk-button--success" id="extract-btn-{{ y }}" onclick="requestExtraction('{{ data.symbol }}', '{{ y }}')">Request ESG Data Extraction</button>
+              <p id="extract-status-{{ y }}"></p>
+            {% elif data[data_key] == 'processing' or data[goals_key] == 'processing' %}
+              <p class="govuk-body">ESG data extraction is in progress for {{ y }}. Please wait 3–5 minutes.</p>
+            {% else %}
+              {% if data[goals_key] %}
+                <p class="govuk-body"><strong>ESG Goals ({{ y }}):</strong><br>{{ data[goals_key] }}</p>
+              {% endif %}
+              {% for category, metrics in data[data_key].items() %}
+                {% set cat_id = "esg-" ~ category|lower|replace(' ', '-') %}
+                {% set cat_idx = loop.index0 %}
+                <h3 class="govuk-heading-m" id="{{ cat_id }}">{{ category }}</h3>
+                {% for metric_name, metric_values in metrics.items() %}
+                  <details class="govuk-details govuk-!-margin-bottom-6" data-module="govuk-details">
+                    <summary class="govuk-details__summary">
+                      <span class="govuk-details__summary-text">{{ metric_name }}</span>
+                    </summary>
+                    <div class="govuk-details__text">
+                      <table class="govuk-table govuk-!-margin-bottom-4">
+                        <thead class="govuk-table__head">
+                          <tr class="govuk-table__row">
+                            <th scope="col" class="govuk-table__header">Year</th>
+                            <th scope="col" class="govuk-table__header">Value</th>
+                          </tr>
+                        </thead>
+                        <tbody class="govuk-table__body">
+                          {% for yr, val in metric_values.items() if yr not in ['Units', 'validated'] %}
+                            <tr class="govuk-table__row">
+                              <th scope="row" class="govuk-table__header">{{ yr }}</th>
+                              <td class="govuk-table__cell">{{ val }}</td>
+                            </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                      <p class="govuk-body"><strong>Units:</strong> {{ metric_values.get('Units', 'N/A') }}<br>
+                      <strong>Validated:</strong> {{ metric_values.get('validated', 'unknown')|capitalize }}</p>
+                      {% set filtered_items = metric_values.items() | rejectattr("0", "equalto", "Units") | rejectattr("0", "equalto", "validated") | list %}
+                      {% if filtered_items | length > 1 %}
+                        {% set chart_id = "chart_" ~ cat_idx ~ "_" ~ loop.index0 %}
+                        <canvas id="{{ chart_id }}" class="govuk-!-width-full" style="width: 100%; height: 200px; max-height: 240px;" data-chart-config='{{ {
+                          "labels": metric_values | dictsort | rejectattr("0", "equalto", "Units") | rejectattr("0", "equalto", "validated") | map(attribute="0") | list,
+                          "data": metric_values | dictsort | rejectattr("0", "equalto", "Units") | rejectattr("0", "equalto", "validated") | map(attribute="1") | list,
+                          "unit": metric_values.get("Units", "")
+                        } | tojson | safe }}'></canvas>
+                      {% else %}
+                        <p class="govuk-body">Not enough data to generate chart.</p>
+                      {% endif %}
+                    </div>
+                  </details>
+                {% endfor %}
+              {% endfor %}
+            {% endif %}
+          </div>
+        </details>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  document.querySelectorAll('.govuk-details').forEach(details => {
+    details.addEventListener('toggle', event => {
+      if (!event.target.open) return;
+      const canvas = event.target.querySelector('canvas');
+      if (!canvas || canvas.dataset.chartRendered) return;
+
+      const config = JSON.parse(canvas.dataset.chartConfig);
+      new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: config.labels,
+          datasets: [{
+            label: '',
+            data: config.data,
+            borderWidth: 2,
+            fill: false
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            x: { title: { display: true, text: 'Year' } },
+            y: { title: { display: true, text: config.unit }, beginAtZero: false }
+          }
+        }
+      });
+      canvas.dataset.chartRendered = true;
+    });
+  });
+
+  function requestExtraction(symbol, year) {
+    const container = document.getElementById(`content-box-${year}`);
+    // Replace the entire block with the "processing" message
+    container.innerHTML = `<p class="govuk-body">ESG data extraction is in progress for ${year}. Please wait 3–5 minutes.</p>`;
+
+    fetch(`http://localhost:8081/extract_data/${symbol}?year=${year}`);
+  }
+</script>
+{% endblock %}

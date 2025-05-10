@@ -23,7 +23,7 @@ team_adansonia
 │   │      ├── test_main.py
 │   │      ├── test_crawler.py
 │   │      └── test_google_crawler.py
-│   └── main.py
+│   └── app.py
 ├── .env.template
 ├── docker-compose.yml
 ├── pyproject.toml
