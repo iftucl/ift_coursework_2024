@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>modules.data_storage.retry_failed_reports &#8212; Bigdata_cw2_Jacaranda 1.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/alabaster.css?v=27fed22d" />
+    <script src="../../../_static/documentation_options.js?v=f2a433a1"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+   
+  <link rel="stylesheet" href="../../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for modules.data_storage.retry_failed_reports</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">This module is responsible for processing CSR (Corporate Social Responsibility) reports. </span>
+<span class="sd">It connects to a MinIO server to download the reports, extracts text paragraphs from </span>
+<span class="sd">PDF files, matches them against CSR indicators loaded from a PostgreSQL database, </span>
+<span class="sd">and stores the matched data back into the database.</span>
+
+<span class="sd">The workflow includes the following key steps:</span>
+<span class="sd">1. Downloading the CSR report from MinIO.</span>
+<span class="sd">2. Extracting text paragraphs from the report&#39;s PDF file.</span>
+<span class="sd">3. Matching the extracted paragraphs with predefined CSR indicators using fuzzy string matching.</span>
+<span class="sd">4. Inserting matched data into the PostgreSQL database.</span>
+<span class="sd">5. Supporting retry logic for processing failed reports.</span>
+
+<span class="sd">Configuration:</span>
+<span class="sd">- MinIO: Used for storing and retrieving CSR report PDF files.</span>
+<span class="sd">- PostgreSQL: Used to store CSR indicators and matched data.</span>
+
+<span class="sd">Dependencies:</span>
+<span class="sd">- psycopg2: PostgreSQL database adapter.</span>
+<span class="sd">- pdfplumber: PDF text extraction library.</span>
+<span class="sd">- fuzzywuzzy: Fuzzy string matching library.</span>
+<span class="sd">- tqdm: For progress bars.</span>
+<span class="sd">- minio: MinIO Python client for object storage.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">psycopg2</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pdfplumber</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">minio</span><span class="w"> </span><span class="kn">import</span> <span class="n">Minio</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">fuzzywuzzy</span><span class="w"> </span><span class="kn">import</span> <span class="n">fuzz</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
+
+<span class="c1"># === MinIO Configuration ===</span>
+<span class="n">MINIO_ENDPOINT</span> <span class="o">=</span> <span class="s1">&#39;localhost:9000&#39;</span>
+<span class="n">MINIO_ACCESS_KEY</span> <span class="o">=</span> <span class="s1">&#39;ift_bigdata&#39;</span>
+<span class="n">MINIO_SECRET_KEY</span> <span class="o">=</span> <span class="s1">&#39;minio_password&#39;</span>
+<span class="n">MINIO_BUCKET</span> <span class="o">=</span> <span class="s1">&#39;csreport&#39;</span>
+
+<span class="c1"># === PostgreSQL Configuration ===</span>
+<span class="n">db_config</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;dbname&quot;</span><span class="p">:</span> <span class="s2">&quot;fift&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="s2">&quot;postgres&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;password&quot;</span><span class="p">:</span> <span class="s2">&quot;postgres&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;host&quot;</span><span class="p">:</span> <span class="s2">&quot;host.docker.internal&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;port&quot;</span><span class="p">:</span> <span class="mi">5439</span>
+<span class="p">}</span>
+
+<span class="c1"># === Initialize MinIO Client ===</span>
+<span class="n">minio_client</span> <span class="o">=</span> <span class="n">Minio</span><span class="p">(</span>
+    <span class="n">MINIO_ENDPOINT</span><span class="p">,</span>
+    <span class="n">access_key</span><span class="o">=</span><span class="n">MINIO_ACCESS_KEY</span><span class="p">,</span>
+    <span class="n">secret_key</span><span class="o">=</span><span class="n">MINIO_SECRET_KEY</span><span class="p">,</span>
+    <span class="n">secure</span><span class="o">=</span><span class="kc">False</span>
+<span class="p">)</span>
+
+
+<div class="viewcode-block" id="parse_security_and_year">
+<a class="viewcode-back" href="../../../modules.data_storage.html#modules.data_storage.retry_failed_reports.parse_security_and_year">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">parse_security_and_year</span><span class="p">(</span><span class="n">object_name</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Parses the security identifier and report year from the given object name.</span>
+
+<span class="sd">    This function expects the object name to follow a specific naming convention</span>
+<span class="sd">    where the filename contains a security identifier followed by a 4-digit year</span>
+<span class="sd">    (e.g., &quot;ABC_2021.pdf&quot;).</span>
+
+<span class="sd">    :param object_name: The name of the object (PDF file) stored in MinIO.</span>
+<span class="sd">    :type object_name: str</span>
+<span class="sd">    :return: A tuple containing the security identifier and report year,</span>
+<span class="sd">             or (None, None) if parsing fails.</span>
+<span class="sd">    :rtype: tuple or (None, None)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">filename</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">object_name</span><span class="p">)</span><span class="o">.</span><span class="n">name</span>
+    <span class="n">match</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;(.+?)_(\d</span><span class="si">{4}</span><span class="s1">)\.pdf&#39;</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">match</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
+    <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span></div>
+
+
+
+<div class="viewcode-block" id="extract_paragraphs_from_pdf">
+<a class="viewcode-back" href="../../../modules.data_storage.html#modules.data_storage.retry_failed_reports.extract_paragraphs_from_pdf">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">extract_paragraphs_from_pdf</span><span class="p">(</span><span class="n">file_path</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Extracts paragraphs from a PDF file.</span>
+
+<span class="sd">    This function opens the specified PDF file, extracts the text from each page,</span>
+<span class="sd">    and splits the text into paragraphs based on sentence delimiters. It only retains</span>
+<span class="sd">    paragraphs with more than 20 characters.</span>
+
+<span class="sd">    :param file_path: The path to the PDF file.</span>
+<span class="sd">    :type file_path: str</span>
+<span class="sd">    :return: A list of tuples, each containing the page number and a paragraph.</span>
+<span class="sd">    :rtype: list of tuples (int, str)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">paragraphs</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">with</span> <span class="n">pdfplumber</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span> <span class="k">as</span> <span class="n">pdf</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">page</span> <span class="ow">in</span> <span class="n">pdf</span><span class="o">.</span><span class="n">pages</span><span class="p">:</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="n">page</span><span class="o">.</span><span class="n">extract_text</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">text</span><span class="p">:</span>
+                <span class="n">clean_text</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;\s+&#39;</span><span class="p">,</span> <span class="s1">&#39; &#39;</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+                <span class="n">splits</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;(?&lt;=[。；.\n])\s*&#39;</span><span class="p">,</span> <span class="n">clean_text</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">para</span> <span class="ow">in</span> <span class="n">splits</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">para</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span> <span class="o">&gt;</span> <span class="mi">20</span><span class="p">:</span>
+                        <span class="n">paragraphs</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">page</span><span class="o">.</span><span class="n">page_number</span><span class="p">,</span> <span class="n">para</span><span class="o">.</span><span class="n">strip</span><span class="p">()))</span>
+    <span class="k">return</span> <span class="n">paragraphs</span></div>
+
+
+
+<div class="viewcode-block" id="find_matching_paragraphs">
+<a class="viewcode-back" href="../../../modules.data_storage.html#modules.data_storage.retry_failed_reports.find_matching_paragraphs">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">find_matching_paragraphs</span><span class="p">(</span><span class="n">paragraphs</span><span class="p">,</span> <span class="n">keywords</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mi">80</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Finds paragraphs that match the given keywords based on fuzzy string matching.</span>
+
+<span class="sd">    This function compares each paragraph with the provided keywords using fuzzy</span>
+<span class="sd">    string matching (via the fuzzywuzzy library) and returns the paragraphs with</span>
+<span class="sd">    matches above a specified threshold.</span>
+
+<span class="sd">    :param paragraphs: A list of paragraphs to search.</span>
+<span class="sd">    :type paragraphs: list of tuples (int, str)</span>
+<span class="sd">    :param keywords: A list of keywords to match against.</span>
+<span class="sd">    :type keywords: list of str</span>
+<span class="sd">    :param threshold: The minimum fuzzy match score to consider a paragraph as a match.</span>
+<span class="sd">    :type threshold: int</span>
+<span class="sd">    :return: A list of dictionaries containing the matched paragraphs with their page number.</span>
+<span class="sd">    :rtype: list of dict</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">matched</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">page_num</span><span class="p">,</span> <span class="n">para</span> <span class="ow">in</span> <span class="n">paragraphs</span><span class="p">:</span>
+        <span class="n">match_count</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">fuzz</span><span class="o">.</span><span class="n">partial_ratio</span><span class="p">(</span><span class="n">kw</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span> <span class="n">para</span><span class="o">.</span><span class="n">lower</span><span class="p">())</span> <span class="o">&gt;=</span> <span class="n">threshold</span> <span class="k">for</span> <span class="n">kw</span> <span class="ow">in</span> <span class="n">keywords</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">match_count</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">matched</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s2">&quot;page&quot;</span><span class="p">:</span> <span class="n">page_num</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">para</span><span class="p">})</span>
+    <span class="k">return</span> <span class="n">matched</span></div>
+
+
+
+<div class="viewcode-block" id="load_indicators_from_db">
+<a class="viewcode-back" href="../../../modules.data_storage.html#modules.data_storage.retry_failed_reports.load_indicators_from_db">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">load_indicators_from_db</span><span class="p">(</span><span class="n">conn</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Loads CSR indicators from the PostgreSQL database.</span>
+
+<span class="sd">    This function queries the database for CSR indicator data, including indicator</span>
+<span class="sd">    names and keywords, which are used later to match against extracted paragraphs.</span>
+
+<span class="sd">    :param conn: The database connection object.</span>
+<span class="sd">    :type conn: psycopg2.connection</span>
+<span class="sd">    :return: A list of tuples containing indicator_id, indicator_name, and keywords.</span>
+<span class="sd">    :rtype: list of tuples (int, str, list)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">conn</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cur</span><span class="p">:</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;SELECT indicator_id, indicator_name, keywords FROM csr_reporting.CSR_indicators&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span></div>
+
+
+
+<div class="viewcode-block" id="insert_matched_data">
+<a class="viewcode-back" href="../../../modules.data_storage.html#modules.data_storage.retry_failed_reports.insert_matched_data">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">insert_matched_data</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">security</span><span class="p">,</span> <span class="n">report_year</span><span class="p">,</span> <span class="n">indicator_id</span><span class="p">,</span> <span class="n">indicator_name</span><span class="p">,</span> <span class="n">matched</span><span class="p">,</span> <span class="n">extraction_time</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Inserts the matched CSR data into the database.</span>
+
+<span class="sd">    This function inserts the matched paragraphs along with metadata into the</span>
+<span class="sd">    PostgreSQL database for later retrieval and reporting.</span>
+
+<span class="sd">    :param conn: The database connection object.</span>
+<span class="sd">    :type conn: psycopg2.connection</span>
+<span class="sd">    :param security: The security identifier of the company.</span>
+<span class="sd">    :type security: str</span>
+<span class="sd">    :param report_year: The year of the CSR report.</span>
+<span class="sd">    :type report_year: int</span>
+<span class="sd">    :param indicator_id: The ID of the CSR indicator.</span>
+<span class="sd">    :type indicator_id: int</span>
+<span class="sd">    :param indicator_name: The name of the CSR indicator.</span>
+<span class="sd">    :type indicator_name: str</span>
+<span class="sd">    :param matched: A list of matched paragraphs.</span>
+<span class="sd">    :type matched: list of dict</span>
+<span class="sd">    :param extraction_time: The time when the data was extracted.</span>
+<span class="sd">    :type extraction_time: datetime.datetime</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">conn</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cur</span><span class="p">:</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;&quot;&quot; </span>
+<span class="s2">            INSERT INTO csr_reporting.CSR_Data (</span>
+<span class="s2">                security, report_year, indicator_id, indicator_name,</span>
+<span class="s2">                source_excerpt, extraction_time</span>
+<span class="s2">            )</span>
+<span class="s2">            VALUES (</span><span class="si">%s</span><span class="s2">, </span><span class="si">%s</span><span class="s2">, </span><span class="si">%s</span><span class="s2">, </span><span class="si">%s</span><span class="s2">, </span><span class="si">%s</span><span class="s2">::jsonb, </span><span class="si">%s</span><span class="s2">)</span>
+<span class="s2">        &quot;&quot;&quot;</span><span class="p">,</span> <span class="p">(</span>
+            <span class="n">security</span><span class="p">,</span> <span class="n">report_year</span><span class="p">,</span> <span class="n">indicator_id</span><span class="p">,</span> <span class="n">indicator_name</span><span class="p">,</span>
+            <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">matched</span><span class="p">),</span> <span class="n">extraction_time</span>
+        <span class="p">))</span>
+    <span class="n">conn</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span></div>
+
+
+
+<div class="viewcode-block" id="process_single_report">
+<a class="viewcode-back" href="../../../modules.data_storage.html#modules.data_storage.retry_failed_reports.process_single_report">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">process_single_report</span><span class="p">(</span><span class="n">object_name</span><span class="p">,</span> <span class="n">indicators</span><span class="p">,</span> <span class="n">conn_config</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Processes a single report by downloading it from MinIO, extracting paragraphs, </span>
+<span class="sd">    matching them with indicators, and saving the results to the database.</span>
+
+<span class="sd">    This function downloads the report, extracts its paragraphs, matches them with</span>
+<span class="sd">    CSR indicators, and stores the results in the database.</span>
+
+<span class="sd">    :param object_name: The name of the object (PDF file) stored in MinIO.</span>
+<span class="sd">    :type object_name: str</span>
+<span class="sd">    :param indicators: A list of CSR indicators to match against.</span>
+<span class="sd">    :type indicators: list of tuples (int, str, list)</span>
+<span class="sd">    :param conn_config: The configuration for connecting to the PostgreSQL database.</span>
+<span class="sd">    :type conn_config: dict</span>
+<span class="sd">    :return: True if the report was processed successfully, False otherwise.</span>
+<span class="sd">    :rtype: bool</span>
+<span class="sd">    :raises Exception: If any error occurs during the processing of the report.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">conn</span> <span class="o">=</span> <span class="n">psycopg2</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="o">**</span><span class="n">conn_config</span><span class="p">)</span>
+    <span class="n">security</span><span class="p">,</span> <span class="n">report_year</span> <span class="o">=</span> <span class="n">parse_security_and_year</span><span class="p">(</span><span class="n">object_name</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">security</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">report_year</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="n">local_file</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;/tmp/</span><span class="si">{</span><span class="n">security</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">report_year</span><span class="si">}</span><span class="s2">.pdf&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">tqdm</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;🔁 Retrying download: </span><span class="si">{</span><span class="n">object_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">minio_client</span><span class="o">.</span><span class="n">fget_object</span><span class="p">(</span><span class="n">MINIO_BUCKET</span><span class="p">,</span> <span class="n">object_name</span><span class="p">,</span> <span class="n">local_file</span><span class="p">)</span>
+        <span class="n">paragraphs</span> <span class="o">=</span> <span class="n">extract_paragraphs_from_pdf</span><span class="p">(</span><span class="n">local_file</span><span class="p">)</span>
+        <span class="n">extraction_time</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span>
+
+        <span class="k">for</span> <span class="n">indicator_id</span><span class="p">,</span> <span class="n">indicator_name</span><span class="p">,</span> <span class="n">keyword_list</span> <span class="ow">in</span> <span class="n">indicators</span><span class="p">:</span>
+            <span class="n">keywords</span> <span class="o">=</span> <span class="n">keyword_list</span> <span class="ow">or</span> <span class="p">[]</span>
+            <span class="n">matched</span> <span class="o">=</span> <span class="n">find_matching_paragraphs</span><span class="p">(</span><span class="n">paragraphs</span><span class="p">,</span> <span class="n">keywords</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">matched</span><span class="p">:</span>
+                <span class="n">tqdm</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;✅ Matched indicator【</span><span class="si">{</span><span class="n">indicator_name</span><span class="si">}</span><span class="s2">】in </span><span class="si">{</span><span class="n">security</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">report_year</span><span class="si">}</span><span class="s2">) - Paragraphs: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">matched</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="n">insert_matched_data</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">security</span><span class="p">,</span> <span class="n">report_year</span><span class="p">,</span> <span class="n">indicator_id</span><span class="p">,</span> <span class="n">indicator_name</span><span class="p">,</span> <span class="n">matched</span><span class="p">,</span> <span class="n">extraction_time</span><span class="p">)</span>
+
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">tqdm</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;❌ Retry failed: </span><span class="si">{</span><span class="n">object_name</span><span class="si">}</span><span class="s2">, Error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">local_file</span><span class="p">):</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">local_file</span><span class="p">)</span>
+        <span class="n">conn</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="kc">True</span></div>
+
+
+
+<div class="viewcode-block" id="retry_failed_reports">
+<a class="viewcode-back" href="../../../modules.data_storage.html#modules.data_storage.retry_failed_reports.retry_failed_reports">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">retry_failed_reports</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Retries processing of reports that failed during a previous attempt. </span>
+<span class="sd">    If retrying fails, the report names are saved in the &#39;failed_reports.json&#39; file.</span>
+
+<span class="sd">    This function reads a list of failed report names from a JSON file, retries</span>
+<span class="sd">    processing them, and updates the list of failed reports if necessary.</span>
+
+<span class="sd">    :raises Exception: If any error occurs during the retry process.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">script_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="vm">__file__</span><span class="p">)</span><span class="o">.</span><span class="n">parent</span>
+    <span class="n">failed_json_path</span> <span class="o">=</span> <span class="n">script_dir</span> <span class="o">/</span> <span class="s2">&quot;failed_reports.json&quot;</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">failed_json_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;No failed_reports.json found, no need to retry.&quot;</span><span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">failed_json_path</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">failed_files</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">failed_files</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;failed_reports.json is empty, no need to retry.&quot;</span><span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="k">with</span> <span class="n">psycopg2</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="o">**</span><span class="n">db_config</span><span class="p">)</span> <span class="k">as</span> <span class="n">conn</span><span class="p">:</span>
+        <span class="n">indicators</span> <span class="o">=</span> <span class="n">load_indicators_from_db</span><span class="p">(</span><span class="n">conn</span><span class="p">)</span>
+
+    <span class="n">tqdm</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;🔄 Retrying processing of </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">failed_files</span><span class="p">)</span><span class="si">}</span><span class="s2"> failed files...&quot;</span><span class="p">)</span>
+    <span class="n">remaining_failed</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">for</span> <span class="n">object_name</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">failed_files</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;Retrying&quot;</span><span class="p">):</span>
+        <span class="n">success</span> <span class="o">=</span> <span class="n">process_single_report</span><span class="p">(</span><span class="n">object_name</span><span class="p">,</span> <span class="n">indicators</span><span class="p">,</span> <span class="n">db_config</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">success</span><span class="p">:</span>
+            <span class="n">remaining_failed</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">object_name</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">remaining_failed</span><span class="p">:</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">failed_json_path</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">remaining_failed</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">ensure_ascii</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+        <span class="n">tqdm</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;⚠️ </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">remaining_failed</span><span class="p">)</span><span class="si">}</span><span class="s2"> files still failed after retry, updated failed_reports.json.&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">failed_json_path</span><span class="o">.</span><span class="n">unlink</span><span class="p">()</span>  <span class="c1"># safer than os.remove</span>
+        <span class="n">tqdm</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;🎉 All failed files have been retried successfully, failed_reports.json has been cleared.&quot;</span><span class="p">)</span></div>
+
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">retry_failed_reports</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../../index.html">Bigdata_cw2_Jacaranda</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../modules.html">modules package</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../my_fastapi.html">my_fastapi package</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../test.html">test package</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../../index.html">Documentation overview</a><ul>
+  <li><a href="../../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, Roger.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>my_fastapi.main &#8212; Bigdata_cw2_Jacaranda 1.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../../_static/alabaster.css?v=27fed22d" />
+    <script src="../../_static/documentation_options.js?v=f2a433a1"></script>
+    <script src="../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+   
+  <link rel="stylesheet" href="../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for my_fastapi.main</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">This module defines a FastAPI application that serves as an API for accessing CSR (Corporate Social Responsibility) data.</span>
+<span class="sd">It includes endpoints for querying CSR indicators, CSR data, and company reports from a PostgreSQL database. </span>
+<span class="sd">Additionally, it serves static files for frontend development and includes CORS configuration for cross-origin requests.</span>
+
+<span class="sd">Main functionality:</span>
+<span class="sd">- CORS setup for allowing specific origins.</span>
+<span class="sd">- Static file serving for frontend deployment (React).</span>
+<span class="sd">- Database connections and query execution using psycopg2.</span>
+<span class="sd">- API endpoints for accessing and querying CSR data, indicators, and reports.</span>
+
+<span class="sd">To run the application:</span>
+<span class="sd">- Run `poetry run uvicorn my_fastapi.main:app --host 0.0.0.0 --port 8000 --reload`</span>
+<span class="sd">- Run `ngrok http --url=csr.jacaranda.ngrok.app 8000`</span>
+<span class="sd">- Access Swagger UI at `http://127.0.0.1:8000/docs`</span>
+<span class="sd">- Original JSON schema can be found at `http://127.0.0.1:8000/openapi.json`</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span><span class="p">,</span> <span class="n">HTTPException</span><span class="p">,</span> <span class="n">Query</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">fastapi.middleware.cors</span><span class="w"> </span><span class="kn">import</span> <span class="n">CORSMiddleware</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">fastapi.staticfiles</span><span class="w"> </span><span class="kn">import</span> <span class="n">StaticFiles</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">fastapi.responses</span><span class="w"> </span><span class="kn">import</span> <span class="n">FileResponse</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">psycopg2</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">psycopg2.extras</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+
+<span class="c1"># === FastAPI instance setup ===</span>
+<span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">&quot;CSR Reporting API&quot;</span><span class="p">)</span>
+
+<span class="c1"># === CORS configuration ===</span>
+<span class="n">origins</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;http://localhost:3000&quot;</span><span class="p">,</span>       <span class="c1"># React frontend development environment</span>
+    <span class="s2">&quot;https://example.com&quot;</span><span class="p">,</span>         <span class="c1"># Replace with the production environment if applicable</span>
+    <span class="s2">&quot;*&quot;</span>                            <span class="c1"># Allow all origins during development (only for development use)</span>
+<span class="p">]</span>
+
+<span class="n">app</span><span class="o">.</span><span class="n">add_middleware</span><span class="p">(</span>
+    <span class="n">CORSMiddleware</span><span class="p">,</span>
+    <span class="n">allow_origins</span><span class="o">=</span><span class="n">origins</span><span class="p">,</span>
+    <span class="n">allow_credentials</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">allow_methods</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;*&quot;</span><span class="p">],</span>
+    <span class="n">allow_headers</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;*&quot;</span><span class="p">],</span>
+<span class="p">)</span>
+
+<span class="c1"># === Static files configuration (for frontend deployment) ===</span>
+<span class="n">frontend_build_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="vm">__file__</span><span class="p">),</span> <span class="s2">&quot;../modules/frontend/build&quot;</span><span class="p">)</span>
+<span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">frontend_build_dir</span><span class="p">):</span>
+    <span class="n">app</span><span class="o">.</span><span class="n">mount</span><span class="p">(</span><span class="s2">&quot;/static&quot;</span><span class="p">,</span> <span class="n">StaticFiles</span><span class="p">(</span><span class="n">directory</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">frontend_build_dir</span><span class="p">,</span> <span class="s2">&quot;static&quot;</span><span class="p">)),</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;static&quot;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="serve_frontend">
+<a class="viewcode-back" href="../../my_fastapi.html#my_fastapi.main.serve_frontend">[docs]</a>
+    <span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">serve_frontend</span><span class="p">():</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Serves the React frontend&#39;s `index.html` file.</span>
+
+<span class="sd">        This endpoint is used to serve the frontend React application after it has been built </span>
+<span class="sd">        and deployed to the server.</span>
+
+<span class="sd">        :return: The `index.html` file of the React frontend.</span>
+<span class="sd">        :rtype: FileResponse</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">FileResponse</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">frontend_build_dir</span><span class="p">,</span> <span class="s2">&quot;index.html&quot;</span><span class="p">))</span></div>
+
+
+<span class="c1"># === Favicon handling ===</span>
+<span class="n">favicon_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">frontend_build_dir</span><span class="p">,</span> <span class="s2">&quot;favicon.ico&quot;</span><span class="p">)</span>
+<span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">favicon_path</span><span class="p">):</span>
+    <span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;/favicon.ico&quot;</span><span class="p">)</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">favicon</span><span class="p">():</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Serves the `favicon.ico` file for the application.</span>
+
+<span class="sd">        This endpoint handles requests for the favicon.ico, which is used as the browser icon.</span>
+
+<span class="sd">        :return: The favicon.ico file.</span>
+<span class="sd">        :rtype: FileResponse</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">FileResponse</span><span class="p">(</span><span class="n">favicon_path</span><span class="p">)</span>
+
+<span class="c1"># === Database configuration ===</span>
+<span class="n">db_config</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;dbname&quot;</span><span class="p">:</span> <span class="s2">&quot;fift&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;user&quot;</span><span class="p">:</span> <span class="s2">&quot;postgres&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;password&quot;</span><span class="p">:</span> <span class="s2">&quot;postgres&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;host&quot;</span><span class="p">:</span> <span class="s2">&quot;host.docker.internal&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;port&quot;</span><span class="p">:</span> <span class="mi">5439</span>
+<span class="p">}</span>
+
+<div class="viewcode-block" id="get_db">
+<a class="viewcode-back" href="../../my_fastapi.html#my_fastapi.main.get_db">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_db</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Establishes and returns a connection to the PostgreSQL database.</span>
+
+<span class="sd">    This function connects to the database using the credentials and configuration defined</span>
+<span class="sd">    in the `db_config` dictionary. It is used to execute queries against the database.</span>
+
+<span class="sd">    :return: A database connection object.</span>
+<span class="sd">    :rtype: psycopg2.extensions.connection</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">conn</span> <span class="o">=</span> <span class="n">psycopg2</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="o">**</span><span class="n">db_config</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">conn</span></div>
+
+
+<div class="viewcode-block" id="query_db">
+<a class="viewcode-back" href="../../my_fastapi.html#my_fastapi.main.query_db">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">query_db</span><span class="p">(</span><span class="n">query</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">params</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">tuple</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Executes a query on the database and returns the results.</span>
+
+<span class="sd">    This function executes a given SQL query on the database using the provided parameters</span>
+<span class="sd">    and returns the results as a list of dictionaries.</span>
+
+<span class="sd">    :param query: The SQL query to execute.</span>
+<span class="sd">    :type query: str</span>
+<span class="sd">    :param params: Optional parameters to pass to the query, defaults to None.</span>
+<span class="sd">    :type params: Optional[tuple]</span>
+<span class="sd">    :return: The results of the query as a list of dictionaries.</span>
+<span class="sd">    :rtype: list</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">conn</span> <span class="o">=</span> <span class="n">get_db</span><span class="p">()</span>
+    <span class="k">with</span> <span class="n">conn</span><span class="o">.</span><span class="n">cursor</span><span class="p">(</span><span class="n">cursor_factory</span><span class="o">=</span><span class="n">psycopg2</span><span class="o">.</span><span class="n">extras</span><span class="o">.</span><span class="n">RealDictCursor</span><span class="p">)</span> <span class="k">as</span> <span class="n">cur</span><span class="p">:</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+    <span class="n">conn</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">results</span></div>
+
+
+<span class="c1"># === CSR_indicators Endpoints ===</span>
+
+<div class="viewcode-block" id="get_all_indicators">
+<a class="viewcode-back" href="../../my_fastapi.html#my_fastapi.main.get_all_indicators">[docs]</a>
+<span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;/indicators&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_all_indicators</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Retrieves all CSR indicators from the database.</span>
+
+<span class="sd">    This endpoint queries the `csr_reporting.CSR_indicators` table and returns all rows ordered by `indicator_id`.</span>
+
+<span class="sd">    :return: A list of CSR indicators from the database.</span>
+<span class="sd">    :rtype: list</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">query</span> <span class="o">=</span> <span class="s2">&quot;SELECT * FROM csr_reporting.CSR_indicators ORDER BY indicator_id;&quot;</span>
+    <span class="k">return</span> <span class="n">query_db</span><span class="p">(</span><span class="n">query</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="search_indicators">
+<a class="viewcode-back" href="../../my_fastapi.html#my_fastapi.main.search_indicators">[docs]</a>
+<span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;/indicators/search&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">search_indicators</span><span class="p">(</span><span class="n">indicator_name</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">Query</span><span class="p">(</span><span class="kc">None</span><span class="p">),</span> <span class="n">theme</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">Query</span><span class="p">(</span><span class="kc">None</span><span class="p">)):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Searches CSR indicators based on optional query parameters.</span>
+
+<span class="sd">    This endpoint allows filtering CSR indicators by name and/or theme. It queries the `csr_reporting.CSR_indicators`</span>
+<span class="sd">    table and applies the provided filters.</span>
+
+<span class="sd">    :param indicator_name: The name of the indicator to search for (optional).</span>
+<span class="sd">    :type indicator_name: Optional[str]</span>
+<span class="sd">    :param theme: The theme of the indicator to search for (optional).</span>
+<span class="sd">    :type theme: Optional[str]</span>
+<span class="sd">    :return: A list of filtered CSR indicators.</span>
+<span class="sd">    :rtype: list</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">query</span> <span class="o">=</span> <span class="s2">&quot;SELECT * FROM csr_reporting.CSR_indicators WHERE TRUE&quot;</span>
+    <span class="n">params</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="n">indicator_name</span><span class="p">:</span>
+        <span class="n">query</span> <span class="o">+=</span> <span class="s2">&quot; AND indicator_name ILIKE </span><span class="si">%s</span><span class="s2">&quot;</span>
+        <span class="n">params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;%</span><span class="si">{</span><span class="n">indicator_name</span><span class="si">}</span><span class="s2">%&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">theme</span><span class="p">:</span>
+        <span class="n">query</span> <span class="o">+=</span> <span class="s2">&quot; AND theme ILIKE </span><span class="si">%s</span><span class="s2">&quot;</span>
+        <span class="n">params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;%</span><span class="si">{</span><span class="n">theme</span><span class="si">}</span><span class="s2">%&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">query_db</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">params</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="get_indicator_by_id">
+<a class="viewcode-back" href="../../my_fastapi.html#my_fastapi.main.get_indicator_by_id">[docs]</a>
+<span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;/indicators/</span><span class="si">{indicator_id}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_indicator_by_id</span><span class="p">(</span><span class="n">indicator_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Retrieves a specific CSR indicator by its ID.</span>
+
+<span class="sd">    This endpoint queries the `csr_reporting.CSR_indicators` table for a record with the specified `indicator_id`.</span>
+
+<span class="sd">    :param indicator_id: The ID of the indicator to retrieve.</span>
+<span class="sd">    :type indicator_id: int</span>
+<span class="sd">    :return: The CSR indicator with the specified ID.</span>
+<span class="sd">    :rtype: dict</span>
+<span class="sd">    :raises HTTPException: If no indicator is found with the given ID.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">query</span> <span class="o">=</span> <span class="s2">&quot;SELECT * FROM csr_reporting.CSR_indicators WHERE indicator_id = </span><span class="si">%s</span><span class="s2">;&quot;</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="n">query_db</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="p">(</span><span class="n">indicator_id</span><span class="p">,))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">results</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span><span class="n">status_code</span><span class="o">=</span><span class="mi">404</span><span class="p">,</span> <span class="n">detail</span><span class="o">=</span><span class="s2">&quot;Indicator not found&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">results</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span></div>
+
+
+<span class="c1"># === CSR_Data Endpoints ===</span>
+
+<div class="viewcode-block" id="get_all_data">
+<a class="viewcode-back" href="../../my_fastapi.html#my_fastapi.main.get_all_data">[docs]</a>
+<span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;/data&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_all_data</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Retrieves all CSR data from the database.</span>
+
+<span class="sd">    This endpoint queries the `csr_reporting.CSR_Data` table and returns the first 100 rows ordered by `data_id`.</span>
+
+<span class="sd">    :return: A list of CSR data entries.</span>
+<span class="sd">    :rtype: list</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">query</span> <span class="o">=</span> <span class="s2">&quot;SELECT * FROM csr_reporting.CSR_Data ORDER BY data_id LIMIT 100;&quot;</span>
+    <span class="k">return</span> <span class="n">query_db</span><span class="p">(</span><span class="n">query</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="search_data">
+<a class="viewcode-back" href="../../my_fastapi.html#my_fastapi.main.search_data">[docs]</a>
+<span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;/data/search&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">search_data</span><span class="p">(</span>
+    <span class="n">security</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">Query</span><span class="p">(</span><span class="kc">None</span><span class="p">),</span>
+    <span class="n">report_year</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="n">Query</span><span class="p">(</span><span class="kc">None</span><span class="p">),</span>
+    <span class="n">indicator_id</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="n">Query</span><span class="p">(</span><span class="kc">None</span><span class="p">),</span>
+    <span class="n">indicator_name</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">Query</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Searches CSR data based on optional query parameters.</span>
+
+<span class="sd">    This endpoint allows filtering CSR data by security, report year, indicator ID, and/or indicator name.</span>
+
+<span class="sd">    :param security: The security of the data to search for (optional).</span>
+<span class="sd">    :type security: Optional[str]</span>
+<span class="sd">    :param report_year: The report year of the data to search for (optional).</span>
+<span class="sd">    :type report_year: Optional[int]</span>
+<span class="sd">    :param indicator_id: The ID of the indicator to search for (optional).</span>
+<span class="sd">    :type indicator_id: Optional[int]</span>
+<span class="sd">    :param indicator_name: The name of the indicator to search for (optional).</span>
+<span class="sd">    :type indicator_name: Optional[str]</span>
+<span class="sd">    :return: A list of filtered CSR data.</span>
+<span class="sd">    :rtype: list</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">query</span> <span class="o">=</span> <span class="s2">&quot;SELECT * FROM csr_reporting.CSR_Data WHERE TRUE&quot;</span>
+    <span class="n">params</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="n">security</span><span class="p">:</span>
+        <span class="n">query</span> <span class="o">+=</span> <span class="s2">&quot; AND security ILIKE </span><span class="si">%s</span><span class="s2">&quot;</span>
+        <span class="n">params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;%</span><span class="si">{</span><span class="n">security</span><span class="si">}</span><span class="s2">%&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">report_year</span><span class="p">:</span>
+        <span class="n">query</span> <span class="o">+=</span> <span class="s2">&quot; AND report_year = </span><span class="si">%s</span><span class="s2">&quot;</span>
+        <span class="n">params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">report_year</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">indicator_id</span><span class="p">:</span>
+        <span class="n">query</span> <span class="o">+=</span> <span class="s2">&quot; AND indicator_id = </span><span class="si">%s</span><span class="s2">&quot;</span>
+        <span class="n">params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">indicator_id</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">indicator_name</span><span class="p">:</span>
+        <span class="n">query</span> <span class="o">+=</span> <span class="s2">&quot; AND indicator_name ILIKE </span><span class="si">%s</span><span class="s2">&quot;</span>
+        <span class="n">params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;%</span><span class="si">{</span><span class="n">indicator_name</span><span class="si">}</span><span class="s2">%&quot;</span><span class="p">)</span>
+    <span class="n">query</span> <span class="o">+=</span> <span class="s2">&quot; ORDER BY data_id LIMIT 100;&quot;</span>
+    <span class="k">return</span> <span class="n">query_db</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">params</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="get_data_by_id">
+<a class="viewcode-back" href="../../my_fastapi.html#my_fastapi.main.get_data_by_id">[docs]</a>
+<span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;/data/</span><span class="si">{data_id}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_data_by_id</span><span class="p">(</span><span class="n">data_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Retrieves a specific CSR data entry by its ID.</span>
+
+<span class="sd">    This endpoint queries the `csr_reporting.CSR_Data` table for a record with the specified `data_id`.</span>
+
+<span class="sd">    :param data_id: The ID of the data entry to retrieve.</span>
+<span class="sd">    :type data_id: int</span>
+<span class="sd">    :return: The CSR data entry with the specified ID.</span>
+<span class="sd">    :rtype: dict</span>
+<span class="sd">    :raises HTTPException: If no data entry is found with the given ID.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">query</span> <span class="o">=</span> <span class="s2">&quot;SELECT * FROM csr_reporting.CSR_Data WHERE data_id = </span><span class="si">%s</span><span class="s2">;&quot;</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="n">query_db</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="p">(</span><span class="n">data_id</span><span class="p">,))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">results</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span><span class="n">status_code</span><span class="o">=</span><span class="mi">404</span><span class="p">,</span> <span class="n">detail</span><span class="o">=</span><span class="s2">&quot;Data entry not found&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">results</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span></div>
+
+
+<span class="c1"># === Company Reports Endpoints ===</span>
+
+<div class="viewcode-block" id="get_all_company_reports">
+<a class="viewcode-back" href="../../my_fastapi.html#my_fastapi.main.get_all_company_reports">[docs]</a>
+<span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;/reports&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_all_company_reports</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Retrieves all company reports from the database.</span>
+
+<span class="sd">    This endpoint queries the `csr_reporting.company_reports` table and returns all rows ordered by `id`.</span>
+
+<span class="sd">    :return: A list of company reports.</span>
+<span class="sd">    :rtype: list</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">query</span> <span class="o">=</span> <span class="s2">&quot;SELECT * FROM csr_reporting.company_reports ORDER BY id;&quot;</span>
+    <span class="k">return</span> <span class="n">query_db</span><span class="p">(</span><span class="n">query</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="search_reports">
+<a class="viewcode-back" href="../../my_fastapi.html#my_fastapi.main.search_reports">[docs]</a>
+<span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;/reports/search&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">search_reports</span><span class="p">(</span>
+    <span class="n">symbol</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">Query</span><span class="p">(</span><span class="kc">None</span><span class="p">),</span>
+    <span class="n">security</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">Query</span><span class="p">(</span><span class="kc">None</span><span class="p">),</span>
+    <span class="n">report_year</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="n">Query</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Searches company reports based on optional query parameters.</span>
+
+<span class="sd">    This endpoint allows filtering company reports by symbol, security, and/or report year.</span>
+
+<span class="sd">    :param symbol: The symbol of the report to search for (optional).</span>
+<span class="sd">    :type symbol: Optional[str]</span>
+<span class="sd">    :param security: The security of the report to search for (optional).</span>
+<span class="sd">    :type security: Optional[str]</span>
+<span class="sd">    :param report_year: The report year of the report to search for (optional).</span>
+<span class="sd">    :type report_year: Optional[int]</span>
+<span class="sd">    :return: A list of filtered company reports.</span>
+<span class="sd">    :rtype: list</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">query</span> <span class="o">=</span> <span class="s2">&quot;SELECT * FROM csr_reporting.company_reports WHERE TRUE&quot;</span>
+    <span class="n">params</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="n">symbol</span><span class="p">:</span>
+        <span class="n">query</span> <span class="o">+=</span> <span class="s2">&quot; AND symbol ILIKE </span><span class="si">%s</span><span class="s2">&quot;</span>
+        <span class="n">params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;%</span><span class="si">{</span><span class="n">symbol</span><span class="si">}</span><span class="s2">%&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">security</span><span class="p">:</span>
+        <span class="n">query</span> <span class="o">+=</span> <span class="s2">&quot; AND security ILIKE </span><span class="si">%s</span><span class="s2">&quot;</span>
+        <span class="n">params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;%</span><span class="si">{</span><span class="n">security</span><span class="si">}</span><span class="s2">%&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">report_year</span><span class="p">:</span>
+        <span class="n">query</span> <span class="o">+=</span> <span class="s2">&quot; AND report_year = </span><span class="si">%s</span><span class="s2">&quot;</span>
+        <span class="n">params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">report_year</span><span class="p">)</span>
+    <span class="n">query</span> <span class="o">+=</span> <span class="s2">&quot; ORDER BY id;&quot;</span>
+    <span class="k">return</span> <span class="n">query_db</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">params</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="get_company_report_by_id">
+<a class="viewcode-back" href="../../my_fastapi.html#my_fastapi.main.get_company_report_by_id">[docs]</a>
+<span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;/reports/</span><span class="si">{report_id}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_company_report_by_id</span><span class="p">(</span><span class="n">report_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Retrieves a specific company report by its ID.</span>
+
+<span class="sd">    This endpoint queries the `csr_reporting.company_reports` table for a record with the specified `report_id`.</span>
+
+<span class="sd">    :param report_id: The ID of the company report to retrieve.</span>
+<span class="sd">    :type report_id: int</span>
+<span class="sd">    :return: The company report with the specified ID.</span>
+<span class="sd">    :rtype: dict</span>
+<span class="sd">    :raises HTTPException: If no company report is found with the given ID.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">query</span> <span class="o">=</span> <span class="s2">&quot;SELECT * FROM csr_reporting.company_reports WHERE id = </span><span class="si">%s</span><span class="s2">;&quot;</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="n">query_db</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="p">(</span><span class="n">report_id</span><span class="p">,))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">results</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span><span class="n">status_code</span><span class="o">=</span><span class="mi">404</span><span class="p">,</span> <span class="n">detail</span><span class="o">=</span><span class="s2">&quot;Report not found&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">results</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span></div>
+
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../index.html">Bigdata_cw2_Jacaranda</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../modules.html">modules package</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../my_fastapi.html">my_fastapi package</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../test.html">test package</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../index.html">Documentation overview</a><ul>
+  <li><a href="../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, Roger.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

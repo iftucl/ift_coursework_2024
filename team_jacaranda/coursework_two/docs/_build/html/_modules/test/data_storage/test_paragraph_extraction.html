@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>test.data_storage.test_paragraph_extraction &#8212; Bigdata_cw2_Jacaranda 1.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/alabaster.css?v=27fed22d" />
+    <script src="../../../_static/documentation_options.js?v=f2a433a1"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+   
+  <link rel="stylesheet" href="../../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for test.data_storage.test_paragraph_extraction</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Test module for paragraph extraction functionality within the data storage module.</span>
+<span class="sd">This module tests various functions including PDF paragraph extraction, database insertion,</span>
+<span class="sd">memory usage checks, and the processing of multiple PDFs.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">MagicMock</span><span class="p">,</span> <span class="n">patch</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">psycopg2</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">io</span><span class="w"> </span><span class="kn">import</span> <span class="n">BytesIO</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">modules.data_storage</span><span class="w"> </span><span class="kn">import</span> <span class="n">paragraph_extraction</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">fuzzywuzzy</span><span class="w"> </span><span class="kn">import</span> <span class="n">fuzz</span>
+
+<span class="c1"># === Mock data ===</span>
+<span class="n">mock_indicators</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;Renewable Energy&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;solar&quot;</span><span class="p">,</span> <span class="s2">&quot;renewable&quot;</span><span class="p">,</span> <span class="s2">&quot;energy&quot;</span><span class="p">]),</span>
+    <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="s2">&quot;Water Usage&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;water&quot;</span><span class="p">,</span> <span class="s2">&quot;usage&quot;</span><span class="p">,</span> <span class="s2">&quot;conservation&quot;</span><span class="p">])</span>
+<span class="p">]</span>
+
+<span class="n">mock_paragraphs</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;This paragraph talks about solar energy and its impact.&quot;</span><span class="p">),</span>
+    <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="s2">&quot;This paragraph discusses water usage and its conservation efforts.&quot;</span><span class="p">),</span>
+    <span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="s2">&quot;This is a generic paragraph with no match.&quot;</span><span class="p">)</span>
+<span class="p">]</span>
+
+<span class="c1"># === Mock MinIO ===</span>
+<div class="viewcode-block" id="mock_minio">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_paragraph_extraction.mock_minio">[docs]</a>
+<span class="nd">@pytest</span><span class="o">.</span><span class="n">fixture</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">mock_minio</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Fixture to mock MinIO client by patching the &#39;fget_object&#39; method to return None.</span>
+
+<span class="sd">    Yields:</span>
+<span class="sd">        mock_fget (MagicMock): The mocked MinIO &#39;fget_object&#39; method.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">patch</span><span class="o">.</span><span class="n">object</span><span class="p">(</span><span class="n">paragraph_extraction</span><span class="o">.</span><span class="n">minio_client</span><span class="p">,</span> <span class="s1">&#39;fget_object&#39;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="k">as</span> <span class="n">mock_fget</span><span class="p">:</span>
+        <span class="k">yield</span> <span class="n">mock_fget</span></div>
+
+
+<span class="c1"># === Mock Database ===</span>
+<div class="viewcode-block" id="mock_db">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_paragraph_extraction.mock_db">[docs]</a>
+<span class="nd">@pytest</span><span class="o">.</span><span class="n">fixture</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">mock_db</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Fixture to mock database connection and cursor for testing database interactions.</span>
+
+<span class="sd">    Yields:</span>
+<span class="sd">        mock_conn (MagicMock): The mocked database connection object.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">mock_conn</span> <span class="o">=</span> <span class="n">MagicMock</span><span class="p">()</span>
+    <span class="n">mock_cursor</span> <span class="o">=</span> <span class="n">MagicMock</span><span class="p">()</span>
+    <span class="n">mock_conn</span><span class="o">.</span><span class="n">cursor</span><span class="o">.</span><span class="n">return_value</span><span class="o">.</span><span class="fm">__enter__</span><span class="o">.</span><span class="n">return_value</span> <span class="o">=</span> <span class="n">mock_cursor</span>
+    <span class="k">yield</span> <span class="n">mock_conn</span></div>
+
+
+<span class="c1"># === Test extract_paragraphs_from_pdf ===</span>
+<div class="viewcode-block" id="test_extract_paragraphs_from_pdf">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_paragraph_extraction.test_extract_paragraphs_from_pdf">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_extract_paragraphs_from_pdf</span><span class="p">(</span><span class="n">mock_minio</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test the extraction of paragraphs from a PDF file.</span>
+
+<span class="sd">    Simulates the process of extracting text from a PDF and verifies that paragraphs</span>
+<span class="sd">    are correctly extracted.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        mock_minio (MagicMock): The mocked MinIO client for testing purposes.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">test_pdf</span> <span class="o">=</span> <span class="n">BytesIO</span><span class="p">(</span><span class="sa">b</span><span class="s2">&quot;%PDF-1.4</span><span class="se">\n</span><span class="s2">1 0 obj</span><span class="se">\n</span><span class="s2">&lt;&lt; /Type /Page &gt;&gt;</span><span class="se">\n</span><span class="s2">endobj</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;pdfplumber.open&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="n">MagicMock</span><span class="p">(</span><span class="n">pages</span><span class="o">=</span><span class="p">[</span><span class="n">MagicMock</span><span class="p">(</span><span class="n">extract_text</span><span class="o">=</span><span class="k">lambda</span><span class="p">:</span> <span class="s2">&quot;This is a test paragraph.&quot;</span><span class="p">)])):</span>
+        <span class="n">paragraphs</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">paragraph_extraction</span><span class="o">.</span><span class="n">extract_paragraphs_from_pdf</span><span class="p">(</span><span class="n">test_pdf</span><span class="p">))</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">paragraphs</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span>
+        <span class="k">assert</span> <span class="n">paragraphs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;This is a test paragraph.&quot;</span></div>
+
+
+<span class="c1"># === Test find_matching_paragraphs ===</span>
+<div class="viewcode-block" id="test_find_matching_paragraphs">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_paragraph_extraction.test_find_matching_paragraphs">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_find_matching_paragraphs</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test the functionality of finding paragraphs that match given keywords.</span>
+
+<span class="sd">    Verifies that the correct paragraphs are matched based on the provided keywords.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">paragraph_extraction</span><span class="o">.</span><span class="n">find_matching_paragraphs</span><span class="p">(</span><span class="n">mock_paragraphs</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;solar&quot;</span><span class="p">,</span> <span class="s2">&quot;energy&quot;</span><span class="p">])</span>
+    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>
+    <span class="k">assert</span> <span class="n">result</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;text&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;This paragraph talks about solar energy and its impact.&quot;</span>
+
+    <span class="n">result_no_match</span> <span class="o">=</span> <span class="n">paragraph_extraction</span><span class="o">.</span><span class="n">find_matching_paragraphs</span><span class="p">(</span><span class="n">mock_paragraphs</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;nonexistent&quot;</span><span class="p">,</span> <span class="s2">&quot;keyword&quot;</span><span class="p">])</span>
+    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">result_no_match</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span></div>
+
+
+<span class="c1"># === Test insert_matched_data ===</span>
+<div class="viewcode-block" id="test_insert_matched_data">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_paragraph_extraction.test_insert_matched_data">[docs]</a>
+<span class="nd">@patch</span><span class="p">(</span><span class="s2">&quot;psycopg2.connect&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_insert_matched_data</span><span class="p">(</span><span class="n">mock_db</span><span class="p">,</span> <span class="n">mock_minio</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test the insertion of matched paragraphs into the database.</span>
+
+<span class="sd">    Verifies that the matched data is correctly inserted into the database and that the</span>
+<span class="sd">    proper SQL statement is executed.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        mock_db (MagicMock): The mocked database connection object.</span>
+<span class="sd">        mock_minio (MagicMock): The mocked MinIO client for testing purposes.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">mock_cursor</span> <span class="o">=</span> <span class="n">mock_db</span><span class="o">.</span><span class="n">cursor</span><span class="o">.</span><span class="n">return_value</span><span class="o">.</span><span class="fm">__enter__</span><span class="o">.</span><span class="n">return_value</span>
+    <span class="n">mock_cursor</span><span class="o">.</span><span class="n">fetchone</span><span class="o">.</span><span class="n">return_value</span> <span class="o">=</span> <span class="p">[</span><span class="mi">123</span><span class="p">]</span>  <span class="c1"># Simulate returning a data_id</span>
+
+    <span class="n">matched_data</span> <span class="o">=</span> <span class="p">[{</span><span class="s2">&quot;page&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="s2">&quot;This is a matched paragraph.&quot;</span><span class="p">}]</span>
+    <span class="n">extraction_time</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span>
+
+    <span class="n">paragraph_extraction</span><span class="o">.</span><span class="n">insert_matched_data</span><span class="p">(</span>
+        <span class="n">mock_db</span><span class="p">,</span> <span class="s2">&quot;AAPL&quot;</span><span class="p">,</span> <span class="mi">2023</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;Renewable Energy&quot;</span><span class="p">,</span> <span class="n">matched_data</span><span class="p">,</span> <span class="n">extraction_time</span>
+    <span class="p">)</span>
+
+    <span class="n">mock_cursor</span><span class="o">.</span><span class="n">execute</span><span class="o">.</span><span class="n">assert_called_once</span><span class="p">()</span>
+    <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span> <span class="o">=</span> <span class="n">mock_cursor</span><span class="o">.</span><span class="n">execute</span><span class="o">.</span><span class="n">call_args</span>
+    <span class="k">assert</span> <span class="s2">&quot;INSERT INTO csr_reporting.CSR_Data&quot;</span> <span class="ow">in</span> <span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">assert</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">matched_data</span><span class="p">)</span> <span class="ow">in</span> <span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">assert</span> <span class="n">extraction_time</span> <span class="ow">in</span> <span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span></div>
+
+
+<span class="c1"># === Test check_memory_usage ===</span>
+<div class="viewcode-block" id="test_check_memory_usage">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_paragraph_extraction.test_check_memory_usage">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_check_memory_usage</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test the memory usage check function.</span>
+
+<span class="sd">    Verifies that the function returns the correct value based on system memory usage.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;psutil.virtual_memory&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="n">MagicMock</span><span class="p">(</span><span class="n">percent</span><span class="o">=</span><span class="mi">85</span><span class="p">)):</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">paragraph_extraction</span><span class="o">.</span><span class="n">check_memory_usage</span><span class="p">(</span><span class="mi">90</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">result</span> <span class="ow">is</span> <span class="kc">True</span>
+
+    <span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;psutil.virtual_memory&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="n">MagicMock</span><span class="p">(</span><span class="n">percent</span><span class="o">=</span><span class="mi">95</span><span class="p">)):</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">paragraph_extraction</span><span class="o">.</span><span class="n">check_memory_usage</span><span class="p">(</span><span class="mi">90</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">result</span> <span class="ow">is</span> <span class="kc">False</span></div>
+
+
+<span class="c1"># === Test process_report ===</span>
+<div class="viewcode-block" id="test_process_report">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_paragraph_extraction.test_process_report">[docs]</a>
+<span class="nd">@patch</span><span class="p">(</span><span class="s2">&quot;psycopg2.connect&quot;</span><span class="p">)</span>
+<span class="nd">@patch</span><span class="p">(</span><span class="s2">&quot;modules.data_storage.paragraph_extraction.minio_client.fget_object&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_process_report</span><span class="p">(</span><span class="n">mock_fget</span><span class="p">,</span> <span class="n">mock_db</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test the processing of a report file.</span>
+
+<span class="sd">    Simulates the entire process of handling a report, including database interactions,</span>
+<span class="sd">    memory usage checks, and file handling.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        mock_fget (MagicMock): The mocked MinIO &#39;fget_object&#39; method.</span>
+<span class="sd">        mock_db (MagicMock): The mocked database connection object.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">mock_fget</span><span class="o">.</span><span class="n">return_value</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">mock_cursor</span> <span class="o">=</span> <span class="n">mock_db</span><span class="o">.</span><span class="n">cursor</span><span class="o">.</span><span class="n">return_value</span><span class="o">.</span><span class="fm">__enter__</span><span class="o">.</span><span class="n">return_value</span>
+    <span class="n">mock_cursor</span><span class="o">.</span><span class="n">fetchone</span><span class="o">.</span><span class="n">return_value</span> <span class="o">=</span> <span class="p">[</span><span class="mi">123</span><span class="p">]</span>  <span class="c1"># Simulate returning a data_id</span>
+
+    <span class="n">result</span> <span class="o">=</span> <span class="n">paragraph_extraction</span><span class="o">.</span><span class="n">process_report</span><span class="p">((</span><span class="n">mock_db</span><span class="p">,</span> <span class="n">MagicMock</span><span class="p">(</span><span class="n">object_name</span><span class="o">=</span><span class="s2">&quot;AAPL_2023.pdf&quot;</span><span class="p">),</span> <span class="n">mock_indicators</span><span class="p">))</span>
+    <span class="k">assert</span> <span class="n">result</span> <span class="ow">is</span> <span class="kc">None</span>  <span class="c1"># If no exception occurs, the result should be None</span>
+    <span class="n">mock_cursor</span><span class="o">.</span><span class="n">execute</span><span class="o">.</span><span class="n">assert_called</span><span class="p">()</span></div>
+
+
+<span class="c1"># === Test process_all_pdfs ===</span>
+<div class="viewcode-block" id="test_process_all_pdfs">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_paragraph_extraction.test_process_all_pdfs">[docs]</a>
+<span class="nd">@patch</span><span class="p">(</span><span class="s2">&quot;psycopg2.connect&quot;</span><span class="p">)</span>
+<span class="nd">@patch</span><span class="p">(</span><span class="s2">&quot;modules.data_storage.paragraph_extraction.minio_client.list_objects&quot;</span><span class="p">)</span>
+<span class="nd">@patch</span><span class="p">(</span><span class="s2">&quot;modules.data_storage.paragraph_extraction.minio_client.fget_object&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_process_all_pdfs</span><span class="p">(</span><span class="n">mock_fget</span><span class="p">,</span> <span class="n">mock_list_objects</span><span class="p">,</span> <span class="n">mock_db</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test the processing of all PDF files from MinIO.</span>
+
+<span class="sd">    Verifies that all PDFs are processed correctly, including the retrieval and handling</span>
+<span class="sd">    of files, database updates, and the execution of relevant queries.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        mock_fget (MagicMock): The mocked MinIO &#39;fget_object&#39; method.</span>
+<span class="sd">        mock_list_objects (MagicMock): The mocked MinIO &#39;list_objects&#39; method.</span>
+<span class="sd">        mock_db (MagicMock): The mocked database connection object.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">mock_list_objects</span><span class="o">.</span><span class="n">return_value</span> <span class="o">=</span> <span class="p">[</span><span class="n">MagicMock</span><span class="p">(</span><span class="n">object_name</span><span class="o">=</span><span class="s2">&quot;AAPL_2023.pdf&quot;</span><span class="p">),</span> <span class="n">MagicMock</span><span class="p">(</span><span class="n">object_name</span><span class="o">=</span><span class="s2">&quot;GOOG_2023.pdf&quot;</span><span class="p">)]</span>
+    <span class="n">mock_fget</span><span class="o">.</span><span class="n">return_value</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">mock_cursor</span> <span class="o">=</span> <span class="n">mock_db</span><span class="o">.</span><span class="n">cursor</span><span class="o">.</span><span class="n">return_value</span><span class="o">.</span><span class="fm">__enter__</span><span class="o">.</span><span class="n">return_value</span>
+    <span class="n">mock_cursor</span><span class="o">.</span><span class="n">fetchone</span><span class="o">.</span><span class="n">return_value</span> <span class="o">=</span> <span class="p">[</span><span class="mi">123</span><span class="p">]</span>  <span class="c1"># Simulate returning a data_id</span>
+
+    <span class="n">paragraph_extraction</span><span class="o">.</span><span class="n">process_all_pdfs</span><span class="p">()</span>
+
+    <span class="n">mock_list_objects</span><span class="o">.</span><span class="n">assert_called_once_with</span><span class="p">(</span><span class="n">paragraph_extraction</span><span class="o">.</span><span class="n">MINIO_BUCKET</span><span class="p">,</span> <span class="n">recursive</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">mock_fget</span><span class="o">.</span><span class="n">call_count</span> <span class="o">==</span> <span class="mi">2</span>
+    <span class="k">assert</span> <span class="n">mock_cursor</span><span class="o">.</span><span class="n">execute</span><span class="o">.</span><span class="n">call_count</span> <span class="o">&gt;</span> <span class="mi">0</span></div>
+
+
+<span class="c1"># === Test parsing of security and year ===</span>
+<div class="viewcode-block" id="test_parse_security_and_year">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_paragraph_extraction.test_parse_security_and_year">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_parse_security_and_year</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test the extraction of security and year information from a file name.</span>
+
+<span class="sd">    Verifies that the correct security ticker and year are parsed from the file name.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">paragraph_extraction</span><span class="o">.</span><span class="n">parse_security_and_year</span><span class="p">(</span><span class="s2">&quot;AAPL_2023.pdf&quot;</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">result</span> <span class="o">==</span> <span class="p">(</span><span class="s2">&quot;AAPL&quot;</span><span class="p">,</span> <span class="mi">2023</span><span class="p">)</span>
+
+    <span class="n">result_invalid</span> <span class="o">=</span> <span class="n">paragraph_extraction</span><span class="o">.</span><span class="n">parse_security_and_year</span><span class="p">(</span><span class="s2">&quot;invalid_file.pdf&quot;</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">result_invalid</span> <span class="o">==</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span></div>
+
+
+<span class="c1"># === Test memory management ===</span>
+<div class="viewcode-block" id="test_memory_management">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_paragraph_extraction.test_memory_management">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_memory_management</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test the memory management functionality by simulating high and low memory usage.</span>
+
+<span class="sd">    Verifies that the system behaves as expected under varying memory conditions.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Simulate high memory usage</span>
+    <span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;psutil.virtual_memory&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="n">MagicMock</span><span class="p">(</span><span class="n">percent</span><span class="o">=</span><span class="mi">95</span><span class="p">)):</span>
+        <span class="k">assert</span> <span class="n">paragraph_extraction</span><span class="o">.</span><span class="n">check_memory_usage</span><span class="p">(</span><span class="mi">90</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">False</span>
+
+    <span class="c1"># Simulate low memory usage</span>
+    <span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;psutil.virtual_memory&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="n">MagicMock</span><span class="p">(</span><span class="n">percent</span><span class="o">=</span><span class="mi">80</span><span class="p">)):</span>
+        <span class="k">assert</span> <span class="n">paragraph_extraction</span><span class="o">.</span><span class="n">check_memory_usage</span><span class="p">(</span><span class="mi">90</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">True</span></div>
+
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../../index.html">Bigdata_cw2_Jacaranda</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../modules.html">modules package</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../my_fastapi.html">my_fastapi package</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../test.html">test package</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../../index.html">Documentation overview</a><ul>
+  <li><a href="../../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, Roger.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

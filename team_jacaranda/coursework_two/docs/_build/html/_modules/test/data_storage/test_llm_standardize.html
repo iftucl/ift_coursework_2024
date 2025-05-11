@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>test.data_storage.test_llm_standardize &#8212; Bigdata_cw2_Jacaranda 1.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/alabaster.css?v=27fed22d" />
+    <script src="../../../_static/documentation_options.js?v=f2a433a1"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+   
+  <link rel="stylesheet" href="../../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for test.data_storage.test_llm_standardize</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">This module contains tests for the llm_standardize functionality, which includes the processing and standardization</span>
+<span class="sd">of measurement units using LLM (Large Language Models). It includes dummy database connection and cursor classes to</span>
+<span class="sd">simulate interactions with a database and test various edge cases, such as invalid or non-convertible data, successful</span>
+<span class="sd">standardizations, and handling of JSON errors.</span>
+
+<span class="sd">Tests cover the following aspects:</span>
+<span class="sd">- Parsing of JSON wrapped in markdown</span>
+<span class="sd">- Construction of conversion prompts</span>
+<span class="sd">- Execution of database updates for standardized data</span>
+<span class="sd">- Handling of unit mismatches and the conversion process</span>
+<span class="sd">- Proper handling of success and failure cases for standardization</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">modules.data_storage</span><span class="w"> </span><span class="kn">import</span> <span class="n">llm_standardize</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+
+<div class="viewcode-block" id="DummyCursor">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_standardize.DummyCursor">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DummyCursor</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A dummy implementation of a database cursor for simulating database interactions.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initializes a new instance of the DummyCursor class.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">executed</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_query</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_params</span> <span class="o">=</span> <span class="kc">None</span>
+
+<div class="viewcode-block" id="DummyCursor.execute">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_standardize.DummyCursor.execute">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">execute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Simulates executing a database query.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        query : str</span>
+<span class="sd">            The SQL query string to execute.</span>
+<span class="sd">        params : dict, optional</span>
+<span class="sd">            Optional parameters for the SQL query.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">executed</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_query</span> <span class="o">=</span> <span class="n">query</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_params</span> <span class="o">=</span> <span class="n">params</span></div>
+
+
+<div class="viewcode-block" id="DummyCursor.close">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_standardize.DummyCursor.close">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Simulates closing the cursor.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+</div>
+
+
+<div class="viewcode-block" id="DummyConnection">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_standardize.DummyConnection">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DummyConnection</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A dummy implementation of a database connection, simulating commit, rollback, and cursor functionalities.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initializes a new instance of the DummyConnection class.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cursor_obj</span> <span class="o">=</span> <span class="n">DummyCursor</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">committed</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rolled_back</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">closed</span> <span class="o">=</span> <span class="kc">False</span>
+
+<div class="viewcode-block" id="DummyConnection.cursor">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_standardize.DummyConnection.cursor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">cursor</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the simulated cursor object.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        DummyCursor</span>
+<span class="sd">            The cursor object for executing queries.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor_obj</span></div>
+
+
+<div class="viewcode-block" id="DummyConnection.commit">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_standardize.DummyConnection.commit">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">commit</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Simulates committing the current transaction.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">committed</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="DummyConnection.rollback">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_standardize.DummyConnection.rollback">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">rollback</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Simulates rolling back the current transaction.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rolled_back</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="DummyConnection.close">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_standardize.DummyConnection.close">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Simulates closing the database connection.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">closed</span> <span class="o">=</span> <span class="kc">True</span></div>
+</div>
+
+
+<div class="viewcode-block" id="test_safe_json_parse_cleanup_and_errors">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_standardize.test_safe_json_parse_cleanup_and_errors">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_safe_json_parse_cleanup_and_errors</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test case for the `safe_json_parse` function to ensure proper handling of valid and invalid JSON strings.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">raw</span> <span class="o">=</span> <span class="s2">&quot;```json</span><span class="se">\n</span><span class="s2">{</span><span class="se">\&quot;</span><span class="s2">convertibility</span><span class="se">\&quot;</span><span class="s2">: true, </span><span class="se">\&quot;</span><span class="s2">value_standardized</span><span class="se">\&quot;</span><span class="s2">: </span><span class="se">\&quot;</span><span class="s2">100</span><span class="se">\&quot;</span><span class="s2">}</span><span class="se">\n</span><span class="s2">```&quot;</span>
+    <span class="n">parsed</span> <span class="o">=</span> <span class="n">llm_standardize</span><span class="o">.</span><span class="n">safe_json_parse</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">parsed</span> <span class="o">==</span> <span class="p">{</span><span class="s2">&quot;convertibility&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">&quot;value_standardized&quot;</span><span class="p">:</span> <span class="s2">&quot;100&quot;</span><span class="p">}</span>
+
+    <span class="k">with</span> <span class="n">pytest</span><span class="o">.</span><span class="n">raises</span><span class="p">(</span><span class="ne">ValueError</span><span class="p">):</span>
+        <span class="n">llm_standardize</span><span class="o">.</span><span class="n">safe_json_parse</span><span class="p">(</span><span class="s2">&quot;```</span><span class="se">\n</span><span class="s2">```&quot;</span><span class="p">)</span>
+
+    <span class="k">with</span> <span class="n">pytest</span><span class="o">.</span><span class="n">raises</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span><span class="p">):</span>
+        <span class="n">llm_standardize</span><span class="o">.</span><span class="n">safe_json_parse</span><span class="p">(</span><span class="s2">&quot;not a json&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="test_build_conversion_prompt_content">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_standardize.test_build_conversion_prompt_content">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_build_conversion_prompt_content</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test case for the build_conversion_prompt function to ensure the correct construction of conversion prompts.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">prompt</span> <span class="o">=</span> <span class="n">llm_standardize</span><span class="o">.</span><span class="n">build_conversion_prompt</span><span class="p">(</span>
+        <span class="s2">&quot;Energy Intensity&quot;</span><span class="p">,</span> <span class="s2">&quot;Measures energy usage&quot;</span><span class="p">,</span> <span class="s2">&quot;50&quot;</span><span class="p">,</span> <span class="s2">&quot;kWh&quot;</span><span class="p">,</span> <span class="s2">&quot;kWh&quot;</span>
+    <span class="p">)</span>
+    <span class="k">assert</span> <span class="s2">&quot;indicator is </span><span class="se">\&quot;</span><span class="s2">Energy Intensity</span><span class="se">\&quot;</span><span class="s2">&quot;</span> <span class="ow">in</span> <span class="n">prompt</span>
+    <span class="k">assert</span> <span class="s2">&quot;raw value as: 50&quot;</span> <span class="ow">in</span> <span class="n">prompt</span> <span class="ow">and</span> <span class="s2">&quot;original unit: kWh&quot;</span> <span class="ow">in</span> <span class="n">prompt</span>
+    <span class="k">assert</span> <span class="s2">&quot;target unit </span><span class="se">\&quot;</span><span class="s2">kWh</span><span class="se">\&quot;</span><span class="s2">&quot;</span> <span class="ow">in</span> <span class="n">prompt</span>
+    <span class="k">assert</span> <span class="s2">&quot;</span><span class="se">\&quot;</span><span class="s2">convertibility</span><span class="se">\&quot;</span><span class="s2">: true&quot;</span> <span class="ow">in</span> <span class="n">prompt</span></div>
+
+
+<div class="viewcode-block" id="test_update_standardized_execution">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_standardize.test_update_standardized_execution">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_update_standardized_execution</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test case for the update_standardized function to verify SQL execution and commit behavior.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dummy_conn</span> <span class="o">=</span> <span class="n">DummyConnection</span><span class="p">()</span>
+    <span class="n">llm_standardize</span><span class="o">.</span><span class="n">update_standardized</span><span class="p">(</span><span class="n">dummy_conn</span><span class="p">,</span> <span class="n">data_id</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">value_standardized</span><span class="o">=</span><span class="s2">&quot;123&quot;</span><span class="p">,</span> <span class="n">unit_standardized</span><span class="o">=</span><span class="s2">&quot;kg&quot;</span><span class="p">,</span> <span class="n">unit_conversion_note</span><span class="o">=</span><span class="s2">&quot;note&quot;</span><span class="p">)</span>
+    <span class="n">cur</span> <span class="o">=</span> <span class="n">dummy_conn</span><span class="o">.</span><span class="n">cursor_obj</span>
+    <span class="k">assert</span> <span class="n">cur</span><span class="o">.</span><span class="n">executed</span> <span class="ow">is</span> <span class="kc">True</span>
+    <span class="k">assert</span> <span class="s2">&quot;UPDATE csr_reporting.CSR_Data&quot;</span> <span class="ow">in</span> <span class="n">cur</span><span class="o">.</span><span class="n">last_query</span>
+    <span class="k">assert</span> <span class="n">dummy_conn</span><span class="o">.</span><span class="n">committed</span> <span class="ow">is</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="test_process_row_unit_match">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_standardize.test_process_row_unit_match">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_process_row_unit_match</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test case for the process_row function where the unit matches and no conversion is needed.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dummy_conn</span> <span class="o">=</span> <span class="n">DummyConnection</span><span class="p">()</span>
+    <span class="n">updated</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_standardize</span><span class="p">,</span> <span class="s2">&quot;update_standardized&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">conn</span><span class="p">,</span> <span class="n">did</span><span class="p">,</span> <span class="n">val</span><span class="p">,</span> <span class="n">unit</span><span class="p">,</span> <span class="n">note</span><span class="o">=</span><span class="kc">None</span><span class="p">:</span> <span class="n">updated</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">did</span><span class="p">,</span> <span class="n">val</span><span class="p">,</span> <span class="n">unit</span><span class="p">,</span> <span class="n">note</span><span class="p">)))</span>
+    <span class="n">row</span> <span class="o">=</span> <span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="s2">&quot;Water Usage&quot;</span><span class="p">,</span> <span class="s2">&quot;100&quot;</span><span class="p">,</span> <span class="s2">&quot;L&quot;</span><span class="p">,</span> <span class="s2">&quot; l &quot;</span><span class="p">,</span> <span class="s2">&quot;desc&quot;</span><span class="p">,)</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">llm_standardize</span><span class="o">.</span><span class="n">process_row</span><span class="p">(</span><span class="n">dummy_conn</span><span class="p">,</span> <span class="n">row</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">result</span> <span class="o">==</span> <span class="mi">10</span>
+    <span class="k">assert</span> <span class="n">updated</span> <span class="ow">and</span> <span class="n">updated</span><span class="p">[</span><span class="mi">0</span><span class="p">][:</span><span class="mi">3</span><span class="p">]</span> <span class="o">==</span> <span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="s2">&quot;100&quot;</span><span class="p">,</span> <span class="s2">&quot; l &quot;</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="s2">&quot;no conversion needed&quot;</span> <span class="ow">in</span> <span class="n">updated</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">3</span><span class="p">]</span>
+    <span class="k">assert</span> <span class="n">dummy_conn</span><span class="o">.</span><span class="n">rolled_back</span> <span class="ow">is</span> <span class="kc">False</span></div>
+
+
+<div class="viewcode-block" id="test_process_row_convertible_false">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_standardize.test_process_row_convertible_false">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_process_row_convertible_false</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test case for the process_row function when LLM returns a response indicating that conversion is not possible.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dummy_conn</span> <span class="o">=</span> <span class="n">DummyConnection</span><span class="p">()</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_standardize</span><span class="p">,</span> <span class="s2">&quot;call_llm&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">prompt</span><span class="p">:</span> <span class="s1">&#39;{&quot;convertibility&quot;: false, &quot;note&quot;: &quot;unsupported&quot;}&#39;</span><span class="p">)</span>
+    <span class="n">updated</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_standardize</span><span class="p">,</span> <span class="s2">&quot;update_standardized&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">conn</span><span class="p">,</span> <span class="n">did</span><span class="p">,</span> <span class="n">val</span><span class="p">,</span> <span class="n">unit</span><span class="p">,</span> <span class="n">note</span><span class="o">=</span><span class="kc">None</span><span class="p">:</span> <span class="n">updated</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">did</span><span class="p">,</span> <span class="n">val</span><span class="p">,</span> <span class="n">unit</span><span class="p">,</span> <span class="n">note</span><span class="p">)))</span>
+    <span class="n">row</span> <span class="o">=</span> <span class="p">(</span><span class="mi">11</span><span class="p">,</span> <span class="s2">&quot;Metric X&quot;</span><span class="p">,</span> <span class="s2">&quot;5&quot;</span><span class="p">,</span> <span class="s2">&quot;tons&quot;</span><span class="p">,</span> <span class="s2">&quot;kg&quot;</span><span class="p">,</span> <span class="s2">&quot;desc&quot;</span><span class="p">)</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">llm_standardize</span><span class="o">.</span><span class="n">process_row</span><span class="p">(</span><span class="n">dummy_conn</span><span class="p">,</span> <span class="n">row</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">result</span> <span class="ow">is</span> <span class="kc">None</span>
+    <span class="k">assert</span> <span class="n">updated</span> <span class="ow">and</span> <span class="n">updated</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">11</span> <span class="ow">and</span> <span class="n">updated</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">updated</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">2</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span>
+    <span class="k">assert</span> <span class="n">updated</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">3</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;unsupported&quot;</span>
+    <span class="k">assert</span> <span class="n">dummy_conn</span><span class="o">.</span><span class="n">rolled_back</span> <span class="ow">is</span> <span class="kc">False</span></div>
+
+
+<div class="viewcode-block" id="test_process_row_invalid_result_value">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_standardize.test_process_row_invalid_result_value">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_process_row_invalid_result_value</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">,</span> <span class="n">capsys</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test case for the process_row function when the LLM returns a non-numeric value after conversion.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dummy_conn</span> <span class="o">=</span> <span class="n">DummyConnection</span><span class="p">()</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_standardize</span><span class="p">,</span> <span class="s2">&quot;call_llm&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">prompt</span><span class="p">:</span> <span class="s1">&#39;{&quot;convertibility&quot;: true, &quot;value_standardized&quot;: &quot;N/A&quot;, &quot;note&quot;: &quot;not numeric&quot;}&#39;</span><span class="p">)</span>
+    <span class="n">row</span> <span class="o">=</span> <span class="p">(</span><span class="mi">12</span><span class="p">,</span> <span class="s2">&quot;Metric Y&quot;</span><span class="p">,</span> <span class="s2">&quot;7&quot;</span><span class="p">,</span> <span class="s2">&quot;%&quot;</span><span class="p">,</span> <span class="s2">&quot;%&quot;</span><span class="p">,</span> <span class="s2">&quot;desc&quot;</span><span class="p">)</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">llm_standardize</span><span class="o">.</span><span class="n">process_row</span><span class="p">(</span><span class="n">dummy_conn</span><span class="p">,</span> <span class="n">row</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">result</span> <span class="ow">is</span> <span class="kc">None</span>
+    <span class="k">assert</span> <span class="n">dummy_conn</span><span class="o">.</span><span class="n">rolled_back</span> <span class="ow">is</span> <span class="kc">True</span>
+    <span class="n">output</span> <span class="o">=</span> <span class="n">capsys</span><span class="o">.</span><span class="n">readouterr</span><span class="p">()</span><span class="o">.</span><span class="n">out</span>
+    <span class="k">assert</span> <span class="sa">f</span><span class="s2">&quot;Data ID </span><span class="si">{</span><span class="n">row</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2"> standardization failed&quot;</span> <span class="ow">in</span> <span class="n">output</span>
+    <span class="k">assert</span> <span class="s2">&quot;N/A&quot;</span> <span class="ow">in</span> <span class="n">output</span></div>
+
+
+<div class="viewcode-block" id="test_process_row_success">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_standardize.test_process_row_success">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_process_row_success</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test case for the process_row function when LLM returns a valid numeric conversion result.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dummy_conn</span> <span class="o">=</span> <span class="n">DummyConnection</span><span class="p">()</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_standardize</span><span class="p">,</span> <span class="s2">&quot;call_llm&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">prompt</span><span class="p">:</span> <span class="s1">&#39;{&quot;convertibility&quot;: true, &quot;value_standardized&quot;: &quot;42.0&quot;, &quot;note&quot;: &quot;OK&quot;}&#39;</span><span class="p">)</span>
+    <span class="n">updated</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_standardize</span><span class="p">,</span> <span class="s2">&quot;update_standardized&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">conn</span><span class="p">,</span> <span class="n">did</span><span class="p">,</span> <span class="n">val</span><span class="p">,</span> <span class="n">unit</span><span class="p">,</span> <span class="n">note</span><span class="o">=</span><span class="kc">None</span><span class="p">:</span> <span class="n">updated</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">did</span><span class="p">,</span> <span class="n">val</span><span class="p">,</span> <span class="n">unit</span><span class="p">,</span> <span class="n">note</span><span class="p">)))</span>
+    <span class="n">row</span> <span class="o">=</span> <span class="p">(</span><span class="mi">13</span><span class="p">,</span> <span class="s2">&quot;Metric Z&quot;</span><span class="p">,</span> <span class="s2">&quot;100&quot;</span><span class="p">,</span> <span class="s2">&quot;kg&quot;</span><span class="p">,</span> <span class="s2">&quot;tons&quot;</span><span class="p">,</span> <span class="s2">&quot;desc&quot;</span><span class="p">)</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">llm_standardize</span><span class="o">.</span><span class="n">process_row</span><span class="p">(</span><span class="n">dummy_conn</span><span class="p">,</span> <span class="n">row</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">result</span> <span class="o">==</span> <span class="mi">13</span>
+    <span class="k">assert</span> <span class="n">updated</span> <span class="ow">and</span> <span class="n">updated</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">13</span> <span class="ow">and</span> <span class="n">updated</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;42.0&quot;</span> <span class="ow">and</span> <span class="n">updated</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;tons&quot;</span>
+    <span class="k">assert</span> <span class="n">dummy_conn</span><span class="o">.</span><span class="n">rolled_back</span> <span class="ow">is</span> <span class="kc">False</span>
+    <span class="k">assert</span> <span class="n">dummy_conn</span><span class="o">.</span><span class="n">committed</span> <span class="ow">is</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="test_main_standardization_pipeline">
+<a class="viewcode-back" href="../../../test.data_storage.html#test.data_storage.test_llm_standardize.test_main_standardization_pipeline">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_main_standardization_pipeline</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">,</span> <span class="n">capsys</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test case for the main function in the standardization pipeline, including bulk processing and file output.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dummy_conn</span> <span class="o">=</span> <span class="n">DummyConnection</span><span class="p">()</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_standardize</span><span class="p">,</span> <span class="s2">&quot;get_connection&quot;</span><span class="p">,</span> <span class="k">lambda</span><span class="p">:</span> <span class="n">dummy_conn</span><span class="p">)</span>
+    <span class="n">rows</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="p">(</span><span class="mi">21</span><span class="p">,</span> <span class="s2">&quot;IndA&quot;</span><span class="p">,</span> <span class="s2">&quot;10&quot;</span><span class="p">,</span> <span class="s2">&quot;m3&quot;</span><span class="p">,</span> <span class="s2">&quot;m3&quot;</span><span class="p">,</span> <span class="s2">&quot;descA&quot;</span><span class="p">),</span>
+        <span class="p">(</span><span class="mi">22</span><span class="p">,</span> <span class="s2">&quot;IndB&quot;</span><span class="p">,</span> <span class="s2">&quot;5&quot;</span><span class="p">,</span> <span class="s2">&quot;kg&quot;</span><span class="p">,</span> <span class="s2">&quot;g&quot;</span><span class="p">,</span> <span class="s2">&quot;descB&quot;</span><span class="p">)</span>
+    <span class="p">]</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_standardize</span><span class="p">,</span> <span class="s2">&quot;fetch_rows_to_standardize&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">conn</span><span class="p">:</span> <span class="n">rows</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">fake_process_row</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">row</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">row</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="n">row</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">21</span> <span class="k">else</span> <span class="kc">None</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_standardize</span><span class="p">,</span> <span class="s2">&quot;process_row&quot;</span><span class="p">,</span> <span class="n">fake_process_row</span><span class="p">)</span>
+    <span class="k">class</span><span class="w"> </span><span class="nc">DummyFuture</span><span class="p">:</span>
+        <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">result</span><span class="p">):</span> <span class="bp">self</span><span class="o">.</span><span class="n">_result</span> <span class="o">=</span> <span class="n">result</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">result</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span> <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_result</span>
+    <span class="k">class</span><span class="w"> </span><span class="nc">DummyExecutor</span><span class="p">:</span>
+        <span class="k">def</span><span class="w"> </span><span class="fm">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span> <span class="k">return</span> <span class="bp">self</span>
+        <span class="k">def</span><span class="w"> </span><span class="fm">__exit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exc_type</span><span class="p">,</span> <span class="n">exc</span><span class="p">,</span> <span class="n">tb</span><span class="p">):</span> <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">submit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">func</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">DummyFuture</span><span class="p">(</span><span class="n">func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">))</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_standardize</span><span class="p">,</span> <span class="s2">&quot;ThreadPoolExecutor&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">max_workers</span><span class="o">=</span><span class="kc">None</span><span class="p">:</span> <span class="n">DummyExecutor</span><span class="p">())</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_standardize</span><span class="p">,</span> <span class="s2">&quot;as_completed&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">futures</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">futures</span><span class="p">)</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">llm_standardize</span><span class="p">,</span> <span class="s2">&quot;tqdm&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">iterable</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">iterable</span> <span class="k">if</span> <span class="n">iterable</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">types</span><span class="o">.</span><span class="n">SimpleNamespace</span><span class="p">(</span><span class="n">close</span><span class="o">=</span><span class="k">lambda</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="n">update</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="kc">None</span><span class="p">))</span>
+    <span class="n">llm_standardize</span><span class="o">.</span><span class="n">main</span><span class="p">()</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">capsys</span><span class="o">.</span><span class="n">readouterr</span><span class="p">()</span><span class="o">.</span><span class="n">out</span>
+    <span class="k">assert</span> <span class="s2">&quot;2 records need to be standardized&quot;</span> <span class="ow">in</span> <span class="n">out</span>
+    <span class="k">assert</span> <span class="n">dummy_conn</span><span class="o">.</span><span class="n">closed</span> <span class="ow">is</span> <span class="kc">True</span></div>
+
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../../index.html">Bigdata_cw2_Jacaranda</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../modules.html">modules package</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../my_fastapi.html">my_fastapi package</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../test.html">test package</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../../index.html">Documentation overview</a><ul>
+  <li><a href="../../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, Roger.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>
