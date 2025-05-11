@@ -36,26 +36,31 @@ class PostgresManager:
         return count > 0  # if count > 0，it already exists
     
     def insert_pdf_record(self, record: Dict):
-    # Check if database already exists (company, year)
-        query = "SELECT 1 FROM pdf_records WHERE company = %s AND year = %s;"
-        self.cur.execute(query, (record['company'], record['year']))
-        exists = self.cur.fetchone()
-
-        if exists:  # Skip if records already exist for that company for that year
-            logger.info(f"[Postgres] Skipping {record['company']} {record['year']}, already exists.")
-            return
-    
-    # insert data
+        """
+        Insert a record; if the same company+year already exists, update filename, url, 
+        and file_hash to ensure that the filename in Postgres is consistent with that in MinIO.
+        """
         try:
             self.cur.execute("""
-            INSERT INTO pdf_records (company, url, year, file_hash, filename)
-            VALUES (%s, %s, %s, %s, %s);
-            """, (record['company'], record['url'], record['year'], record['file_hash'], record['filename']))
+                INSERT INTO pdf_records (company, url, year, file_hash, filename)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (company, year) 
+                DO UPDATE SET
+                    url = EXCLUDED.url,
+                    file_hash = EXCLUDED.file_hash,
+                    filename = EXCLUDED.filename;
+            """, (
+                record["company"],
+                record["url"],
+                record["year"],
+                record["file_hash"],
+                record["filename"],
+            ))
             self.conn.commit()
-            logger.info(f"[Postgres] Inserted record for {record['company']} - {record['year']}")
+            logger.info(f"[Postgres] Upserted record for {record['company']} - {record['year']}")
         except Exception as e:
-            self.conn.rollback()  
-            logger.error(f"[Postgres] Insert failed: {str(e)}")
+            self.conn.rollback()
+            logger.error(f"[Postgres] Upsert failed: {str(e)}")
 
    
     def close(self):

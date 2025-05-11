@@ -133,10 +133,10 @@ class PDFScraper:
         return self.pg_manager.check_pdf_record(file_hash)
 
     def file_exists_in_minio(self, filename: str) -> bool:
-        try:
-            self.minio_client.stat_object(Config.MINIO_BUCKET, filename)
-            return True
-        except S3Error:
+        # try:
+        #     self.minio_client.stat_object(Config.MINIO_BUCKET, filename)
+        #     return True
+        # except S3Error:
             return False
     
 
@@ -316,17 +316,17 @@ class PDFScraper:
                     # Year-specific filename
                     filename = f"{company}_{year}.pdf"
                     #  #  MinIO
-                    try:
-                        self.minio_client.put_object(
-                            Config.MINIO_BUCKET,
-                            filename,
-                            data=BytesIO(response.content),
-                            length=len(response.content),
-                            content_type="application/pdf"
-                        )
-                    except S3Error as e:
-                        logger.error(f"MinIO upload failed: {str(e)}")
-                        return False
+                    # try:
+                    #     self.minio_client.put_object(
+                    #         Config.MINIO_BUCKET,
+                    #         filename,
+                    #         data=BytesIO(response.content),
+                    #         length=len(response.content),
+                    #         content_type="application/pdf"
+                    #     )
+                    # except S3Error as e:
+                    #     logger.error(f"MinIO upload failed: {str(e)}")
+                    #     return False
                     # Insertion into the database
                     record = {
                     "company": company,
@@ -440,7 +440,7 @@ class PDFScraper:
             companies = df["Name"].dropna().unique().tolist()
             logger.info(f"Loaded {len(companies)} companies")
             with ThreadPoolExecutor(max_workers=Config.MAX_WORKERS) as executor:
-                futures = {executor.submit(self.process_company, co): co for co in companies}
+                futures = {executor.submit(self.process_company, co): co for co in companies[1:3]}
                 for future in as_completed(futures):
                     company = futures[future]
                     try:

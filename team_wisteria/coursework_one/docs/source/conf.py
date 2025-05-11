@@ -11,7 +11,7 @@
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 import os
 import sys
-sys.path.insert(0,os.path.abspath('D:\\桌面\\11\\ift_coursework_2024_Wisteria\\team_oak\\coursework_one\\a_pipeline')) # Adjust path to your project root
+sys.path.insert(0,os.path.abspath('/Users/zhangjingting/Desktop/IFTE0003 Big Data/ift_coursework_2024_Wisteria/team_wisteria/coursework_one/a_pipeline')) # Adjust path to your project root
 # import os
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
@@ -51,7 +51,7 @@ exclude_patterns = []
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = 'furo'
+html_theme = 'sphinx_rtd_theme'
 html_theme_option={
     "page_width":"80%",
     "body_max_width":"1000px"
