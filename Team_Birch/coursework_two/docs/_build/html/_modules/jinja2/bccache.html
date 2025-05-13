@@ -1,0 +1,609 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>jinja2.bccache &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">jinja2.bccache</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for jinja2.bccache</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;The optional bytecode cache system. This is useful if you have very</span>
+<span class="sd">complex template situations and the compilation of all those templates</span>
+<span class="sd">slows down your application too much.</span>
+
+<span class="sd">Situations where this is useful are often forking web applications that</span>
+<span class="sd">are initialized on the first request.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">errno</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">fnmatch</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">marshal</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pickle</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">stat</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">t</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hashlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">sha1</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">io</span><span class="w"> </span><span class="kn">import</span> <span class="n">BytesIO</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">types</span><span class="w"> </span><span class="kn">import</span> <span class="n">CodeType</span>
+
+<span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">TYPE_CHECKING</span><span class="p">:</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">typing_extensions</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">te</span>
+
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.environment</span><span class="w"> </span><span class="kn">import</span> <span class="n">Environment</span>
+
+    <span class="k">class</span><span class="w"> </span><span class="nc">_MemcachedClient</span><span class="p">(</span><span class="n">te</span><span class="o">.</span><span class="n">Protocol</span><span class="p">):</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">get</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bytes</span><span class="p">:</span>
+            <span class="o">...</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">set</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="o">...</span>
+
+
+<div class="viewcode-block" id="bc_version">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.bc_version">[docs]</a>
+<span class="n">bc_version</span> <span class="o">=</span> <span class="mi">5</span></div>
+
+<span class="c1"># Magic bytes to identify Jinja bytecode cache files. Contains the</span>
+<span class="c1"># Python major and minor version to avoid loading incompatible bytecode</span>
+<span class="c1"># if a project upgrades its Python version.</span>
+<div class="viewcode-block" id="bc_magic">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.bc_magic">[docs]</a>
+<span class="n">bc_magic</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="sa">b</span><span class="s2">&quot;j2&quot;</span>
+    <span class="o">+</span> <span class="n">pickle</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">bc_version</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+    <span class="o">+</span> <span class="n">pickle</span><span class="o">.</span><span class="n">dumps</span><span class="p">((</span><span class="n">sys</span><span class="o">.</span><span class="n">version_info</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;&lt;</span> <span class="mi">24</span><span class="p">)</span> <span class="o">|</span> <span class="n">sys</span><span class="o">.</span><span class="n">version_info</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="mi">2</span><span class="p">)</span>
+<span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="Bucket">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.Bucket">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Bucket</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Buckets are used to store the bytecode for one template.  It&#39;s created</span>
+<span class="sd">    and initialized by the bytecode cache and passed to the loading functions.</span>
+
+<span class="sd">    The buckets get an internal checksum from the cache assigned and use this</span>
+<span class="sd">    to automatically reject outdated cache material.  Individual bytecode</span>
+<span class="sd">    cache subclasses don&#39;t have to care about cache invalidation.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">environment</span><span class="p">:</span> <span class="s2">&quot;Environment&quot;</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">checksum</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<div class="viewcode-block" id="Bucket.environment">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.Bucket.environment">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">environment</span> <span class="o">=</span> <span class="n">environment</span></div>
+
+<div class="viewcode-block" id="Bucket.key">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.Bucket.key">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">key</span> <span class="o">=</span> <span class="n">key</span></div>
+
+<div class="viewcode-block" id="Bucket.checksum">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.Bucket.checksum">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">checksum</span> <span class="o">=</span> <span class="n">checksum</span></div>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">reset</span><span class="p">()</span>
+
+<div class="viewcode-block" id="Bucket.reset">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.Bucket.reset">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">reset</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Resets the bucket (unloads the bytecode).&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">code</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Optional</span><span class="p">[</span><span class="n">CodeType</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="Bucket.load_bytecode">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.Bucket.load_bytecode">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load_bytecode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">BinaryIO</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Loads bytecode from a file or file like object.&quot;&quot;&quot;</span>
+        <span class="c1"># make sure the magic header is correct</span>
+        <span class="n">magic</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">bc_magic</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">magic</span> <span class="o">!=</span> <span class="n">bc_magic</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">reset</span><span class="p">()</span>
+            <span class="k">return</span>
+        <span class="c1"># the source code of the file changed, we need to reload</span>
+        <span class="n">checksum</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">checksum</span> <span class="o">!=</span> <span class="n">checksum</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">reset</span><span class="p">()</span>
+            <span class="k">return</span>
+        <span class="c1"># if marshal_load fails then we need to reload</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">code</span> <span class="o">=</span> <span class="n">marshal</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">EOFError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">reset</span><span class="p">()</span>
+            <span class="k">return</span></div>
+
+
+<div class="viewcode-block" id="Bucket.write_bytecode">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.Bucket.write_bytecode">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">write_bytecode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">IO</span><span class="p">[</span><span class="nb">bytes</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Dump the bytecode into the file or file like object passed.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">code</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;can&#39;t write empty bucket&quot;</span><span class="p">)</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">bc_magic</span><span class="p">)</span>
+        <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">checksum</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="n">marshal</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">code</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Bucket.bytecode_from_string">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.Bucket.bytecode_from_string">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">bytecode_from_string</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">string</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Load bytecode from bytes.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">load_bytecode</span><span class="p">(</span><span class="n">BytesIO</span><span class="p">(</span><span class="n">string</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="Bucket.bytecode_to_string">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.Bucket.bytecode_to_string">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">bytecode_to_string</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bytes</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the bytecode as bytes.&quot;&quot;&quot;</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">BytesIO</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">write_bytecode</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">out</span><span class="o">.</span><span class="n">getvalue</span><span class="p">()</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="BytecodeCache">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.BytecodeCache">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BytecodeCache</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;To implement your own bytecode cache you have to subclass this class</span>
+<span class="sd">    and override :meth:`load_bytecode` and :meth:`dump_bytecode`.  Both of</span>
+<span class="sd">    these methods are passed a :class:`~jinja2.bccache.Bucket`.</span>
+
+<span class="sd">    A very basic bytecode cache that saves the bytecode on the file system::</span>
+
+<span class="sd">        from os import path</span>
+
+<span class="sd">        class MyCache(BytecodeCache):</span>
+
+<span class="sd">            def __init__(self, directory):</span>
+<span class="sd">                self.directory = directory</span>
+
+<span class="sd">            def load_bytecode(self, bucket):</span>
+<span class="sd">                filename = path.join(self.directory, bucket.key)</span>
+<span class="sd">                if path.exists(filename):</span>
+<span class="sd">                    with open(filename, &#39;rb&#39;) as f:</span>
+<span class="sd">                        bucket.load_bytecode(f)</span>
+
+<span class="sd">            def dump_bytecode(self, bucket):</span>
+<span class="sd">                filename = path.join(self.directory, bucket.key)</span>
+<span class="sd">                with open(filename, &#39;wb&#39;) as f:</span>
+<span class="sd">                    bucket.write_bytecode(f)</span>
+
+<span class="sd">    A more advanced version of a filesystem based bytecode cache is part of</span>
+<span class="sd">    Jinja.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="BytecodeCache.load_bytecode">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.BytecodeCache.load_bytecode">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load_bytecode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">bucket</span><span class="p">:</span> <span class="n">Bucket</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Subclasses have to override this method to load bytecode into a</span>
+<span class="sd">        bucket.  If they are not able to find code in the cache for the</span>
+<span class="sd">        bucket, it must not do anything.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="BytecodeCache.dump_bytecode">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.BytecodeCache.dump_bytecode">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">dump_bytecode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">bucket</span><span class="p">:</span> <span class="n">Bucket</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Subclasses have to override this method to write the bytecode</span>
+<span class="sd">        from a bucket back to the cache.  If it unable to do so it must not</span>
+<span class="sd">        fail silently but raise an exception.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="BytecodeCache.clear">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.BytecodeCache.clear">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clear</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Clears the cache.  This method is not used by Jinja but should be</span>
+<span class="sd">        implemented to allow applications to clear the bytecode cache used</span>
+<span class="sd">        by a particular environment.</span>
+<span class="sd">        &quot;&quot;&quot;</span></div>
+
+
+<div class="viewcode-block" id="BytecodeCache.get_cache_key">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.BytecodeCache.get_cache_key">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_cache_key</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">filename</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Optional</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns the unique hash key for this template name.&quot;&quot;&quot;</span>
+        <span class="nb">hash</span> <span class="o">=</span> <span class="n">sha1</span><span class="p">(</span><span class="n">name</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">))</span>
+
+        <span class="k">if</span> <span class="n">filename</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="nb">hash</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;|</span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span>
+
+        <span class="k">return</span> <span class="nb">hash</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="BytecodeCache.get_source_checksum">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.BytecodeCache.get_source_checksum">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_source_checksum</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns a checksum for the source.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">sha1</span><span class="p">(</span><span class="n">source</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="BytecodeCache.get_bucket">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.BytecodeCache.get_bucket">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_bucket</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">environment</span><span class="p">:</span> <span class="s2">&quot;Environment&quot;</span><span class="p">,</span>
+        <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">filename</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+        <span class="n">source</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Bucket</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a cache bucket for the given template.  All arguments are</span>
+<span class="sd">        mandatory but filename may be `None`.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_cache_key</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span>
+        <span class="n">checksum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_source_checksum</span><span class="p">(</span><span class="n">source</span><span class="p">)</span>
+        <span class="n">bucket</span> <span class="o">=</span> <span class="n">Bucket</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">checksum</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">load_bytecode</span><span class="p">(</span><span class="n">bucket</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">bucket</span></div>
+
+
+<div class="viewcode-block" id="BytecodeCache.set_bucket">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.BytecodeCache.set_bucket">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_bucket</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">bucket</span><span class="p">:</span> <span class="n">Bucket</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Put the bucket into the cache.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dump_bytecode</span><span class="p">(</span><span class="n">bucket</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="FileSystemBytecodeCache">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.FileSystemBytecodeCache">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">FileSystemBytecodeCache</span><span class="p">(</span><span class="n">BytecodeCache</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A bytecode cache that stores bytecode on the filesystem.  It accepts</span>
+<span class="sd">    two arguments: The directory where the cache items are stored and a</span>
+<span class="sd">    pattern string that is used to build the filename.</span>
+
+<span class="sd">    If no directory is specified a default cache directory is selected.  On</span>
+<span class="sd">    Windows the user&#39;s temp directory is used, on UNIX systems a directory</span>
+<span class="sd">    is created for the user in the system temp directory.</span>
+
+<span class="sd">    The pattern can be used to have multiple separate caches operate on the</span>
+<span class="sd">    same directory.  The default pattern is ``&#39;__jinja2_%s.cache&#39;``.  ``%s``</span>
+<span class="sd">    is replaced with the cache key.</span>
+
+<span class="sd">    &gt;&gt;&gt; bcc = FileSystemBytecodeCache(&#39;/tmp/jinja_cache&#39;, &#39;%s.cache&#39;)</span>
+
+<span class="sd">    This bytecode cache supports clearing of the cache using the clear method.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">directory</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">pattern</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;__jinja2_</span><span class="si">%s</span><span class="s2">.cache&quot;</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">directory</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">directory</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_default_cache_dir</span><span class="p">()</span>
+<div class="viewcode-block" id="FileSystemBytecodeCache.directory">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.FileSystemBytecodeCache.directory">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">directory</span> <span class="o">=</span> <span class="n">directory</span></div>
+
+<div class="viewcode-block" id="FileSystemBytecodeCache.pattern">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.FileSystemBytecodeCache.pattern">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pattern</span> <span class="o">=</span> <span class="n">pattern</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_default_cache_dir</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">_unsafe_dir</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="s2">&quot;te.NoReturn&quot;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+                <span class="s2">&quot;Cannot determine safe temp directory.  You &quot;</span>
+                <span class="s2">&quot;need to explicitly provide one.&quot;</span>
+            <span class="p">)</span>
+
+        <span class="n">tmpdir</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">gettempdir</span><span class="p">()</span>
+
+        <span class="c1"># On windows the temporary directory is used specific unless</span>
+        <span class="c1"># explicitly forced otherwise.  We can just use that.</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;nt&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">tmpdir</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">os</span><span class="p">,</span> <span class="s2">&quot;getuid&quot;</span><span class="p">):</span>
+            <span class="n">_unsafe_dir</span><span class="p">()</span>
+
+        <span class="n">dirname</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;_jinja2-cache-</span><span class="si">{</span><span class="n">os</span><span class="o">.</span><span class="n">getuid</span><span class="p">()</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="n">actual_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tmpdir</span><span class="p">,</span> <span class="n">dirname</span><span class="p">)</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">actual_dir</span><span class="p">,</span> <span class="n">stat</span><span class="o">.</span><span class="n">S_IRWXU</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">e</span><span class="o">.</span><span class="n">errno</span> <span class="o">!=</span> <span class="n">errno</span><span class="o">.</span><span class="n">EEXIST</span><span class="p">:</span>
+                <span class="k">raise</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">chmod</span><span class="p">(</span><span class="n">actual_dir</span><span class="p">,</span> <span class="n">stat</span><span class="o">.</span><span class="n">S_IRWXU</span><span class="p">)</span>
+            <span class="n">actual_dir_stat</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">lstat</span><span class="p">(</span><span class="n">actual_dir</span><span class="p">)</span>
+            <span class="k">if</span> <span class="p">(</span>
+                <span class="n">actual_dir_stat</span><span class="o">.</span><span class="n">st_uid</span> <span class="o">!=</span> <span class="n">os</span><span class="o">.</span><span class="n">getuid</span><span class="p">()</span>
+                <span class="ow">or</span> <span class="ow">not</span> <span class="n">stat</span><span class="o">.</span><span class="n">S_ISDIR</span><span class="p">(</span><span class="n">actual_dir_stat</span><span class="o">.</span><span class="n">st_mode</span><span class="p">)</span>
+                <span class="ow">or</span> <span class="n">stat</span><span class="o">.</span><span class="n">S_IMODE</span><span class="p">(</span><span class="n">actual_dir_stat</span><span class="o">.</span><span class="n">st_mode</span><span class="p">)</span> <span class="o">!=</span> <span class="n">stat</span><span class="o">.</span><span class="n">S_IRWXU</span>
+            <span class="p">):</span>
+                <span class="n">_unsafe_dir</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">e</span><span class="o">.</span><span class="n">errno</span> <span class="o">!=</span> <span class="n">errno</span><span class="o">.</span><span class="n">EEXIST</span><span class="p">:</span>
+                <span class="k">raise</span>
+
+        <span class="n">actual_dir_stat</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">lstat</span><span class="p">(</span><span class="n">actual_dir</span><span class="p">)</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="n">actual_dir_stat</span><span class="o">.</span><span class="n">st_uid</span> <span class="o">!=</span> <span class="n">os</span><span class="o">.</span><span class="n">getuid</span><span class="p">()</span>
+            <span class="ow">or</span> <span class="ow">not</span> <span class="n">stat</span><span class="o">.</span><span class="n">S_ISDIR</span><span class="p">(</span><span class="n">actual_dir_stat</span><span class="o">.</span><span class="n">st_mode</span><span class="p">)</span>
+            <span class="ow">or</span> <span class="n">stat</span><span class="o">.</span><span class="n">S_IMODE</span><span class="p">(</span><span class="n">actual_dir_stat</span><span class="o">.</span><span class="n">st_mode</span><span class="p">)</span> <span class="o">!=</span> <span class="n">stat</span><span class="o">.</span><span class="n">S_IRWXU</span>
+        <span class="p">):</span>
+            <span class="n">_unsafe_dir</span><span class="p">()</span>
+
+        <span class="k">return</span> <span class="n">actual_dir</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_cache_filename</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">bucket</span><span class="p">:</span> <span class="n">Bucket</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">directory</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">pattern</span> <span class="o">%</span> <span class="p">(</span><span class="n">bucket</span><span class="o">.</span><span class="n">key</span><span class="p">,))</span>
+
+<div class="viewcode-block" id="FileSystemBytecodeCache.load_bytecode">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.FileSystemBytecodeCache.load_bytecode">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load_bytecode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">bucket</span><span class="p">:</span> <span class="n">Bucket</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_cache_filename</span><span class="p">(</span><span class="n">bucket</span><span class="p">)</span>
+
+        <span class="c1"># Don&#39;t test for existence before opening the file, since the</span>
+        <span class="c1"># file could disappear after the test before the open.</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s2">&quot;rb&quot;</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">FileNotFoundError</span><span class="p">,</span> <span class="ne">IsADirectoryError</span><span class="p">,</span> <span class="ne">PermissionError</span><span class="p">):</span>
+            <span class="c1"># PermissionError can occur on Windows when an operation is</span>
+            <span class="c1"># in progress, such as calling clear().</span>
+            <span class="k">return</span>
+
+        <span class="k">with</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">bucket</span><span class="o">.</span><span class="n">load_bytecode</span><span class="p">(</span><span class="n">f</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="FileSystemBytecodeCache.dump_bytecode">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.FileSystemBytecodeCache.dump_bytecode">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">dump_bytecode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">bucket</span><span class="p">:</span> <span class="n">Bucket</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># Write to a temporary file, then rename to the real name after</span>
+        <span class="c1"># writing. This avoids another process reading the file before</span>
+        <span class="c1"># it is fully written.</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_cache_filename</span><span class="p">(</span><span class="n">bucket</span><span class="p">)</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">NamedTemporaryFile</span><span class="p">(</span>
+            <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;wb&quot;</span><span class="p">,</span>
+            <span class="nb">dir</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">name</span><span class="p">),</span>
+            <span class="n">prefix</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">name</span><span class="p">),</span>
+            <span class="n">suffix</span><span class="o">=</span><span class="s2">&quot;.tmp&quot;</span><span class="p">,</span>
+            <span class="n">delete</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">remove_silent</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
+                <span class="c1"># Another process may have called clear(). On Windows,</span>
+                <span class="c1"># another program may be holding the file open.</span>
+                <span class="k">pass</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">f</span><span class="p">:</span>
+                <span class="n">bucket</span><span class="o">.</span><span class="n">write_bytecode</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">BaseException</span><span class="p">:</span>
+            <span class="n">remove_silent</span><span class="p">()</span>
+            <span class="k">raise</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
+            <span class="c1"># Another process may have called clear(). On Windows,</span>
+            <span class="c1"># another program may be holding the file open.</span>
+            <span class="n">remove_silent</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">BaseException</span><span class="p">:</span>
+            <span class="n">remove_silent</span><span class="p">()</span>
+            <span class="k">raise</span></div>
+
+
+<div class="viewcode-block" id="FileSystemBytecodeCache.clear">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.FileSystemBytecodeCache.clear">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clear</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># imported lazily here because google app-engine doesn&#39;t support</span>
+        <span class="c1"># write access on the file system and the function does not exist</span>
+        <span class="c1"># normally.</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">os</span><span class="w"> </span><span class="kn">import</span> <span class="n">remove</span>
+
+        <span class="n">files</span> <span class="o">=</span> <span class="n">fnmatch</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">directory</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">pattern</span> <span class="o">%</span> <span class="p">(</span><span class="s2">&quot;*&quot;</span><span class="p">,))</span>
+        <span class="k">for</span> <span class="n">filename</span> <span class="ow">in</span> <span class="n">files</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">remove</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">directory</span><span class="p">,</span> <span class="n">filename</span><span class="p">))</span>
+            <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
+                <span class="k">pass</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="MemcachedBytecodeCache">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.MemcachedBytecodeCache">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MemcachedBytecodeCache</span><span class="p">(</span><span class="n">BytecodeCache</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;This class implements a bytecode cache that uses a memcache cache for</span>
+<span class="sd">    storing the information.  It does not enforce a specific memcache library</span>
+<span class="sd">    (tummy&#39;s memcache or cmemcache) but will accept any class that provides</span>
+<span class="sd">    the minimal interface required.</span>
+
+<span class="sd">    Libraries compatible with this class:</span>
+
+<span class="sd">    -   `cachelib &lt;https://github.com/pallets/cachelib&gt;`_</span>
+<span class="sd">    -   `python-memcached &lt;https://pypi.org/project/python-memcached/&gt;`_</span>
+
+<span class="sd">    (Unfortunately the django cache interface is not compatible because it</span>
+<span class="sd">    does not support storing binary data, only text. You can however pass</span>
+<span class="sd">    the underlying cache client to the bytecode cache which is available</span>
+<span class="sd">    as `django.core.cache.cache._client`.)</span>
+
+<span class="sd">    The minimal interface for the client passed to the constructor is this:</span>
+
+<span class="sd">    .. class:: MinimalClientInterface</span>
+
+<span class="sd">        .. method:: set(key, value[, timeout])</span>
+
+<span class="sd">            Stores the bytecode in the cache.  `value` is a string and</span>
+<span class="sd">            `timeout` the timeout of the key.  If timeout is not provided</span>
+<span class="sd">            a default timeout or no timeout should be assumed, if it&#39;s</span>
+<span class="sd">            provided it&#39;s an integer with the number of seconds the cache</span>
+<span class="sd">            item should exist.</span>
+
+<span class="sd">        .. method:: get(key)</span>
+
+<span class="sd">            Returns the value for the cache key.  If the item does not</span>
+<span class="sd">            exist in the cache the return value must be `None`.</span>
+
+<span class="sd">    The other arguments to the constructor are the prefix for all keys that</span>
+<span class="sd">    is added before the actual cache key and the timeout for the bytecode in</span>
+<span class="sd">    the cache system.  We recommend a high (or no) timeout.</span>
+
+<span class="sd">    This bytecode cache does not support clearing of used items in the cache.</span>
+<span class="sd">    The clear method is a no-operation function.</span>
+
+<span class="sd">    .. versionadded:: 2.7</span>
+<span class="sd">       Added support for ignoring memcache errors through the</span>
+<span class="sd">       `ignore_memcache_errors` parameter.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">client</span><span class="p">:</span> <span class="s2">&quot;_MemcachedClient&quot;</span><span class="p">,</span>
+        <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;jinja2/bytecode/&quot;</span><span class="p">,</span>
+        <span class="n">timeout</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">ignore_memcache_errors</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="p">):</span>
+<div class="viewcode-block" id="MemcachedBytecodeCache.client">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.MemcachedBytecodeCache.client">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">client</span> <span class="o">=</span> <span class="n">client</span></div>
+
+<div class="viewcode-block" id="MemcachedBytecodeCache.prefix">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.MemcachedBytecodeCache.prefix">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">prefix</span> <span class="o">=</span> <span class="n">prefix</span></div>
+
+<div class="viewcode-block" id="MemcachedBytecodeCache.timeout">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.MemcachedBytecodeCache.timeout">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">timeout</span> <span class="o">=</span> <span class="n">timeout</span></div>
+
+<div class="viewcode-block" id="MemcachedBytecodeCache.ignore_memcache_errors">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.MemcachedBytecodeCache.ignore_memcache_errors">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ignore_memcache_errors</span> <span class="o">=</span> <span class="n">ignore_memcache_errors</span></div>
+
+
+<div class="viewcode-block" id="MemcachedBytecodeCache.load_bytecode">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.MemcachedBytecodeCache.load_bytecode">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load_bytecode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">bucket</span><span class="p">:</span> <span class="n">Bucket</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">code</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">prefix</span> <span class="o">+</span> <span class="n">bucket</span><span class="o">.</span><span class="n">key</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">ignore_memcache_errors</span><span class="p">:</span>
+                <span class="k">raise</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">bucket</span><span class="o">.</span><span class="n">bytecode_from_string</span><span class="p">(</span><span class="n">code</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="MemcachedBytecodeCache.dump_bytecode">
+<a class="viewcode-back" href="../../autoapi/jinja2/bccache/index.html#jinja2.bccache.MemcachedBytecodeCache.dump_bytecode">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">dump_bytecode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">bucket</span><span class="p">:</span> <span class="n">Bucket</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">prefix</span> <span class="o">+</span> <span class="n">bucket</span><span class="o">.</span><span class="n">key</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="n">bucket</span><span class="o">.</span><span class="n">bytecode_to_string</span><span class="p">()</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">timeout</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">timeout</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">ignore_memcache_errors</span><span class="p">:</span>
+                <span class="k">raise</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

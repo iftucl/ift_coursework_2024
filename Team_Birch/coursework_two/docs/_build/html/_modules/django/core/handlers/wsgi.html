@@ -1,0 +1,376 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.core.handlers.wsgi &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../django.html">django</a></li>
+      <li class="breadcrumb-item active">django.core.handlers.wsgi</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.core.handlers.wsgi</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">io</span><span class="w"> </span><span class="kn">import</span> <span class="n">IOBase</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">signals</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.handlers</span><span class="w"> </span><span class="kn">import</span> <span class="n">base</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.http</span><span class="w"> </span><span class="kn">import</span> <span class="n">HttpRequest</span><span class="p">,</span> <span class="n">QueryDict</span><span class="p">,</span> <span class="n">parse_cookie</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.urls</span><span class="w"> </span><span class="kn">import</span> <span class="n">set_script_prefix</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.encoding</span><span class="w"> </span><span class="kn">import</span> <span class="n">repercent_broken_unicode</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">cached_property</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.regex_helper</span><span class="w"> </span><span class="kn">import</span> <span class="n">_lazy_re_compile</span>
+
+<span class="n">_slashes_re</span> <span class="o">=</span> <span class="n">_lazy_re_compile</span><span class="p">(</span><span class="sa">rb</span><span class="s2">&quot;/+&quot;</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="LimitedStream">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/wsgi/index.html#django.core.handlers.wsgi.LimitedStream">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">LimitedStream</span><span class="p">(</span><span class="n">IOBase</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Wrap another stream to disallow reading it past a number of bytes.</span>
+
+<span class="sd">    Based on the implementation from werkzeug.wsgi.LimitedStream</span>
+<span class="sd">    See https://github.com/pallets/werkzeug/blob/dbf78f67/src/werkzeug/wsgi.py#L828</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stream</span><span class="p">,</span> <span class="n">limit</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_read</span> <span class="o">=</span> <span class="n">stream</span><span class="o">.</span><span class="n">read</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_readline</span> <span class="o">=</span> <span class="n">stream</span><span class="o">.</span><span class="n">readline</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_pos</span> <span class="o">=</span> <span class="mi">0</span>
+<div class="viewcode-block" id="LimitedStream.limit">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/wsgi/index.html#django.core.handlers.wsgi.LimitedStream.limit">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">limit</span> <span class="o">=</span> <span class="n">limit</span></div>
+
+
+<div class="viewcode-block" id="LimitedStream.read">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/wsgi/index.html#django.core.handlers.wsgi.LimitedStream.read">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">read</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">size</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="o">/</span><span class="p">):</span>
+        <span class="n">_pos</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pos</span>
+        <span class="n">limit</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">limit</span>
+        <span class="k">if</span> <span class="n">_pos</span> <span class="o">&gt;=</span> <span class="n">limit</span><span class="p">:</span>
+            <span class="k">return</span> <span class="sa">b</span><span class="s2">&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">size</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span> <span class="ow">or</span> <span class="n">size</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">size</span> <span class="o">=</span> <span class="n">limit</span> <span class="o">-</span> <span class="n">_pos</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">size</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">size</span><span class="p">,</span> <span class="n">limit</span> <span class="o">-</span> <span class="n">_pos</span><span class="p">)</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_read</span><span class="p">(</span><span class="n">size</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_pos</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">data</span></div>
+
+
+<div class="viewcode-block" id="LimitedStream.readline">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/wsgi/index.html#django.core.handlers.wsgi.LimitedStream.readline">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">readline</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">size</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="o">/</span><span class="p">):</span>
+        <span class="n">_pos</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pos</span>
+        <span class="n">limit</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">limit</span>
+        <span class="k">if</span> <span class="n">_pos</span> <span class="o">&gt;=</span> <span class="n">limit</span><span class="p">:</span>
+            <span class="k">return</span> <span class="sa">b</span><span class="s2">&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">size</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span> <span class="ow">or</span> <span class="n">size</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">size</span> <span class="o">=</span> <span class="n">limit</span> <span class="o">-</span> <span class="n">_pos</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">size</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">size</span><span class="p">,</span> <span class="n">limit</span> <span class="o">-</span> <span class="n">_pos</span><span class="p">)</span>
+        <span class="n">line</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_readline</span><span class="p">(</span><span class="n">size</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_pos</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">line</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="WSGIRequest">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/wsgi/index.html#django.core.handlers.wsgi.WSGIRequest">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">WSGIRequest</span><span class="p">(</span><span class="n">HttpRequest</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">environ</span><span class="p">):</span>
+        <span class="n">script_name</span> <span class="o">=</span> <span class="n">get_script_name</span><span class="p">(</span><span class="n">environ</span><span class="p">)</span>
+        <span class="c1"># If PATH_INFO is empty (e.g. accessing the SCRIPT_NAME URL without a</span>
+        <span class="c1"># trailing slash), operate as if &#39;/&#39; was requested.</span>
+        <span class="n">path_info</span> <span class="o">=</span> <span class="n">get_path_info</span><span class="p">(</span><span class="n">environ</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;/&quot;</span>
+<div class="viewcode-block" id="WSGIRequest.environ">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/wsgi/index.html#django.core.handlers.wsgi.WSGIRequest.environ">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">environ</span> <span class="o">=</span> <span class="n">environ</span></div>
+
+<div class="viewcode-block" id="WSGIRequest.path_info">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/wsgi/index.html#django.core.handlers.wsgi.WSGIRequest.path_info">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">path_info</span> <span class="o">=</span> <span class="n">path_info</span></div>
+
+        <span class="c1"># be careful to only replace the first slash in the path because of</span>
+        <span class="c1"># http://test/something and http://test//something being different as</span>
+        <span class="c1"># stated in RFC 3986.</span>
+<div class="viewcode-block" id="WSGIRequest.path">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/wsgi/index.html#django.core.handlers.wsgi.WSGIRequest.path">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">path</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">/</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">script_name</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">),</span> <span class="n">path_info</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span></div>
+
+<div class="viewcode-block" id="WSGIRequest.META">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/wsgi/index.html#django.core.handlers.wsgi.WSGIRequest.META">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">META</span> <span class="o">=</span> <span class="n">environ</span></div>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;PATH_INFO&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">path_info</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;SCRIPT_NAME&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">script_name</span>
+<div class="viewcode-block" id="WSGIRequest.method">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/wsgi/index.html#django.core.handlers.wsgi.WSGIRequest.method">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="o">=</span> <span class="n">environ</span><span class="p">[</span><span class="s2">&quot;REQUEST_METHOD&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span></div>
+
+        <span class="c1"># Set content_type, content_params, and encoding.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_content_type_params</span><span class="p">(</span><span class="n">environ</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">content_length</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;CONTENT_LENGTH&quot;</span><span class="p">))</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
+            <span class="n">content_length</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_stream</span> <span class="o">=</span> <span class="n">LimitedStream</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;wsgi.input&quot;</span><span class="p">],</span> <span class="n">content_length</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_read_started</span> <span class="o">=</span> <span class="kc">False</span>
+<div class="viewcode-block" id="WSGIRequest.resolver_match">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/wsgi/index.html#django.core.handlers.wsgi.WSGIRequest.resolver_match">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">resolver_match</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_scheme</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;wsgi.url_scheme&quot;</span><span class="p">)</span>
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="WSGIRequest.GET">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/wsgi/index.html#django.core.handlers.wsgi.WSGIRequest.GET">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">GET</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># The WSGI spec says &#39;QUERY_STRING&#39; may be absent.</span>
+        <span class="n">raw_query_string</span> <span class="o">=</span> <span class="n">get_bytes_from_wsgi</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">environ</span><span class="p">,</span> <span class="s2">&quot;QUERY_STRING&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">QueryDict</span><span class="p">(</span><span class="n">raw_query_string</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_encoding</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_post</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;_post&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_load_post_and_files</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_post</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_set_post</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">post</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_post</span> <span class="o">=</span> <span class="n">post</span>
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="WSGIRequest.COOKIES">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/wsgi/index.html#django.core.handlers.wsgi.WSGIRequest.COOKIES">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">COOKIES</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">raw_cookie</span> <span class="o">=</span> <span class="n">get_str_from_wsgi</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">environ</span><span class="p">,</span> <span class="s2">&quot;HTTP_COOKIE&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">parse_cookie</span><span class="p">(</span><span class="n">raw_cookie</span><span class="p">)</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="WSGIRequest.FILES">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/wsgi/index.html#django.core.handlers.wsgi.WSGIRequest.FILES">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">FILES</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;_files&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_load_post_and_files</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_files</span></div>
+
+
+<div class="viewcode-block" id="WSGIRequest.POST">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/wsgi/index.html#django.core.handlers.wsgi.WSGIRequest.POST">[docs]</a>
+    <span class="n">POST</span> <span class="o">=</span> <span class="nb">property</span><span class="p">(</span><span class="n">_get_post</span><span class="p">,</span> <span class="n">_set_post</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="WSGIHandler">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/wsgi/index.html#django.core.handlers.wsgi.WSGIHandler">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">WSGIHandler</span><span class="p">(</span><span class="n">base</span><span class="o">.</span><span class="n">BaseHandler</span><span class="p">):</span>
+<div class="viewcode-block" id="WSGIHandler.request_class">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/wsgi/index.html#django.core.handlers.wsgi.WSGIHandler.request_class">[docs]</a>
+    <span class="n">request_class</span> <span class="o">=</span> <span class="n">WSGIRequest</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">load_middleware</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">environ</span><span class="p">,</span> <span class="n">start_response</span><span class="p">):</span>
+        <span class="n">set_script_prefix</span><span class="p">(</span><span class="n">get_script_name</span><span class="p">(</span><span class="n">environ</span><span class="p">))</span>
+        <span class="n">signals</span><span class="o">.</span><span class="n">request_started</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">sender</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span> <span class="n">environ</span><span class="o">=</span><span class="n">environ</span><span class="p">)</span>
+        <span class="n">request</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">request_class</span><span class="p">(</span><span class="n">environ</span><span class="p">)</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_response</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+
+        <span class="n">response</span><span class="o">.</span><span class="n">_handler_class</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span>
+
+        <span class="n">status</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%d</span><span class="s2"> </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">status_code</span><span class="p">,</span> <span class="n">response</span><span class="o">.</span><span class="n">reason_phrase</span><span class="p">)</span>
+        <span class="n">response_headers</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="o">*</span><span class="n">response</span><span class="o">.</span><span class="n">items</span><span class="p">(),</span>
+            <span class="o">*</span><span class="p">((</span><span class="s2">&quot;Set-Cookie&quot;</span><span class="p">,</span> <span class="n">c</span><span class="o">.</span><span class="n">output</span><span class="p">(</span><span class="n">header</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">))</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">response</span><span class="o">.</span><span class="n">cookies</span><span class="o">.</span><span class="n">values</span><span class="p">()),</span>
+        <span class="p">]</span>
+        <span class="n">start_response</span><span class="p">(</span><span class="n">status</span><span class="p">,</span> <span class="n">response_headers</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">response</span><span class="p">,</span> <span class="s2">&quot;file_to_stream&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+            <span class="s2">&quot;wsgi.file_wrapper&quot;</span>
+        <span class="p">):</span>
+            <span class="c1"># If `wsgi.file_wrapper` is used the WSGI server does not call</span>
+            <span class="c1"># .close on the response, but on the file wrapper. Patch it to use</span>
+            <span class="c1"># response.close instead which takes care of closing all files.</span>
+            <span class="n">response</span><span class="o">.</span><span class="n">file_to_stream</span><span class="o">.</span><span class="n">close</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">close</span>
+            <span class="n">response</span> <span class="o">=</span> <span class="n">environ</span><span class="p">[</span><span class="s2">&quot;wsgi.file_wrapper&quot;</span><span class="p">](</span>
+                <span class="n">response</span><span class="o">.</span><span class="n">file_to_stream</span><span class="p">,</span> <span class="n">response</span><span class="o">.</span><span class="n">block_size</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">response</span></div>
+
+
+
+<div class="viewcode-block" id="get_path_info">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/wsgi/index.html#django.core.handlers.wsgi.get_path_info">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_path_info</span><span class="p">(</span><span class="n">environ</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the HTTP request&#39;s PATH_INFO as a string.&quot;&quot;&quot;</span>
+    <span class="n">path_info</span> <span class="o">=</span> <span class="n">get_bytes_from_wsgi</span><span class="p">(</span><span class="n">environ</span><span class="p">,</span> <span class="s2">&quot;PATH_INFO&quot;</span><span class="p">,</span> <span class="s2">&quot;/&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">repercent_broken_unicode</span><span class="p">(</span><span class="n">path_info</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span></div>
+
+
+
+<div class="viewcode-block" id="get_script_name">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/wsgi/index.html#django.core.handlers.wsgi.get_script_name">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_script_name</span><span class="p">(</span><span class="n">environ</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the equivalent of the HTTP request&#39;s SCRIPT_NAME environment</span>
+<span class="sd">    variable. If Apache mod_rewrite is used, return what would have been</span>
+<span class="sd">    the script name prior to any rewriting (so it&#39;s the script name as seen</span>
+<span class="sd">    from the client&#39;s perspective), unless the FORCE_SCRIPT_NAME setting is</span>
+<span class="sd">    set (to anything).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">FORCE_SCRIPT_NAME</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">settings</span><span class="o">.</span><span class="n">FORCE_SCRIPT_NAME</span>
+
+    <span class="c1"># If Apache&#39;s mod_rewrite had a whack at the URL, Apache set either</span>
+    <span class="c1"># SCRIPT_URL or REDIRECT_URL to the full resource URL before applying any</span>
+    <span class="c1"># rewrites. Unfortunately not every web server (lighttpd!) passes this</span>
+    <span class="c1"># information through all the time, so FORCE_SCRIPT_NAME, above, is still</span>
+    <span class="c1"># needed.</span>
+    <span class="n">script_url</span> <span class="o">=</span> <span class="n">get_bytes_from_wsgi</span><span class="p">(</span><span class="n">environ</span><span class="p">,</span> <span class="s2">&quot;SCRIPT_URL&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">get_bytes_from_wsgi</span><span class="p">(</span>
+        <span class="n">environ</span><span class="p">,</span> <span class="s2">&quot;REDIRECT_URL&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">script_url</span><span class="p">:</span>
+        <span class="k">if</span> <span class="sa">b</span><span class="s2">&quot;//&quot;</span> <span class="ow">in</span> <span class="n">script_url</span><span class="p">:</span>
+            <span class="c1"># mod_wsgi squashes multiple successive slashes in PATH_INFO,</span>
+            <span class="c1"># do the same with script_url before manipulating paths (#17133).</span>
+            <span class="n">script_url</span> <span class="o">=</span> <span class="n">_slashes_re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="sa">b</span><span class="s2">&quot;/&quot;</span><span class="p">,</span> <span class="n">script_url</span><span class="p">)</span>
+        <span class="n">path_info</span> <span class="o">=</span> <span class="n">get_bytes_from_wsgi</span><span class="p">(</span><span class="n">environ</span><span class="p">,</span> <span class="s2">&quot;PATH_INFO&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="n">script_name</span> <span class="o">=</span> <span class="n">script_url</span><span class="p">[:</span> <span class="o">-</span><span class="nb">len</span><span class="p">(</span><span class="n">path_info</span><span class="p">)]</span> <span class="k">if</span> <span class="n">path_info</span> <span class="k">else</span> <span class="n">script_url</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">script_name</span> <span class="o">=</span> <span class="n">get_bytes_from_wsgi</span><span class="p">(</span><span class="n">environ</span><span class="p">,</span> <span class="s2">&quot;SCRIPT_NAME&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">script_name</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span></div>
+
+
+
+<div class="viewcode-block" id="get_bytes_from_wsgi">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/wsgi/index.html#django.core.handlers.wsgi.get_bytes_from_wsgi">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_bytes_from_wsgi</span><span class="p">(</span><span class="n">environ</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">default</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get a value from the WSGI environ dictionary as bytes.</span>
+
+<span class="sd">    key and default should be strings.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">value</span> <span class="o">=</span> <span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">default</span><span class="p">)</span>
+    <span class="c1"># Non-ASCII values in the WSGI environ are arbitrarily decoded with</span>
+    <span class="c1"># ISO-8859-1. This is wrong for Django websites where UTF-8 is the default.</span>
+    <span class="c1"># Re-encode to recover the original bytestring.</span>
+    <span class="k">return</span> <span class="n">value</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;iso-8859-1&quot;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="get_str_from_wsgi">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/wsgi/index.html#django.core.handlers.wsgi.get_str_from_wsgi">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_str_from_wsgi</span><span class="p">(</span><span class="n">environ</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">default</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get a value from the WSGI environ dictionary as str.</span>
+
+<span class="sd">    key and default should be str objects.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">value</span> <span class="o">=</span> <span class="n">get_bytes_from_wsgi</span><span class="p">(</span><span class="n">environ</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">default</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">value</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">errors</span><span class="o">=</span><span class="s2">&quot;replace&quot;</span><span class="p">)</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

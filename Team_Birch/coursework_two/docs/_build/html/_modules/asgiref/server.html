@@ -1,0 +1,304 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>asgiref.server &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">asgiref.server</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for asgiref.server</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">traceback</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.compatibility</span><span class="w"> </span><span class="kn">import</span> <span class="n">guarantee_single_callable</span>
+
+<div class="viewcode-block" id="logger">
+<a class="viewcode-back" href="../../autoapi/asgiref/server/index.html#asgiref.server.logger">[docs]</a>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="StatelessServer">
+<a class="viewcode-back" href="../../autoapi/asgiref/server/index.html#asgiref.server.StatelessServer">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">StatelessServer</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Base server class that handles basic concepts like application instance</span>
+<span class="sd">    creation/pooling, exception handling, and similar, for stateless protocols</span>
+<span class="sd">    (i.e. ones without actual incoming connections to the process)</span>
+
+<span class="sd">    Your code should override the handle() method, doing whatever it needs to,</span>
+<span class="sd">    and calling get_or_create_application_instance with a unique `scope_id`</span>
+<span class="sd">    and `scope` for the scope it wants to get.</span>
+
+<span class="sd">    If an application instance is found with the same `scope_id`, you are</span>
+<span class="sd">    given its input queue, otherwise one is made for you with the scope provided</span>
+<span class="sd">    and you are given that fresh new input queue. Either way, you should do</span>
+<span class="sd">    something like:</span>
+
+<span class="sd">    input_queue = self.get_or_create_application_instance(</span>
+<span class="sd">        &quot;user-123456&quot;,</span>
+<span class="sd">        {&quot;type&quot;: &quot;testprotocol&quot;, &quot;user_id&quot;: &quot;123456&quot;, &quot;username&quot;: &quot;andrew&quot;},</span>
+<span class="sd">    )</span>
+<span class="sd">    input_queue.put_nowait(message)</span>
+
+<span class="sd">    If you try and create an application instance and there are already</span>
+<span class="sd">    `max_application` instances, the oldest/least recently used one will be</span>
+<span class="sd">    reclaimed and shut down to make space.</span>
+
+<span class="sd">    Application coroutines that error will be found periodically (every 100ms</span>
+<span class="sd">    by default) and have their exceptions printed to the console. Override</span>
+<span class="sd">    application_exception() if you want to do more when this happens.</span>
+
+<span class="sd">    If you override run(), make sure you handle things like launching the</span>
+<span class="sd">    application checker.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="StatelessServer.application_checker_interval">
+<a class="viewcode-back" href="../../autoapi/asgiref/server/index.html#asgiref.server.StatelessServer.application_checker_interval">[docs]</a>
+    <span class="n">application_checker_interval</span> <span class="o">=</span> <span class="mf">0.1</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">application</span><span class="p">,</span> <span class="n">max_applications</span><span class="o">=</span><span class="mi">1000</span><span class="p">):</span>
+        <span class="c1"># Parameters</span>
+<div class="viewcode-block" id="StatelessServer.application">
+<a class="viewcode-back" href="../../autoapi/asgiref/server/index.html#asgiref.server.StatelessServer.application">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">application</span> <span class="o">=</span> <span class="n">application</span></div>
+
+<div class="viewcode-block" id="StatelessServer.max_applications">
+<a class="viewcode-back" href="../../autoapi/asgiref/server/index.html#asgiref.server.StatelessServer.max_applications">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_applications</span> <span class="o">=</span> <span class="n">max_applications</span></div>
+
+        <span class="c1"># Initialisation</span>
+<div class="viewcode-block" id="StatelessServer.application_instances">
+<a class="viewcode-back" href="../../autoapi/asgiref/server/index.html#asgiref.server.StatelessServer.application_instances">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">application_instances</span> <span class="o">=</span> <span class="p">{}</span></div>
+
+
+    <span class="c1">### Mainloop and handling</span>
+
+<div class="viewcode-block" id="StatelessServer.run">
+<a class="viewcode-back" href="../../autoapi/asgiref/server/index.html#asgiref.server.StatelessServer.run">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Runs the asyncio event loop with our handler loop.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">event_loop</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">get_event_loop</span><span class="p">()</span>
+        <span class="n">asyncio</span><span class="o">.</span><span class="n">ensure_future</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">application_checker</span><span class="p">())</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">event_loop</span><span class="o">.</span><span class="n">run_until_complete</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">handle</span><span class="p">())</span>
+        <span class="k">except</span> <span class="ne">KeyboardInterrupt</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Exiting due to Ctrl-C/interrupt&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="StatelessServer.handle">
+<a class="viewcode-back" href="../../autoapi/asgiref/server/index.html#asgiref.server.StatelessServer.handle">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">handle</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;You must implement handle()&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="StatelessServer.application_send">
+<a class="viewcode-back" href="../../autoapi/asgiref/server/index.html#asgiref.server.StatelessServer.application_send">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">application_send</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Receives outbound sends from applications and handles them.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;You must implement application_send()&quot;</span><span class="p">)</span></div>
+
+
+    <span class="c1">### Application instance management</span>
+
+<div class="viewcode-block" id="StatelessServer.get_or_create_application_instance">
+<a class="viewcode-back" href="../../autoapi/asgiref/server/index.html#asgiref.server.StatelessServer.get_or_create_application_instance">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_or_create_application_instance</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scope_id</span><span class="p">,</span> <span class="n">scope</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Creates an application instance and returns its queue.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">scope_id</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">application_instances</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">application_instances</span><span class="p">[</span><span class="n">scope_id</span><span class="p">][</span><span class="s2">&quot;last_used&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">application_instances</span><span class="p">[</span><span class="n">scope_id</span><span class="p">][</span><span class="s2">&quot;input_queue&quot;</span><span class="p">]</span>
+        <span class="c1"># See if we need to delete an old one</span>
+        <span class="k">while</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">application_instances</span><span class="p">)</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_applications</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">delete_oldest_application_instance</span><span class="p">()</span>
+        <span class="c1"># Make an instance of the application</span>
+        <span class="n">input_queue</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Queue</span><span class="p">()</span>
+        <span class="n">application_instance</span> <span class="o">=</span> <span class="n">guarantee_single_callable</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">application</span><span class="p">)</span>
+        <span class="c1"># Run it, and stash the future for later checking</span>
+        <span class="n">future</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">ensure_future</span><span class="p">(</span>
+            <span class="n">application_instance</span><span class="p">(</span>
+                <span class="n">scope</span><span class="o">=</span><span class="n">scope</span><span class="p">,</span>
+                <span class="n">receive</span><span class="o">=</span><span class="n">input_queue</span><span class="o">.</span><span class="n">get</span><span class="p">,</span>
+                <span class="n">send</span><span class="o">=</span><span class="k">lambda</span> <span class="n">message</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">application_send</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="n">message</span><span class="p">),</span>
+            <span class="p">),</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">application_instances</span><span class="p">[</span><span class="n">scope_id</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;input_queue&quot;</span><span class="p">:</span> <span class="n">input_queue</span><span class="p">,</span>
+            <span class="s2">&quot;future&quot;</span><span class="p">:</span> <span class="n">future</span><span class="p">,</span>
+            <span class="s2">&quot;scope&quot;</span><span class="p">:</span> <span class="n">scope</span><span class="p">,</span>
+            <span class="s2">&quot;last_used&quot;</span><span class="p">:</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">(),</span>
+        <span class="p">}</span>
+        <span class="k">return</span> <span class="n">input_queue</span></div>
+
+
+<div class="viewcode-block" id="StatelessServer.delete_oldest_application_instance">
+<a class="viewcode-back" href="../../autoapi/asgiref/server/index.html#asgiref.server.StatelessServer.delete_oldest_application_instance">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">delete_oldest_application_instance</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Finds and deletes the oldest application instance</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">oldest_time</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span>
+            <span class="n">details</span><span class="p">[</span><span class="s2">&quot;last_used&quot;</span><span class="p">]</span> <span class="k">for</span> <span class="n">details</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">application_instances</span><span class="o">.</span><span class="n">values</span><span class="p">()</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">scope_id</span><span class="p">,</span> <span class="n">details</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">application_instances</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">details</span><span class="p">[</span><span class="s2">&quot;last_used&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">oldest_time</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">delete_application_instance</span><span class="p">(</span><span class="n">scope_id</span><span class="p">)</span>
+                <span class="c1"># Return to make sure we only delete one in case two have</span>
+                <span class="c1"># the same oldest time</span>
+                <span class="k">return</span></div>
+
+
+<div class="viewcode-block" id="StatelessServer.delete_application_instance">
+<a class="viewcode-back" href="../../autoapi/asgiref/server/index.html#asgiref.server.StatelessServer.delete_application_instance">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">delete_application_instance</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scope_id</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Removes an application instance (makes sure its task is stopped,</span>
+<span class="sd">        then removes it from the current set)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">details</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">application_instances</span><span class="p">[</span><span class="n">scope_id</span><span class="p">]</span>
+        <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">application_instances</span><span class="p">[</span><span class="n">scope_id</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">details</span><span class="p">[</span><span class="s2">&quot;future&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">done</span><span class="p">():</span>
+            <span class="n">details</span><span class="p">[</span><span class="s2">&quot;future&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">cancel</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="StatelessServer.application_checker">
+<a class="viewcode-back" href="../../autoapi/asgiref/server/index.html#asgiref.server.StatelessServer.application_checker">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">application_checker</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Goes through the set of current application instance Futures and cleans up</span>
+<span class="sd">        any that are done/prints exceptions for any that errored.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">application_checker_interval</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">scope_id</span><span class="p">,</span> <span class="n">details</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">application_instances</span><span class="o">.</span><span class="n">items</span><span class="p">()):</span>
+                <span class="k">if</span> <span class="n">details</span><span class="p">[</span><span class="s2">&quot;future&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">done</span><span class="p">():</span>
+                    <span class="n">exception</span> <span class="o">=</span> <span class="n">details</span><span class="p">[</span><span class="s2">&quot;future&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">exception</span><span class="p">()</span>
+                    <span class="k">if</span> <span class="n">exception</span><span class="p">:</span>
+                        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">application_exception</span><span class="p">(</span><span class="n">exception</span><span class="p">,</span> <span class="n">details</span><span class="p">)</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">application_instances</span><span class="p">[</span><span class="n">scope_id</span><span class="p">]</span>
+                    <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+                        <span class="c1"># Exception handling might have already got here before us. That&#39;s fine.</span>
+                        <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="StatelessServer.application_exception">
+<a class="viewcode-back" href="../../autoapi/asgiref/server/index.html#asgiref.server.StatelessServer.application_exception">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">application_exception</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exception</span><span class="p">,</span> <span class="n">application_details</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Called whenever an application coroutine has an exception.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
+            <span class="s2">&quot;Exception inside application: </span><span class="si">%s</span><span class="se">\n</span><span class="si">%s%s</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="n">exception</span><span class="p">,</span>
+            <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">traceback</span><span class="o">.</span><span class="n">format_tb</span><span class="p">(</span><span class="n">exception</span><span class="o">.</span><span class="n">__traceback__</span><span class="p">)),</span>
+            <span class="sa">f</span><span class="s2">&quot;  </span><span class="si">{</span><span class="n">exception</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="p">)</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

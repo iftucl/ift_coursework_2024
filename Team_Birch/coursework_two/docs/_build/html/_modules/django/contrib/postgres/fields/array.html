@@ -1,0 +1,537 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.contrib.postgres.fields.array &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+      <li class="breadcrumb-item active">django.contrib.postgres.fields.array</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.contrib.postgres.fields.array</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.postgres</span><span class="w"> </span><span class="kn">import</span> <span class="n">lookups</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.postgres.forms</span><span class="w"> </span><span class="kn">import</span> <span class="n">SimpleArrayField</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.postgres.validators</span><span class="w"> </span><span class="kn">import</span> <span class="n">ArrayMaxLengthValidator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">checks</span><span class="p">,</span> <span class="n">exceptions</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">Field</span><span class="p">,</span> <span class="n">Func</span><span class="p">,</span> <span class="n">IntegerField</span><span class="p">,</span> <span class="n">Transform</span><span class="p">,</span> <span class="n">Value</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.models.fields.mixins</span><span class="w"> </span><span class="kn">import</span> <span class="n">CheckFieldDefaultMixin</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.models.lookups</span><span class="w"> </span><span class="kn">import</span> <span class="n">Exact</span><span class="p">,</span> <span class="n">In</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.translation</span><span class="w"> </span><span class="kn">import</span> <span class="n">gettext_lazy</span> <span class="k">as</span> <span class="n">_</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">..utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">prefix_validation_error</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">AttributeSetter</span>
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;ArrayField&quot;</span><span class="p">]</span>
+
+
+<div class="viewcode-block" id="ArrayField">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/postgres/fields/array/index.html#django.contrib.postgres.fields.array.ArrayField">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ArrayField</span><span class="p">(</span><span class="n">CheckFieldDefaultMixin</span><span class="p">,</span> <span class="n">Field</span><span class="p">):</span>
+<div class="viewcode-block" id="ArrayField.empty_strings_allowed">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/postgres/fields/array/index.html#django.contrib.postgres.fields.array.ArrayField.empty_strings_allowed">[docs]</a>
+    <span class="n">empty_strings_allowed</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+<div class="viewcode-block" id="ArrayField.default_error_messages">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/postgres/fields/array/index.html#django.contrib.postgres.fields.array.ArrayField.default_error_messages">[docs]</a>
+    <span class="n">default_error_messages</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;item_invalid&quot;</span><span class="p">:</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Item </span><span class="si">%(nth)s</span><span class="s2"> in the array did not validate:&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;nested_array_mismatch&quot;</span><span class="p">:</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Nested arrays must have the same length.&quot;</span><span class="p">),</span>
+    <span class="p">}</span></div>
+
+    <span class="n">_default_hint</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;list&quot;</span><span class="p">,</span> <span class="s2">&quot;[]&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">base_field</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<div class="viewcode-block" id="ArrayField.base_field">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/postgres/fields/array/index.html#django.contrib.postgres.fields.array.ArrayField.base_field">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">base_field</span> <span class="o">=</span> <span class="n">base_field</span></div>
+
+<div class="viewcode-block" id="ArrayField.db_collation">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/postgres/fields/array/index.html#django.contrib.postgres.fields.array.ArrayField.db_collation">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">db_collation</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">base_field</span><span class="p">,</span> <span class="s2">&quot;db_collation&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="ArrayField.size">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/postgres/fields/array/index.html#django.contrib.postgres.fields.array.ArrayField.size">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">size</span> <span class="o">=</span> <span class="n">size</span></div>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">size</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">default_validators</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">default_validators</span><span class="p">,</span>
+                <span class="n">ArrayMaxLengthValidator</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">size</span><span class="p">),</span>
+            <span class="p">]</span>
+        <span class="c1"># For performance, only add a from_db_value() method if the base field</span>
+        <span class="c1"># implements it.</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">base_field</span><span class="p">,</span> <span class="s2">&quot;from_db_value&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">from_db_value</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_from_db_value</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="ArrayField.model">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/postgres/fields/array/index.html#django.contrib.postgres.fields.array.ArrayField.model">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">model</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__dict__</span><span class="p">[</span><span class="s2">&quot;model&quot;</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span>
+                <span class="s2">&quot;&#39;</span><span class="si">%s</span><span class="s2">&#39; object has no attribute &#39;model&#39;&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span>
+            <span class="p">)</span></div>
+
+
+    <span class="nd">@model</span><span class="o">.</span><span class="n">setter</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="vm">__dict__</span><span class="p">[</span><span class="s2">&quot;model&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">base_field</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_choices_is_value</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">))</span> <span class="ow">or</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">_choices_is_value</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+
+<div class="viewcode-block" id="ArrayField.check">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/postgres/fields/array/index.html#django.contrib.postgres.fields.array.ArrayField.check">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">errors</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_field</span><span class="o">.</span><span class="n">remote_field</span><span class="p">:</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                    <span class="s2">&quot;Base field for array cannot be a related field.&quot;</span><span class="p">,</span>
+                    <span class="n">obj</span><span class="o">=</span><span class="bp">self</span><span class="p">,</span>
+                    <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;postgres.E002&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Remove the field name checks as they are not needed here.</span>
+            <span class="n">base_checks</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_field</span><span class="o">.</span><span class="n">check</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">base_checks</span><span class="p">:</span>
+                <span class="n">error_messages</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">    &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+                    <span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> (</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">base_check</span><span class="o">.</span><span class="n">msg</span><span class="p">,</span> <span class="n">base_check</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+                    <span class="k">for</span> <span class="n">base_check</span> <span class="ow">in</span> <span class="n">base_checks</span>
+                    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">base_check</span><span class="p">,</span> <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">)</span>
+                <span class="p">)</span>
+                <span class="k">if</span> <span class="n">error_messages</span><span class="p">:</span>
+                    <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                        <span class="n">checks</span><span class="o">.</span><span class="n">Error</span><span class="p">(</span>
+                            <span class="s2">&quot;Base field for array has errors:</span><span class="se">\n</span><span class="s2">    </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">error_messages</span><span class="p">,</span>
+                            <span class="n">obj</span><span class="o">=</span><span class="bp">self</span><span class="p">,</span>
+                            <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;postgres.E001&quot;</span><span class="p">,</span>
+                        <span class="p">)</span>
+                    <span class="p">)</span>
+                <span class="n">warning_messages</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">    &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+                    <span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> (</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">base_check</span><span class="o">.</span><span class="n">msg</span><span class="p">,</span> <span class="n">base_check</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+                    <span class="k">for</span> <span class="n">base_check</span> <span class="ow">in</span> <span class="n">base_checks</span>
+                    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">base_check</span><span class="p">,</span> <span class="n">checks</span><span class="o">.</span><span class="n">Warning</span><span class="p">)</span>
+                <span class="p">)</span>
+                <span class="k">if</span> <span class="n">warning_messages</span><span class="p">:</span>
+                    <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                        <span class="n">checks</span><span class="o">.</span><span class="n">Warning</span><span class="p">(</span>
+                            <span class="s2">&quot;Base field for array has warnings:</span><span class="se">\n</span><span class="s2">    </span><span class="si">%s</span><span class="s2">&quot;</span>
+                            <span class="o">%</span> <span class="n">warning_messages</span><span class="p">,</span>
+                            <span class="n">obj</span><span class="o">=</span><span class="bp">self</span><span class="p">,</span>
+                            <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;postgres.W004&quot;</span><span class="p">,</span>
+                        <span class="p">)</span>
+                    <span class="p">)</span>
+        <span class="k">return</span> <span class="n">errors</span></div>
+
+
+<div class="viewcode-block" id="ArrayField.set_attributes_from_name">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/postgres/fields/array/index.html#django.contrib.postgres.fields.array.ArrayField.set_attributes_from_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_attributes_from_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">set_attributes_from_name</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">base_field</span><span class="o">.</span><span class="n">set_attributes_from_name</span><span class="p">(</span><span class="n">name</span><span class="p">)</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="ArrayField.description">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/postgres/fields/array/index.html#django.contrib.postgres.fields.array.ArrayField.description">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">description</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;Array of </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_field</span><span class="o">.</span><span class="n">description</span></div>
+
+
+<div class="viewcode-block" id="ArrayField.db_type">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/postgres/fields/array/index.html#django.contrib.postgres.fields.array.ArrayField.db_type">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">db_type</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="n">size</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">size</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">[</span><span class="si">%s</span><span class="s2">]&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">base_field</span><span class="o">.</span><span class="n">db_type</span><span class="p">(</span><span class="n">connection</span><span class="p">),</span> <span class="n">size</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ArrayField.cast_db_type">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/postgres/fields/array/index.html#django.contrib.postgres.fields.array.ArrayField.cast_db_type">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">cast_db_type</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="n">size</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">size</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">[</span><span class="si">%s</span><span class="s2">]&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">base_field</span><span class="o">.</span><span class="n">cast_db_type</span><span class="p">(</span><span class="n">connection</span><span class="p">),</span> <span class="n">size</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ArrayField.db_parameters">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/postgres/fields/array/index.html#django.contrib.postgres.fields.array.ArrayField.db_parameters">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">db_parameters</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="n">db_params</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">db_parameters</span><span class="p">(</span><span class="n">connection</span><span class="p">)</span>
+        <span class="n">db_params</span><span class="p">[</span><span class="s2">&quot;collation&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">db_collation</span>
+        <span class="k">return</span> <span class="n">db_params</span></div>
+
+
+<div class="viewcode-block" id="ArrayField.get_placeholder">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/postgres/fields/array/index.html#django.contrib.postgres.fields.array.ArrayField.get_placeholder">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_placeholder</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">compiler</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">::</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">db_type</span><span class="p">(</span><span class="n">connection</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="ArrayField.get_db_prep_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/postgres/fields/array/index.html#django.contrib.postgres.fields.array.ArrayField.get_db_prep_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_db_prep_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">connection</span><span class="p">,</span> <span class="n">prepared</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="p">[</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">base_field</span><span class="o">.</span><span class="n">get_db_prep_value</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">connection</span><span class="p">,</span> <span class="n">prepared</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">value</span>
+            <span class="p">]</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+<div class="viewcode-block" id="ArrayField.deconstruct">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/postgres/fields/array/index.html#django.contrib.postgres.fields.array.ArrayField.deconstruct">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">deconstruct</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">name</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">deconstruct</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">path</span> <span class="o">==</span> <span class="s2">&quot;django.contrib.postgres.fields.array.ArrayField&quot;</span><span class="p">:</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="s2">&quot;django.contrib.postgres.fields.ArrayField&quot;</span>
+        <span class="n">kwargs</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;base_field&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_field</span><span class="o">.</span><span class="n">clone</span><span class="p">(),</span>
+                <span class="s2">&quot;size&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">size</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">name</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span></div>
+
+
+<div class="viewcode-block" id="ArrayField.to_python">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/postgres/fields/array/index.html#django.contrib.postgres.fields.array.ArrayField.to_python">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_python</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="c1"># Assume we&#39;re deserializing</span>
+            <span class="n">vals</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">base_field</span><span class="o">.</span><span class="n">to_python</span><span class="p">(</span><span class="n">val</span><span class="p">)</span> <span class="k">for</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">vals</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_from_db_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">value</span>
+        <span class="k">return</span> <span class="p">[</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">base_field</span><span class="o">.</span><span class="n">from_db_value</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">connection</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">value</span>
+        <span class="p">]</span>
+
+<div class="viewcode-block" id="ArrayField.value_to_string">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/postgres/fields/array/index.html#django.contrib.postgres.fields.array.ArrayField.value_to_string">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">value_to_string</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+        <span class="n">values</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">vals</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">value_from_object</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span>
+        <span class="n">base_field</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_field</span>
+
+        <span class="k">for</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">vals</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">val</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">obj</span> <span class="o">=</span> <span class="n">AttributeSetter</span><span class="p">(</span><span class="n">base_field</span><span class="o">.</span><span class="n">attname</span><span class="p">,</span> <span class="n">val</span><span class="p">)</span>
+                <span class="n">values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">base_field</span><span class="o">.</span><span class="n">value_to_string</span><span class="p">(</span><span class="n">obj</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">values</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ArrayField.get_transform">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/postgres/fields/array/index.html#django.contrib.postgres.fields.array.ArrayField.get_transform">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_transform</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="n">transform</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">get_transform</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">transform</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">transform</span>
+        <span class="k">if</span> <span class="s2">&quot;_&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">name</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">index</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                <span class="k">pass</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">index</span> <span class="o">+=</span> <span class="mi">1</span>  <span class="c1"># postgres uses 1-indexing</span>
+                <span class="k">return</span> <span class="n">IndexTransformFactory</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_field</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="o">=</span> <span class="n">name</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;_&quot;</span><span class="p">)</span>
+            <span class="n">start</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">start</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
+            <span class="n">end</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">end</span><span class="p">)</span>  <span class="c1"># don&#39;t add one here because postgres slices are weird</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">SliceTransformFactory</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ArrayField.validate">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/postgres/fields/array/index.html#django.contrib.postgres.fields.array.ArrayField.validate">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">validate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">validate</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">part</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">base_field</span><span class="o">.</span><span class="n">validate</span><span class="p">(</span><span class="n">part</span><span class="p">,</span> <span class="n">model_instance</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">exceptions</span><span class="o">.</span><span class="n">ValidationError</span> <span class="k">as</span> <span class="n">error</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">prefix_validation_error</span><span class="p">(</span>
+                    <span class="n">error</span><span class="p">,</span>
+                    <span class="n">prefix</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">error_messages</span><span class="p">[</span><span class="s2">&quot;item_invalid&quot;</span><span class="p">],</span>
+                    <span class="n">code</span><span class="o">=</span><span class="s2">&quot;item_invalid&quot;</span><span class="p">,</span>
+                    <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;nth&quot;</span><span class="p">:</span> <span class="n">index</span> <span class="o">+</span> <span class="mi">1</span><span class="p">},</span>
+                <span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">base_field</span><span class="p">,</span> <span class="n">ArrayField</span><span class="p">):</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">({</span><span class="nb">len</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">value</span><span class="p">})</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">exceptions</span><span class="o">.</span><span class="n">ValidationError</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">error_messages</span><span class="p">[</span><span class="s2">&quot;nested_array_mismatch&quot;</span><span class="p">],</span>
+                    <span class="n">code</span><span class="o">=</span><span class="s2">&quot;nested_array_mismatch&quot;</span><span class="p">,</span>
+                <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ArrayField.run_validators">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/postgres/fields/array/index.html#django.contrib.postgres.fields.array.ArrayField.run_validators">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">run_validators</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">run_validators</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">part</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">base_field</span><span class="o">.</span><span class="n">run_validators</span><span class="p">(</span><span class="n">part</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">exceptions</span><span class="o">.</span><span class="n">ValidationError</span> <span class="k">as</span> <span class="n">error</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">prefix_validation_error</span><span class="p">(</span>
+                    <span class="n">error</span><span class="p">,</span>
+                    <span class="n">prefix</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">error_messages</span><span class="p">[</span><span class="s2">&quot;item_invalid&quot;</span><span class="p">],</span>
+                    <span class="n">code</span><span class="o">=</span><span class="s2">&quot;item_invalid&quot;</span><span class="p">,</span>
+                    <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;nth&quot;</span><span class="p">:</span> <span class="n">index</span> <span class="o">+</span> <span class="mi">1</span><span class="p">},</span>
+                <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ArrayField.formfield">
+<a class="viewcode-back" href="../../../../../autoapi/django/contrib/postgres/fields/array/index.html#django.contrib.postgres.fields.array.ArrayField.formfield">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">formfield</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">formfield</span><span class="p">(</span>
+            <span class="o">**</span><span class="p">{</span>
+                <span class="s2">&quot;form_class&quot;</span><span class="p">:</span> <span class="n">SimpleArrayField</span><span class="p">,</span>
+                <span class="s2">&quot;base_field&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_field</span><span class="o">.</span><span class="n">formfield</span><span class="p">(),</span>
+                <span class="s2">&quot;max_length&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">size</span><span class="p">,</span>
+                <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="p">)</span></div>
+</div>
+
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">ArrayRHSMixin</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="p">):</span>
+        <span class="c1"># Don&#39;t wrap arrays that contains only None values, psycopg doesn&#39;t</span>
+        <span class="c1"># allow this.</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">rhs</span><span class="p">,</span> <span class="p">(</span><span class="nb">tuple</span><span class="p">,</span> <span class="nb">list</span><span class="p">))</span> <span class="ow">and</span> <span class="nb">any</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rhs_not_none_values</span><span class="p">(</span><span class="n">rhs</span><span class="p">)):</span>
+            <span class="n">expressions</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">rhs</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;resolve_expression&quot;</span><span class="p">):</span>
+                    <span class="n">field</span> <span class="o">=</span> <span class="n">lhs</span><span class="o">.</span><span class="n">output_field</span>
+                    <span class="n">value</span> <span class="o">=</span> <span class="n">Value</span><span class="p">(</span><span class="n">field</span><span class="o">.</span><span class="n">base_field</span><span class="o">.</span><span class="n">get_prep_value</span><span class="p">(</span><span class="n">value</span><span class="p">))</span>
+                <span class="n">expressions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+            <span class="n">rhs</span> <span class="o">=</span> <span class="n">Func</span><span class="p">(</span>
+                <span class="o">*</span><span class="n">expressions</span><span class="p">,</span>
+                <span class="n">function</span><span class="o">=</span><span class="s2">&quot;ARRAY&quot;</span><span class="p">,</span>
+                <span class="n">template</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(function)s</span><span class="s2">[</span><span class="si">%(expressions)s</span><span class="s2">]&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">process_rhs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">compiler</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="n">rhs</span><span class="p">,</span> <span class="n">rhs_params</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">process_rhs</span><span class="p">(</span><span class="n">compiler</span><span class="p">,</span> <span class="n">connection</span><span class="p">)</span>
+        <span class="n">cast_type</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">lhs</span><span class="o">.</span><span class="n">output_field</span><span class="o">.</span><span class="n">cast_db_type</span><span class="p">(</span><span class="n">connection</span><span class="p">)</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">::</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">rhs</span><span class="p">,</span> <span class="n">cast_type</span><span class="p">),</span> <span class="n">rhs_params</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_rhs_not_none_values</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rhs</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">rhs</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+                <span class="k">yield from</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rhs_not_none_values</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">x</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">yield</span> <span class="kc">True</span>
+
+
+<span class="nd">@ArrayField</span><span class="o">.</span><span class="n">register_lookup</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ArrayContains</span><span class="p">(</span><span class="n">ArrayRHSMixin</span><span class="p">,</span> <span class="n">lookups</span><span class="o">.</span><span class="n">DataContains</span><span class="p">):</span>
+    <span class="k">pass</span>
+
+
+<span class="nd">@ArrayField</span><span class="o">.</span><span class="n">register_lookup</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ArrayContainedBy</span><span class="p">(</span><span class="n">ArrayRHSMixin</span><span class="p">,</span> <span class="n">lookups</span><span class="o">.</span><span class="n">ContainedBy</span><span class="p">):</span>
+    <span class="k">pass</span>
+
+
+<span class="nd">@ArrayField</span><span class="o">.</span><span class="n">register_lookup</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ArrayExact</span><span class="p">(</span><span class="n">ArrayRHSMixin</span><span class="p">,</span> <span class="n">Exact</span><span class="p">):</span>
+    <span class="k">pass</span>
+
+
+<span class="nd">@ArrayField</span><span class="o">.</span><span class="n">register_lookup</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ArrayOverlap</span><span class="p">(</span><span class="n">ArrayRHSMixin</span><span class="p">,</span> <span class="n">lookups</span><span class="o">.</span><span class="n">Overlap</span><span class="p">):</span>
+    <span class="k">pass</span>
+
+
+<span class="nd">@ArrayField</span><span class="o">.</span><span class="n">register_lookup</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ArrayLenTransform</span><span class="p">(</span><span class="n">Transform</span><span class="p">):</span>
+    <span class="n">lookup_name</span> <span class="o">=</span> <span class="s2">&quot;len&quot;</span>
+    <span class="n">output_field</span> <span class="o">=</span> <span class="n">IntegerField</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">as_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">compiler</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="n">lhs</span><span class="p">,</span> <span class="n">params</span> <span class="o">=</span> <span class="n">compiler</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lhs</span><span class="p">)</span>
+        <span class="c1"># Distinguish NULL and empty arrays</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="s2">&quot;CASE WHEN </span><span class="si">%(lhs)s</span><span class="s2"> IS NULL THEN NULL ELSE &quot;</span>
+            <span class="s2">&quot;coalesce(array_length(</span><span class="si">%(lhs)s</span><span class="s2">, 1), 0) END&quot;</span>
+        <span class="p">)</span> <span class="o">%</span> <span class="p">{</span><span class="s2">&quot;lhs&quot;</span><span class="p">:</span> <span class="n">lhs</span><span class="p">},</span> <span class="n">params</span> <span class="o">*</span> <span class="mi">2</span>
+
+
+<span class="nd">@ArrayField</span><span class="o">.</span><span class="n">register_lookup</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ArrayInLookup</span><span class="p">(</span><span class="n">In</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_prep_lookup</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">values</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">get_prep_lookup</span><span class="p">()</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="s2">&quot;resolve_expression&quot;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">values</span>
+        <span class="c1"># In.process_rhs() expects values to be hashable, so convert lists</span>
+        <span class="c1"># to tuples.</span>
+        <span class="n">prepared_values</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">values</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;resolve_expression&quot;</span><span class="p">):</span>
+                <span class="n">prepared_values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">prepared_values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">tuple</span><span class="p">(</span><span class="n">value</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">prepared_values</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">IndexTransform</span><span class="p">(</span><span class="n">Transform</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">base_field</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">index</span> <span class="o">=</span> <span class="n">index</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">base_field</span> <span class="o">=</span> <span class="n">base_field</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">as_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">compiler</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="n">lhs</span><span class="p">,</span> <span class="n">params</span> <span class="o">=</span> <span class="n">compiler</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lhs</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">lhs</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;]&quot;</span><span class="p">):</span>
+            <span class="n">lhs</span> <span class="o">=</span> <span class="s2">&quot;(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="n">lhs</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">[</span><span class="si">%%</span><span class="s2">s]&quot;</span> <span class="o">%</span> <span class="n">lhs</span><span class="p">,</span> <span class="p">(</span><span class="o">*</span><span class="n">params</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">index</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">output_field</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_field</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">IndexTransformFactory</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">base_field</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">index</span> <span class="o">=</span> <span class="n">index</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">base_field</span> <span class="o">=</span> <span class="n">base_field</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">IndexTransform</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_field</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">SliceTransform</span><span class="p">(</span><span class="n">Transform</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">start</span> <span class="o">=</span> <span class="n">start</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">end</span> <span class="o">=</span> <span class="n">end</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">as_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">compiler</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="n">lhs</span><span class="p">,</span> <span class="n">params</span> <span class="o">=</span> <span class="n">compiler</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lhs</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">lhs</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;]&quot;</span><span class="p">):</span>
+            <span class="n">lhs</span> <span class="o">=</span> <span class="s2">&quot;(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="n">lhs</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">[</span><span class="si">%%</span><span class="s2">s:</span><span class="si">%%</span><span class="s2">s]&quot;</span> <span class="o">%</span> <span class="n">lhs</span><span class="p">,</span> <span class="p">(</span><span class="o">*</span><span class="n">params</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">start</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">end</span><span class="p">)</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">SliceTransformFactory</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">start</span> <span class="o">=</span> <span class="n">start</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">end</span> <span class="o">=</span> <span class="n">end</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">SliceTransform</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">start</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">end</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

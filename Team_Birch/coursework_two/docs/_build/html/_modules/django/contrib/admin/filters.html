@@ -1,0 +1,891 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.contrib.admin.filters &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../admin.html">django.contrib.admin</a></li>
+      <li class="breadcrumb-item active">django.contrib.admin.filters</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.contrib.admin.filters</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">This encapsulates the logic for displaying filters in the Django admin.</span>
+<span class="sd">Filters are specified in models with the &quot;list_filter&quot; option.</span>
+
+<span class="sd">Each filter subclass knows how to display a filter for a field that passes a</span>
+<span class="sd">certain test -- e.g. being a DateField or ForeignKey.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.admin.options</span><span class="w"> </span><span class="kn">import</span> <span class="n">IncorrectLookupParameters</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.admin.utils</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">get_model_from_relation</span><span class="p">,</span>
+    <span class="n">prepare_lookup_value</span><span class="p">,</span>
+    <span class="n">reverse_field_path</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImproperlyConfigured</span><span class="p">,</span> <span class="n">ValidationError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">models</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">timezone</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.translation</span><span class="w"> </span><span class="kn">import</span> <span class="n">gettext_lazy</span> <span class="k">as</span> <span class="n">_</span>
+
+
+<div class="viewcode-block" id="ListFilter">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.ListFilter">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ListFilter</span><span class="p">:</span>
+<div class="viewcode-block" id="ListFilter.title">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.ListFilter.title">[docs]</a>
+    <span class="n">title</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># Human-readable title to appear in the right sidebar.</span></div>
+
+<div class="viewcode-block" id="ListFilter.template">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.ListFilter.template">[docs]</a>
+    <span class="n">template</span> <span class="o">=</span> <span class="s2">&quot;admin/filter.html&quot;</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">):</span>
+        <span class="c1"># This dictionary will eventually contain the request&#39;s query string</span>
+        <span class="c1"># parameters actually used by this filter.</span>
+<div class="viewcode-block" id="ListFilter.used_parameters">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.ListFilter.used_parameters">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">used_parameters</span> <span class="o">=</span> <span class="p">{}</span></div>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">title</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+                <span class="s2">&quot;The list filter &#39;</span><span class="si">%s</span><span class="s2">&#39; does not specify a &#39;title&#39;.&quot;</span>
+                <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span>
+            <span class="p">)</span>
+
+<div class="viewcode-block" id="ListFilter.has_output">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.ListFilter.has_output">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">has_output</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return True if some choices would be output for this filter.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of ListFilter must provide a has_output() method&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ListFilter.choices">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.ListFilter.choices">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">choices</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">changelist</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return choices ready to be output in the template.</span>
+
+<span class="sd">        `changelist` is the ChangeList to be displayed.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of ListFilter must provide a choices() method&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ListFilter.queryset">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.ListFilter.queryset">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">queryset</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">queryset</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the filtered queryset.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of ListFilter must provide a queryset() method&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ListFilter.expected_parameters">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.ListFilter.expected_parameters">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">expected_parameters</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the list of parameter names that are expected from the</span>
+<span class="sd">        request&#39;s query string and that will be used by this filter.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;subclasses of ListFilter must provide an expected_parameters() method&quot;</span>
+        <span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="SimpleListFilter">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.SimpleListFilter">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SimpleListFilter</span><span class="p">(</span><span class="n">ListFilter</span><span class="p">):</span>
+    <span class="c1"># The parameter that should be used in the query string for that filter.</span>
+<div class="viewcode-block" id="SimpleListFilter.parameter_name">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.SimpleListFilter.parameter_name">[docs]</a>
+    <span class="n">parameter_name</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">parameter_name</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+                <span class="s2">&quot;The list filter &#39;</span><span class="si">%s</span><span class="s2">&#39; does not specify a &#39;parameter_name&#39;.&quot;</span>
+                <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">parameter_name</span> <span class="ow">in</span> <span class="n">params</span><span class="p">:</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">parameter_name</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">used_parameters</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">parameter_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+        <span class="n">lookup_choices</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookups</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">lookup_choices</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">lookup_choices</span> <span class="o">=</span> <span class="p">()</span>
+<div class="viewcode-block" id="SimpleListFilter.lookup_choices">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.SimpleListFilter.lookup_choices">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_choices</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">lookup_choices</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SimpleListFilter.has_output">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.SimpleListFilter.has_output">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">has_output</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_choices</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span></div>
+
+
+<div class="viewcode-block" id="SimpleListFilter.value">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.SimpleListFilter.value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">value</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the value (in string format) provided in the request&#39;s</span>
+<span class="sd">        query string for this filter, if any, or None if the value wasn&#39;t</span>
+<span class="sd">        provided.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">used_parameters</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">parameter_name</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SimpleListFilter.lookups">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.SimpleListFilter.lookups">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">lookups</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Must be overridden to return a list of tuples (value, verbose value)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;The SimpleListFilter.lookups() method must be overridden to &quot;</span>
+            <span class="s2">&quot;return a list of tuples (value, verbose value).&quot;</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SimpleListFilter.expected_parameters">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.SimpleListFilter.expected_parameters">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">expected_parameters</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">parameter_name</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="SimpleListFilter.choices">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.SimpleListFilter.choices">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">choices</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">changelist</span><span class="p">):</span>
+        <span class="k">yield</span> <span class="p">{</span>
+            <span class="s2">&quot;selected&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">value</span><span class="p">()</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="s2">&quot;query_string&quot;</span><span class="p">:</span> <span class="n">changelist</span><span class="o">.</span><span class="n">get_query_string</span><span class="p">(</span><span class="n">remove</span><span class="o">=</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">parameter_name</span><span class="p">]),</span>
+            <span class="s2">&quot;display&quot;</span><span class="p">:</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;All&quot;</span><span class="p">),</span>
+        <span class="p">}</span>
+        <span class="k">for</span> <span class="n">lookup</span><span class="p">,</span> <span class="n">title</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_choices</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="p">{</span>
+                <span class="s2">&quot;selected&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">value</span><span class="p">()</span> <span class="o">==</span> <span class="nb">str</span><span class="p">(</span><span class="n">lookup</span><span class="p">),</span>
+                <span class="s2">&quot;query_string&quot;</span><span class="p">:</span> <span class="n">changelist</span><span class="o">.</span><span class="n">get_query_string</span><span class="p">(</span>
+                    <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">parameter_name</span><span class="p">:</span> <span class="n">lookup</span><span class="p">}</span>
+                <span class="p">),</span>
+                <span class="s2">&quot;display&quot;</span><span class="p">:</span> <span class="n">title</span><span class="p">,</span>
+            <span class="p">}</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="FieldListFilter">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.FieldListFilter">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">FieldListFilter</span><span class="p">(</span><span class="n">ListFilter</span><span class="p">):</span>
+    <span class="n">_field_list_filters</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">_take_priority_index</span> <span class="o">=</span> <span class="mi">0</span>
+<div class="viewcode-block" id="FieldListFilter.list_separator">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.FieldListFilter.list_separator">[docs]</a>
+    <span class="n">list_separator</span> <span class="o">=</span> <span class="s2">&quot;,&quot;</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">,</span> <span class="n">field_path</span><span class="p">):</span>
+<div class="viewcode-block" id="FieldListFilter.field">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.FieldListFilter.field">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">field</span> <span class="o">=</span> <span class="n">field</span></div>
+
+<div class="viewcode-block" id="FieldListFilter.field_path">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.FieldListFilter.field_path">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">field_path</span> <span class="o">=</span> <span class="n">field_path</span></div>
+
+<div class="viewcode-block" id="FieldListFilter.title">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.FieldListFilter.title">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">title</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="s2">&quot;verbose_name&quot;</span><span class="p">,</span> <span class="n">field_path</span><span class="p">)</span></div>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">expected_parameters</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">params</span><span class="p">:</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">used_parameters</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">prepare_lookup_value</span><span class="p">(</span>
+                    <span class="n">p</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">list_separator</span>
+                <span class="p">)</span>
+
+<div class="viewcode-block" id="FieldListFilter.has_output">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.FieldListFilter.has_output">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">has_output</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="FieldListFilter.queryset">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.FieldListFilter.queryset">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">queryset</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">queryset</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">queryset</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">used_parameters</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="n">ValidationError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="c1"># Fields may raise a ValueError or ValidationError when converting</span>
+            <span class="c1"># the parameters to the correct type.</span>
+            <span class="k">raise</span> <span class="n">IncorrectLookupParameters</span><span class="p">(</span><span class="n">e</span><span class="p">)</span></div>
+
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="FieldListFilter.register">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.FieldListFilter.register">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">register</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">list_filter_class</span><span class="p">,</span> <span class="n">take_priority</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">take_priority</span><span class="p">:</span>
+            <span class="c1"># This is to allow overriding the default filters for certain types</span>
+            <span class="c1"># of fields with some custom filters. The first found in the list</span>
+            <span class="c1"># is used in priority.</span>
+            <span class="bp">cls</span><span class="o">.</span><span class="n">_field_list_filters</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span>
+                <span class="bp">cls</span><span class="o">.</span><span class="n">_take_priority_index</span><span class="p">,</span> <span class="p">(</span><span class="n">test</span><span class="p">,</span> <span class="n">list_filter_class</span><span class="p">)</span>
+            <span class="p">)</span>
+            <span class="bp">cls</span><span class="o">.</span><span class="n">_take_priority_index</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">cls</span><span class="o">.</span><span class="n">_field_list_filters</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">test</span><span class="p">,</span> <span class="n">list_filter_class</span><span class="p">))</span></div>
+
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="FieldListFilter.create">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.FieldListFilter.create">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">,</span> <span class="n">field_path</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">test</span><span class="p">,</span> <span class="n">list_filter_class</span> <span class="ow">in</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_field_list_filters</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">test</span><span class="p">(</span><span class="n">field</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">list_filter_class</span><span class="p">(</span>
+                    <span class="n">field</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">,</span> <span class="n">field_path</span><span class="o">=</span><span class="n">field_path</span>
+                <span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="RelatedFieldListFilter">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.RelatedFieldListFilter">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">RelatedFieldListFilter</span><span class="p">(</span><span class="n">FieldListFilter</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">,</span> <span class="n">field_path</span><span class="p">):</span>
+        <span class="n">other_model</span> <span class="o">=</span> <span class="n">get_model_from_relation</span><span class="p">(</span><span class="n">field</span><span class="p">)</span>
+<div class="viewcode-block" id="RelatedFieldListFilter.lookup_kwarg">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.RelatedFieldListFilter.lookup_kwarg">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">__</span><span class="si">%s</span><span class="s2">__exact&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">field_path</span><span class="p">,</span> <span class="n">field</span><span class="o">.</span><span class="n">target_field</span><span class="o">.</span><span class="n">name</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="RelatedFieldListFilter.lookup_kwarg_isnull">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.RelatedFieldListFilter.lookup_kwarg_isnull">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_isnull</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">__isnull&quot;</span> <span class="o">%</span> <span class="n">field_path</span></div>
+
+<div class="viewcode-block" id="RelatedFieldListFilter.lookup_val">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.RelatedFieldListFilter.lookup_val">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_val</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="RelatedFieldListFilter.lookup_val_isnull">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.RelatedFieldListFilter.lookup_val_isnull">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_val_isnull</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_isnull</span><span class="p">)</span></div>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">,</span> <span class="n">field_path</span><span class="p">)</span>
+<div class="viewcode-block" id="RelatedFieldListFilter.lookup_choices">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.RelatedFieldListFilter.lookup_choices">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_choices</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">field_choices</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">)</span></div>
+
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="s2">&quot;verbose_name&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">lookup_title</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">verbose_name</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">lookup_title</span> <span class="o">=</span> <span class="n">other_model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">verbose_name</span>
+<div class="viewcode-block" id="RelatedFieldListFilter.title">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.RelatedFieldListFilter.title">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">title</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_title</span></div>
+
+<div class="viewcode-block" id="RelatedFieldListFilter.empty_value_display">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.RelatedFieldListFilter.empty_value_display">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">empty_value_display</span> <span class="o">=</span> <span class="n">model_admin</span><span class="o">.</span><span class="n">get_empty_value_display</span><span class="p">()</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="RelatedFieldListFilter.include_empty_choice">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.RelatedFieldListFilter.include_empty_choice">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">include_empty_choice</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return True if a &quot;(None)&quot; choice should be included, which filters</span>
+<span class="sd">        out everything except empty relationships.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">null</span> <span class="ow">or</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">is_relation</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">many_to_many</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="RelatedFieldListFilter.has_output">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.RelatedFieldListFilter.has_output">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">has_output</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">include_empty_choice</span><span class="p">:</span>
+            <span class="n">extra</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">extra</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_choices</span><span class="p">)</span> <span class="o">+</span> <span class="n">extra</span> <span class="o">&gt;</span> <span class="mi">1</span></div>
+
+
+<div class="viewcode-block" id="RelatedFieldListFilter.expected_parameters">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.RelatedFieldListFilter.expected_parameters">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">expected_parameters</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_isnull</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="RelatedFieldListFilter.field_admin_ordering">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.RelatedFieldListFilter.field_admin_ordering">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">field_admin_ordering</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the model admin&#39;s ordering for related field, if provided.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">related_admin</span> <span class="o">=</span> <span class="n">model_admin</span><span class="o">.</span><span class="n">admin_site</span><span class="o">.</span><span class="n">_registry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field</span><span class="o">.</span><span class="n">remote_field</span><span class="o">.</span><span class="n">model</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">related_admin</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">related_admin</span><span class="o">.</span><span class="n">get_ordering</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="RelatedFieldListFilter.field_choices">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.RelatedFieldListFilter.field_choices">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">field_choices</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">):</span>
+        <span class="n">ordering</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">field_admin_ordering</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">field</span><span class="o">.</span><span class="n">get_choices</span><span class="p">(</span><span class="n">include_blank</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">ordering</span><span class="o">=</span><span class="n">ordering</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="RelatedFieldListFilter.choices">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.RelatedFieldListFilter.choices">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">choices</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">changelist</span><span class="p">):</span>
+        <span class="k">yield</span> <span class="p">{</span>
+            <span class="s2">&quot;selected&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_val</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_val_isnull</span><span class="p">,</span>
+            <span class="s2">&quot;query_string&quot;</span><span class="p">:</span> <span class="n">changelist</span><span class="o">.</span><span class="n">get_query_string</span><span class="p">(</span>
+                <span class="n">remove</span><span class="o">=</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_isnull</span><span class="p">]</span>
+            <span class="p">),</span>
+            <span class="s2">&quot;display&quot;</span><span class="p">:</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;All&quot;</span><span class="p">),</span>
+        <span class="p">}</span>
+        <span class="k">for</span> <span class="n">pk_val</span><span class="p">,</span> <span class="n">val</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_choices</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="p">{</span>
+                <span class="s2">&quot;selected&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_val</span> <span class="o">==</span> <span class="nb">str</span><span class="p">(</span><span class="n">pk_val</span><span class="p">),</span>
+                <span class="s2">&quot;query_string&quot;</span><span class="p">:</span> <span class="n">changelist</span><span class="o">.</span><span class="n">get_query_string</span><span class="p">(</span>
+                    <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">:</span> <span class="n">pk_val</span><span class="p">},</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_isnull</span><span class="p">]</span>
+                <span class="p">),</span>
+                <span class="s2">&quot;display&quot;</span><span class="p">:</span> <span class="n">val</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">include_empty_choice</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="p">{</span>
+                <span class="s2">&quot;selected&quot;</span><span class="p">:</span> <span class="nb">bool</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_val_isnull</span><span class="p">),</span>
+                <span class="s2">&quot;query_string&quot;</span><span class="p">:</span> <span class="n">changelist</span><span class="o">.</span><span class="n">get_query_string</span><span class="p">(</span>
+                    <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_isnull</span><span class="p">:</span> <span class="s2">&quot;True&quot;</span><span class="p">},</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">]</span>
+                <span class="p">),</span>
+                <span class="s2">&quot;display&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">empty_value_display</span><span class="p">,</span>
+            <span class="p">}</span></div>
+</div>
+
+
+
+<span class="n">FieldListFilter</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="k">lambda</span> <span class="n">f</span><span class="p">:</span> <span class="n">f</span><span class="o">.</span><span class="n">remote_field</span><span class="p">,</span> <span class="n">RelatedFieldListFilter</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="BooleanFieldListFilter">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.BooleanFieldListFilter">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BooleanFieldListFilter</span><span class="p">(</span><span class="n">FieldListFilter</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">,</span> <span class="n">field_path</span><span class="p">):</span>
+<div class="viewcode-block" id="BooleanFieldListFilter.lookup_kwarg">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.BooleanFieldListFilter.lookup_kwarg">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">__exact&quot;</span> <span class="o">%</span> <span class="n">field_path</span></div>
+
+<div class="viewcode-block" id="BooleanFieldListFilter.lookup_kwarg2">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.BooleanFieldListFilter.lookup_kwarg2">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg2</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">__isnull&quot;</span> <span class="o">%</span> <span class="n">field_path</span></div>
+
+<div class="viewcode-block" id="BooleanFieldListFilter.lookup_val">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.BooleanFieldListFilter.lookup_val">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_val</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="BooleanFieldListFilter.lookup_val2">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.BooleanFieldListFilter.lookup_val2">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_val2</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg2</span><span class="p">)</span></div>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">,</span> <span class="n">field_path</span><span class="p">)</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">used_parameters</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">used_parameters</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">used_parameters</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">]</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;1&quot;</span><span class="p">,</span> <span class="s2">&quot;0&quot;</span><span class="p">)</span>
+        <span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">used_parameters</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">]</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span>
+                <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">used_parameters</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">])</span>
+            <span class="p">)</span>
+
+<div class="viewcode-block" id="BooleanFieldListFilter.expected_parameters">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.BooleanFieldListFilter.expected_parameters">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">expected_parameters</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg2</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="BooleanFieldListFilter.choices">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.BooleanFieldListFilter.choices">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">choices</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">changelist</span><span class="p">):</span>
+        <span class="n">field_choices</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">flatchoices</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">lookup</span><span class="p">,</span> <span class="n">title</span> <span class="ow">in</span> <span class="p">(</span>
+            <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;All&quot;</span><span class="p">)),</span>
+            <span class="p">(</span><span class="s2">&quot;1&quot;</span><span class="p">,</span> <span class="n">field_choices</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="kc">True</span><span class="p">,</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Yes&quot;</span><span class="p">))),</span>
+            <span class="p">(</span><span class="s2">&quot;0&quot;</span><span class="p">,</span> <span class="n">field_choices</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="kc">False</span><span class="p">,</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;No&quot;</span><span class="p">))),</span>
+        <span class="p">):</span>
+            <span class="k">yield</span> <span class="p">{</span>
+                <span class="s2">&quot;selected&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_val</span> <span class="o">==</span> <span class="n">lookup</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_val2</span><span class="p">,</span>
+                <span class="s2">&quot;query_string&quot;</span><span class="p">:</span> <span class="n">changelist</span><span class="o">.</span><span class="n">get_query_string</span><span class="p">(</span>
+                    <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">:</span> <span class="n">lookup</span><span class="p">},</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg2</span><span class="p">]</span>
+                <span class="p">),</span>
+                <span class="s2">&quot;display&quot;</span><span class="p">:</span> <span class="n">title</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">null</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="p">{</span>
+                <span class="s2">&quot;selected&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_val2</span> <span class="o">==</span> <span class="s2">&quot;True&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;query_string&quot;</span><span class="p">:</span> <span class="n">changelist</span><span class="o">.</span><span class="n">get_query_string</span><span class="p">(</span>
+                    <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg2</span><span class="p">:</span> <span class="s2">&quot;True&quot;</span><span class="p">},</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">]</span>
+                <span class="p">),</span>
+                <span class="s2">&quot;display&quot;</span><span class="p">:</span> <span class="n">field_choices</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Unknown&quot;</span><span class="p">)),</span>
+            <span class="p">}</span></div>
+</div>
+
+
+
+<span class="n">FieldListFilter</span><span class="o">.</span><span class="n">register</span><span class="p">(</span>
+    <span class="k">lambda</span> <span class="n">f</span><span class="p">:</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">BooleanField</span><span class="p">),</span> <span class="n">BooleanFieldListFilter</span>
+<span class="p">)</span>
+
+
+<div class="viewcode-block" id="ChoicesFieldListFilter">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.ChoicesFieldListFilter">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ChoicesFieldListFilter</span><span class="p">(</span><span class="n">FieldListFilter</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">,</span> <span class="n">field_path</span><span class="p">):</span>
+<div class="viewcode-block" id="ChoicesFieldListFilter.lookup_kwarg">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.ChoicesFieldListFilter.lookup_kwarg">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">__exact&quot;</span> <span class="o">%</span> <span class="n">field_path</span></div>
+
+<div class="viewcode-block" id="ChoicesFieldListFilter.lookup_kwarg_isnull">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.ChoicesFieldListFilter.lookup_kwarg_isnull">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_isnull</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">__isnull&quot;</span> <span class="o">%</span> <span class="n">field_path</span></div>
+
+<div class="viewcode-block" id="ChoicesFieldListFilter.lookup_val">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.ChoicesFieldListFilter.lookup_val">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_val</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="ChoicesFieldListFilter.lookup_val_isnull">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.ChoicesFieldListFilter.lookup_val_isnull">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_val_isnull</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_isnull</span><span class="p">)</span></div>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">,</span> <span class="n">field_path</span><span class="p">)</span>
+
+<div class="viewcode-block" id="ChoicesFieldListFilter.expected_parameters">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.ChoicesFieldListFilter.expected_parameters">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">expected_parameters</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_isnull</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="ChoicesFieldListFilter.choices">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.ChoicesFieldListFilter.choices">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">choices</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">changelist</span><span class="p">):</span>
+        <span class="k">yield</span> <span class="p">{</span>
+            <span class="s2">&quot;selected&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_val</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="s2">&quot;query_string&quot;</span><span class="p">:</span> <span class="n">changelist</span><span class="o">.</span><span class="n">get_query_string</span><span class="p">(</span>
+                <span class="n">remove</span><span class="o">=</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_isnull</span><span class="p">]</span>
+            <span class="p">),</span>
+            <span class="s2">&quot;display&quot;</span><span class="p">:</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;All&quot;</span><span class="p">),</span>
+        <span class="p">}</span>
+        <span class="n">none_title</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">lookup</span><span class="p">,</span> <span class="n">title</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">flatchoices</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">lookup</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">none_title</span> <span class="o">=</span> <span class="n">title</span>
+                <span class="k">continue</span>
+            <span class="k">yield</span> <span class="p">{</span>
+                <span class="s2">&quot;selected&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">lookup</span><span class="p">)</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_val</span><span class="p">,</span>
+                <span class="s2">&quot;query_string&quot;</span><span class="p">:</span> <span class="n">changelist</span><span class="o">.</span><span class="n">get_query_string</span><span class="p">(</span>
+                    <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">:</span> <span class="n">lookup</span><span class="p">},</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_isnull</span><span class="p">]</span>
+                <span class="p">),</span>
+                <span class="s2">&quot;display&quot;</span><span class="p">:</span> <span class="n">title</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="k">if</span> <span class="n">none_title</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="p">{</span>
+                <span class="s2">&quot;selected&quot;</span><span class="p">:</span> <span class="nb">bool</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_val_isnull</span><span class="p">),</span>
+                <span class="s2">&quot;query_string&quot;</span><span class="p">:</span> <span class="n">changelist</span><span class="o">.</span><span class="n">get_query_string</span><span class="p">(</span>
+                    <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_isnull</span><span class="p">:</span> <span class="s2">&quot;True&quot;</span><span class="p">},</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">]</span>
+                <span class="p">),</span>
+                <span class="s2">&quot;display&quot;</span><span class="p">:</span> <span class="n">none_title</span><span class="p">,</span>
+            <span class="p">}</span></div>
+</div>
+
+
+
+<span class="n">FieldListFilter</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="k">lambda</span> <span class="n">f</span><span class="p">:</span> <span class="nb">bool</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">choices</span><span class="p">),</span> <span class="n">ChoicesFieldListFilter</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="DateFieldListFilter">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.DateFieldListFilter">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DateFieldListFilter</span><span class="p">(</span><span class="n">FieldListFilter</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">,</span> <span class="n">field_path</span><span class="p">):</span>
+<div class="viewcode-block" id="DateFieldListFilter.field_generic">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.DateFieldListFilter.field_generic">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">field_generic</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">__&quot;</span> <span class="o">%</span> <span class="n">field_path</span></div>
+
+<div class="viewcode-block" id="DateFieldListFilter.date_params">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.DateFieldListFilter.date_params">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">date_params</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">params</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">field_generic</span><span class="p">)</span>
+        <span class="p">}</span></div>
+
+
+        <span class="n">now</span> <span class="o">=</span> <span class="n">timezone</span><span class="o">.</span><span class="n">now</span><span class="p">()</span>
+        <span class="c1"># When time zone support is enabled, convert &quot;now&quot; to the user&#39;s time</span>
+        <span class="c1"># zone so Django&#39;s definition of &quot;Today&quot; matches what the user expects.</span>
+        <span class="k">if</span> <span class="n">timezone</span><span class="o">.</span><span class="n">is_aware</span><span class="p">(</span><span class="n">now</span><span class="p">):</span>
+            <span class="n">now</span> <span class="o">=</span> <span class="n">timezone</span><span class="o">.</span><span class="n">localtime</span><span class="p">(</span><span class="n">now</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">DateTimeField</span><span class="p">):</span>
+            <span class="n">today</span> <span class="o">=</span> <span class="n">now</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">hour</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">minute</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">second</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">microsecond</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>  <span class="c1"># field is a models.DateField</span>
+            <span class="n">today</span> <span class="o">=</span> <span class="n">now</span><span class="o">.</span><span class="n">date</span><span class="p">()</span>
+        <span class="n">tomorrow</span> <span class="o">=</span> <span class="n">today</span> <span class="o">+</span> <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span><span class="p">(</span><span class="n">days</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">today</span><span class="o">.</span><span class="n">month</span> <span class="o">==</span> <span class="mi">12</span><span class="p">:</span>
+            <span class="n">next_month</span> <span class="o">=</span> <span class="n">today</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">year</span><span class="o">=</span><span class="n">today</span><span class="o">.</span><span class="n">year</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">month</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">day</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">next_month</span> <span class="o">=</span> <span class="n">today</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">month</span><span class="o">=</span><span class="n">today</span><span class="o">.</span><span class="n">month</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">day</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">next_year</span> <span class="o">=</span> <span class="n">today</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">year</span><span class="o">=</span><span class="n">today</span><span class="o">.</span><span class="n">year</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">month</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">day</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+<div class="viewcode-block" id="DateFieldListFilter.lookup_kwarg_since">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.DateFieldListFilter.lookup_kwarg_since">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_since</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">__gte&quot;</span> <span class="o">%</span> <span class="n">field_path</span></div>
+
+<div class="viewcode-block" id="DateFieldListFilter.lookup_kwarg_until">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.DateFieldListFilter.lookup_kwarg_until">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_until</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">__lt&quot;</span> <span class="o">%</span> <span class="n">field_path</span></div>
+
+<div class="viewcode-block" id="DateFieldListFilter.links">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.DateFieldListFilter.links">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">links</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="p">(</span><span class="n">_</span><span class="p">(</span><span class="s2">&quot;Any date&quot;</span><span class="p">),</span> <span class="p">{}),</span>
+            <span class="p">(</span>
+                <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Today&quot;</span><span class="p">),</span>
+                <span class="p">{</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_since</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">today</span><span class="p">),</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_until</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">tomorrow</span><span class="p">),</span>
+                <span class="p">},</span>
+            <span class="p">),</span>
+            <span class="p">(</span>
+                <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Past 7 days&quot;</span><span class="p">),</span>
+                <span class="p">{</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_since</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">today</span> <span class="o">-</span> <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span><span class="p">(</span><span class="n">days</span><span class="o">=</span><span class="mi">7</span><span class="p">)),</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_until</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">tomorrow</span><span class="p">),</span>
+                <span class="p">},</span>
+            <span class="p">),</span>
+            <span class="p">(</span>
+                <span class="n">_</span><span class="p">(</span><span class="s2">&quot;This month&quot;</span><span class="p">),</span>
+                <span class="p">{</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_since</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">today</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">day</span><span class="o">=</span><span class="mi">1</span><span class="p">)),</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_until</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">next_month</span><span class="p">),</span>
+                <span class="p">},</span>
+            <span class="p">),</span>
+            <span class="p">(</span>
+                <span class="n">_</span><span class="p">(</span><span class="s2">&quot;This year&quot;</span><span class="p">),</span>
+                <span class="p">{</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_since</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">today</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">month</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">day</span><span class="o">=</span><span class="mi">1</span><span class="p">)),</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_until</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">next_year</span><span class="p">),</span>
+                <span class="p">},</span>
+            <span class="p">),</span>
+        <span class="p">)</span></div>
+
+        <span class="k">if</span> <span class="n">field</span><span class="o">.</span><span class="n">null</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_isnull</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">__isnull&quot;</span> <span class="o">%</span> <span class="n">field_path</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">links</span> <span class="o">+=</span> <span class="p">(</span>
+                <span class="p">(</span><span class="n">_</span><span class="p">(</span><span class="s2">&quot;No date&quot;</span><span class="p">),</span> <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">field_generic</span> <span class="o">+</span> <span class="s2">&quot;isnull&quot;</span><span class="p">:</span> <span class="s2">&quot;True&quot;</span><span class="p">}),</span>
+                <span class="p">(</span><span class="n">_</span><span class="p">(</span><span class="s2">&quot;Has date&quot;</span><span class="p">),</span> <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">field_generic</span> <span class="o">+</span> <span class="s2">&quot;isnull&quot;</span><span class="p">:</span> <span class="s2">&quot;False&quot;</span><span class="p">}),</span>
+            <span class="p">)</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">,</span> <span class="n">field_path</span><span class="p">)</span>
+
+<div class="viewcode-block" id="DateFieldListFilter.expected_parameters">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.DateFieldListFilter.expected_parameters">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">expected_parameters</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">params</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_since</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_until</span><span class="p">]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">null</span><span class="p">:</span>
+            <span class="n">params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_isnull</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">params</span></div>
+
+
+<div class="viewcode-block" id="DateFieldListFilter.choices">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.DateFieldListFilter.choices">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">choices</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">changelist</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">title</span><span class="p">,</span> <span class="n">param_dict</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">links</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="p">{</span>
+                <span class="s2">&quot;selected&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">date_params</span> <span class="o">==</span> <span class="n">param_dict</span><span class="p">,</span>
+                <span class="s2">&quot;query_string&quot;</span><span class="p">:</span> <span class="n">changelist</span><span class="o">.</span><span class="n">get_query_string</span><span class="p">(</span>
+                    <span class="n">param_dict</span><span class="p">,</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">field_generic</span><span class="p">]</span>
+                <span class="p">),</span>
+                <span class="s2">&quot;display&quot;</span><span class="p">:</span> <span class="n">title</span><span class="p">,</span>
+            <span class="p">}</span></div>
+</div>
+
+
+
+<span class="n">FieldListFilter</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="k">lambda</span> <span class="n">f</span><span class="p">:</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">DateField</span><span class="p">),</span> <span class="n">DateFieldListFilter</span><span class="p">)</span>
+
+
+<span class="c1"># This should be registered last, because it&#39;s a last resort. For example,</span>
+<span class="c1"># if a field is eligible to use the BooleanFieldListFilter, that&#39;d be much</span>
+<span class="c1"># more appropriate, and the AllValuesFieldListFilter won&#39;t get used for it.</span>
+<div class="viewcode-block" id="AllValuesFieldListFilter">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.AllValuesFieldListFilter">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">AllValuesFieldListFilter</span><span class="p">(</span><span class="n">FieldListFilter</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">,</span> <span class="n">field_path</span><span class="p">):</span>
+<div class="viewcode-block" id="AllValuesFieldListFilter.lookup_kwarg">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.AllValuesFieldListFilter.lookup_kwarg">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span> <span class="o">=</span> <span class="n">field_path</span></div>
+
+<div class="viewcode-block" id="AllValuesFieldListFilter.lookup_kwarg_isnull">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.AllValuesFieldListFilter.lookup_kwarg_isnull">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_isnull</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">__isnull&quot;</span> <span class="o">%</span> <span class="n">field_path</span></div>
+
+<div class="viewcode-block" id="AllValuesFieldListFilter.lookup_val">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.AllValuesFieldListFilter.lookup_val">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_val</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="AllValuesFieldListFilter.lookup_val_isnull">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.AllValuesFieldListFilter.lookup_val_isnull">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_val_isnull</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_isnull</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="AllValuesFieldListFilter.empty_value_display">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.AllValuesFieldListFilter.empty_value_display">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">empty_value_display</span> <span class="o">=</span> <span class="n">model_admin</span><span class="o">.</span><span class="n">get_empty_value_display</span><span class="p">()</span></div>
+
+        <span class="n">parent_model</span><span class="p">,</span> <span class="n">reverse_path</span> <span class="o">=</span> <span class="n">reverse_field_path</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">field_path</span><span class="p">)</span>
+        <span class="c1"># Obey parent ModelAdmin queryset when deciding which options to show</span>
+        <span class="k">if</span> <span class="n">model</span> <span class="o">==</span> <span class="n">parent_model</span><span class="p">:</span>
+            <span class="n">queryset</span> <span class="o">=</span> <span class="n">model_admin</span><span class="o">.</span><span class="n">get_queryset</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">queryset</span> <span class="o">=</span> <span class="n">parent_model</span><span class="o">.</span><span class="n">_default_manager</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+<div class="viewcode-block" id="AllValuesFieldListFilter.lookup_choices">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.AllValuesFieldListFilter.lookup_choices">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_choices</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">queryset</span><span class="o">.</span><span class="n">distinct</span><span class="p">()</span><span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="n">field</span><span class="o">.</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">values_list</span><span class="p">(</span><span class="n">field</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">flat</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="p">)</span></div>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">,</span> <span class="n">field_path</span><span class="p">)</span>
+
+<div class="viewcode-block" id="AllValuesFieldListFilter.expected_parameters">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.AllValuesFieldListFilter.expected_parameters">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">expected_parameters</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_isnull</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="AllValuesFieldListFilter.choices">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.AllValuesFieldListFilter.choices">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">choices</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">changelist</span><span class="p">):</span>
+        <span class="k">yield</span> <span class="p">{</span>
+            <span class="s2">&quot;selected&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_val</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_val_isnull</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="s2">&quot;query_string&quot;</span><span class="p">:</span> <span class="n">changelist</span><span class="o">.</span><span class="n">get_query_string</span><span class="p">(</span>
+                <span class="n">remove</span><span class="o">=</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_isnull</span><span class="p">]</span>
+            <span class="p">),</span>
+            <span class="s2">&quot;display&quot;</span><span class="p">:</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;All&quot;</span><span class="p">),</span>
+        <span class="p">}</span>
+        <span class="n">include_none</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">for</span> <span class="n">val</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_choices</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">val</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">include_none</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="k">continue</span>
+            <span class="n">val</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
+            <span class="k">yield</span> <span class="p">{</span>
+                <span class="s2">&quot;selected&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_val</span> <span class="o">==</span> <span class="n">val</span><span class="p">,</span>
+                <span class="s2">&quot;query_string&quot;</span><span class="p">:</span> <span class="n">changelist</span><span class="o">.</span><span class="n">get_query_string</span><span class="p">(</span>
+                    <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">:</span> <span class="n">val</span><span class="p">},</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_isnull</span><span class="p">]</span>
+                <span class="p">),</span>
+                <span class="s2">&quot;display&quot;</span><span class="p">:</span> <span class="n">val</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="k">if</span> <span class="n">include_none</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="p">{</span>
+                <span class="s2">&quot;selected&quot;</span><span class="p">:</span> <span class="nb">bool</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_val_isnull</span><span class="p">),</span>
+                <span class="s2">&quot;query_string&quot;</span><span class="p">:</span> <span class="n">changelist</span><span class="o">.</span><span class="n">get_query_string</span><span class="p">(</span>
+                    <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg_isnull</span><span class="p">:</span> <span class="s2">&quot;True&quot;</span><span class="p">},</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">]</span>
+                <span class="p">),</span>
+                <span class="s2">&quot;display&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">empty_value_display</span><span class="p">,</span>
+            <span class="p">}</span></div>
+</div>
+
+
+
+<span class="n">FieldListFilter</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="k">lambda</span> <span class="n">f</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="n">AllValuesFieldListFilter</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="RelatedOnlyFieldListFilter">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.RelatedOnlyFieldListFilter">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">RelatedOnlyFieldListFilter</span><span class="p">(</span><span class="n">RelatedFieldListFilter</span><span class="p">):</span>
+<div class="viewcode-block" id="RelatedOnlyFieldListFilter.field_choices">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.RelatedOnlyFieldListFilter.field_choices">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">field_choices</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">):</span>
+        <span class="n">pk_qs</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">model_admin</span><span class="o">.</span><span class="n">get_queryset</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">distinct</span><span class="p">()</span>
+            <span class="o">.</span><span class="n">values_list</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">__pk&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">field_path</span><span class="p">,</span> <span class="n">flat</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">ordering</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">field_admin_ordering</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">field</span><span class="o">.</span><span class="n">get_choices</span><span class="p">(</span>
+            <span class="n">include_blank</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">limit_choices_to</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;pk__in&quot;</span><span class="p">:</span> <span class="n">pk_qs</span><span class="p">},</span> <span class="n">ordering</span><span class="o">=</span><span class="n">ordering</span>
+        <span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="EmptyFieldListFilter">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.EmptyFieldListFilter">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">EmptyFieldListFilter</span><span class="p">(</span><span class="n">FieldListFilter</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">,</span> <span class="n">field_path</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">field</span><span class="o">.</span><span class="n">empty_strings_allowed</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">field</span><span class="o">.</span><span class="n">null</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+                <span class="s2">&quot;The list filter &#39;</span><span class="si">%s</span><span class="s2">&#39; cannot be used with field &#39;</span><span class="si">%s</span><span class="s2">&#39; which &quot;</span>
+                <span class="s2">&quot;doesn&#39;t allow empty strings and nulls.&quot;</span>
+                <span class="o">%</span> <span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+                    <span class="n">field</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+<div class="viewcode-block" id="EmptyFieldListFilter.lookup_kwarg">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.EmptyFieldListFilter.lookup_kwarg">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">__isempty&quot;</span> <span class="o">%</span> <span class="n">field_path</span></div>
+
+<div class="viewcode-block" id="EmptyFieldListFilter.lookup_val">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.EmptyFieldListFilter.lookup_val">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_val</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">)</span></div>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">model_admin</span><span class="p">,</span> <span class="n">field_path</span><span class="p">)</span>
+
+<div class="viewcode-block" id="EmptyFieldListFilter.queryset">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.EmptyFieldListFilter.queryset">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">queryset</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">queryset</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">used_parameters</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">queryset</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_val</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;0&quot;</span><span class="p">,</span> <span class="s2">&quot;1&quot;</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">IncorrectLookupParameters</span>
+
+        <span class="n">lookup_conditions</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">empty_strings_allowed</span><span class="p">:</span>
+            <span class="n">lookup_conditions</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">field_path</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">))</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">null</span><span class="p">:</span>
+            <span class="n">lookup_conditions</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">field_path</span><span class="si">}</span><span class="s2">__isnull&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">))</span>
+        <span class="n">lookup_condition</span> <span class="o">=</span> <span class="n">models</span><span class="o">.</span><span class="n">Q</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">lookup_conditions</span><span class="p">,</span> <span class="n">connector</span><span class="o">=</span><span class="n">models</span><span class="o">.</span><span class="n">Q</span><span class="o">.</span><span class="n">OR</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_val</span> <span class="o">==</span> <span class="s2">&quot;1&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">queryset</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">lookup_condition</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">queryset</span><span class="o">.</span><span class="n">exclude</span><span class="p">(</span><span class="n">lookup_condition</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="EmptyFieldListFilter.expected_parameters">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.EmptyFieldListFilter.expected_parameters">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">expected_parameters</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="EmptyFieldListFilter.choices">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/admin/filters/index.html#django.contrib.admin.filters.EmptyFieldListFilter.choices">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">choices</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">changelist</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">lookup</span><span class="p">,</span> <span class="n">title</span> <span class="ow">in</span> <span class="p">(</span>
+            <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;All&quot;</span><span class="p">)),</span>
+            <span class="p">(</span><span class="s2">&quot;1&quot;</span><span class="p">,</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Empty&quot;</span><span class="p">)),</span>
+            <span class="p">(</span><span class="s2">&quot;0&quot;</span><span class="p">,</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Not empty&quot;</span><span class="p">)),</span>
+        <span class="p">):</span>
+            <span class="k">yield</span> <span class="p">{</span>
+                <span class="s2">&quot;selected&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_val</span> <span class="o">==</span> <span class="n">lookup</span><span class="p">,</span>
+                <span class="s2">&quot;query_string&quot;</span><span class="p">:</span> <span class="n">changelist</span><span class="o">.</span><span class="n">get_query_string</span><span class="p">(</span>
+                    <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_kwarg</span><span class="p">:</span> <span class="n">lookup</span><span class="p">}</span>
+                <span class="p">),</span>
+                <span class="s2">&quot;display&quot;</span><span class="p">:</span> <span class="n">title</span><span class="p">,</span>
+            <span class="p">}</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

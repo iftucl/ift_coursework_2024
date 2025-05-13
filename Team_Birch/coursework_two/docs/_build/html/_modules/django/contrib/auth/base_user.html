@@ -1,0 +1,349 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.contrib.auth.base_user &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../auth.html">django.contrib.auth</a></li>
+      <li class="breadcrumb-item active">django.contrib.auth.base_user</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.contrib.auth.base_user</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">This module allows importing AbstractBaseUser even when django.contrib.auth is</span>
+<span class="sd">not in INSTALLED_APPS.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">unicodedata</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.auth</span><span class="w"> </span><span class="kn">import</span> <span class="n">password_validation</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.auth.hashers</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">check_password</span><span class="p">,</span>
+    <span class="n">is_password_usable</span><span class="p">,</span>
+    <span class="n">make_password</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">models</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.crypto</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_random_string</span><span class="p">,</span> <span class="n">salted_hmac</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.deprecation</span><span class="w"> </span><span class="kn">import</span> <span class="n">RemovedInDjango51Warning</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.translation</span><span class="w"> </span><span class="kn">import</span> <span class="n">gettext_lazy</span> <span class="k">as</span> <span class="n">_</span>
+
+
+<div class="viewcode-block" id="BaseUserManager">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.BaseUserManager">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BaseUserManager</span><span class="p">(</span><span class="n">models</span><span class="o">.</span><span class="n">Manager</span><span class="p">):</span>
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="BaseUserManager.normalize_email">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.BaseUserManager.normalize_email">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">normalize_email</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">email</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Normalize the email address by lowercasing the domain part of it.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">email</span> <span class="o">=</span> <span class="n">email</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">email_name</span><span class="p">,</span> <span class="n">domain_part</span> <span class="o">=</span> <span class="n">email</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">rsplit</span><span class="p">(</span><span class="s2">&quot;@&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">email</span> <span class="o">=</span> <span class="n">email_name</span> <span class="o">+</span> <span class="s2">&quot;@&quot;</span> <span class="o">+</span> <span class="n">domain_part</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">email</span></div>
+
+
+<div class="viewcode-block" id="BaseUserManager.make_random_password">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.BaseUserManager.make_random_password">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">make_random_password</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">length</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+        <span class="n">allowed_chars</span><span class="o">=</span><span class="s2">&quot;abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789&quot;</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Generate a random password with the given length and given</span>
+<span class="sd">        allowed_chars. The default value of allowed_chars does not have &quot;I&quot; or</span>
+<span class="sd">        &quot;O&quot; or letters and digits that look similar -- just to avoid confusion.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+            <span class="s2">&quot;BaseUserManager.make_random_password() is deprecated.&quot;</span><span class="p">,</span>
+            <span class="n">category</span><span class="o">=</span><span class="n">RemovedInDjango51Warning</span><span class="p">,</span>
+            <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">get_random_string</span><span class="p">(</span><span class="n">length</span><span class="p">,</span> <span class="n">allowed_chars</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseUserManager.get_by_natural_key">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.BaseUserManager.get_by_natural_key">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_by_natural_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">username</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="o">**</span><span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">USERNAME_FIELD</span><span class="p">:</span> <span class="n">username</span><span class="p">})</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="AbstractBaseUser">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.AbstractBaseUser">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">AbstractBaseUser</span><span class="p">(</span><span class="n">models</span><span class="o">.</span><span class="n">Model</span><span class="p">):</span>
+<div class="viewcode-block" id="AbstractBaseUser.password">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.AbstractBaseUser.password">[docs]</a>
+    <span class="n">password</span> <span class="o">=</span> <span class="n">models</span><span class="o">.</span><span class="n">CharField</span><span class="p">(</span><span class="n">_</span><span class="p">(</span><span class="s2">&quot;password&quot;</span><span class="p">),</span> <span class="n">max_length</span><span class="o">=</span><span class="mi">128</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="AbstractBaseUser.last_login">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.AbstractBaseUser.last_login">[docs]</a>
+    <span class="n">last_login</span> <span class="o">=</span> <span class="n">models</span><span class="o">.</span><span class="n">DateTimeField</span><span class="p">(</span><span class="n">_</span><span class="p">(</span><span class="s2">&quot;last login&quot;</span><span class="p">),</span> <span class="n">blank</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">null</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="AbstractBaseUser.is_active">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.AbstractBaseUser.is_active">[docs]</a>
+    <span class="n">is_active</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="AbstractBaseUser.REQUIRED_FIELDS">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.AbstractBaseUser.REQUIRED_FIELDS">[docs]</a>
+    <span class="n">REQUIRED_FIELDS</span> <span class="o">=</span> <span class="p">[]</span></div>
+
+
+    <span class="c1"># Stores the raw password if set_password() is called so that it can</span>
+    <span class="c1"># be passed to password_changed() after the model is saved.</span>
+    <span class="n">_password</span> <span class="o">=</span> <span class="kc">None</span>
+
+<div class="viewcode-block" id="AbstractBaseUser.Meta">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.AbstractBaseUser.Meta">[docs]</a>
+    <span class="k">class</span><span class="w"> </span><span class="nc">Meta</span><span class="p">:</span>
+<div class="viewcode-block" id="AbstractBaseUser.Meta.abstract">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.AbstractBaseUser.Meta.abstract">[docs]</a>
+        <span class="n">abstract</span> <span class="o">=</span> <span class="kc">True</span></div>
+</div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_username</span><span class="p">()</span>
+
+<div class="viewcode-block" id="AbstractBaseUser.save">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.AbstractBaseUser.save">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_password</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">password_validation</span><span class="o">.</span><span class="n">password_changed</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_password</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_password</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="AbstractBaseUser.get_username">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.AbstractBaseUser.get_username">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_username</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the username for this User.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">USERNAME_FIELD</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="AbstractBaseUser.clean">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.AbstractBaseUser.clean">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clean</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">setattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">USERNAME_FIELD</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">normalize_username</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_username</span><span class="p">()))</span></div>
+
+
+<div class="viewcode-block" id="AbstractBaseUser.natural_key">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.AbstractBaseUser.natural_key">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">natural_key</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_username</span><span class="p">(),)</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="AbstractBaseUser.is_anonymous">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.AbstractBaseUser.is_anonymous">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_anonymous</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Always return False. This is a way of comparing User objects to</span>
+<span class="sd">        anonymous users.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="AbstractBaseUser.is_authenticated">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.AbstractBaseUser.is_authenticated">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_authenticated</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Always return True. This is a way to tell if the user has been</span>
+<span class="sd">        authenticated in templates.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="AbstractBaseUser.set_password">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.AbstractBaseUser.set_password">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_password</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">raw_password</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">password</span> <span class="o">=</span> <span class="n">make_password</span><span class="p">(</span><span class="n">raw_password</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_password</span> <span class="o">=</span> <span class="n">raw_password</span></div>
+
+
+<div class="viewcode-block" id="AbstractBaseUser.check_password">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.AbstractBaseUser.check_password">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_password</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">raw_password</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a boolean of whether the raw_password was correct. Handles</span>
+<span class="sd">        hashing formats behind the scenes.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">setter</span><span class="p">(</span><span class="n">raw_password</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">set_password</span><span class="p">(</span><span class="n">raw_password</span><span class="p">)</span>
+            <span class="c1"># Password hash upgrades shouldn&#39;t be considered password changes.</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_password</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">update_fields</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;password&quot;</span><span class="p">])</span>
+
+        <span class="k">return</span> <span class="n">check_password</span><span class="p">(</span><span class="n">raw_password</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">password</span><span class="p">,</span> <span class="n">setter</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="AbstractBaseUser.set_unusable_password">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.AbstractBaseUser.set_unusable_password">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_unusable_password</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Set a value that will never be a valid hash</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">password</span> <span class="o">=</span> <span class="n">make_password</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="AbstractBaseUser.has_usable_password">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.AbstractBaseUser.has_usable_password">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">has_usable_password</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return False if set_unusable_password() has been called for this user.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">is_password_usable</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">password</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="AbstractBaseUser.get_session_auth_hash">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.AbstractBaseUser.get_session_auth_hash">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_session_auth_hash</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return an HMAC of the password field.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_session_auth_hash</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="AbstractBaseUser.get_session_auth_fallback_hash">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.AbstractBaseUser.get_session_auth_fallback_hash">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_session_auth_fallback_hash</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">fallback_secret</span> <span class="ow">in</span> <span class="n">settings</span><span class="o">.</span><span class="n">SECRET_KEY_FALLBACKS</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_session_auth_hash</span><span class="p">(</span><span class="n">secret</span><span class="o">=</span><span class="n">fallback_secret</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_session_auth_hash</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">secret</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="n">key_salt</span> <span class="o">=</span> <span class="s2">&quot;django.contrib.auth.models.AbstractBaseUser.get_session_auth_hash&quot;</span>
+        <span class="k">return</span> <span class="n">salted_hmac</span><span class="p">(</span>
+            <span class="n">key_salt</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">password</span><span class="p">,</span>
+            <span class="n">secret</span><span class="o">=</span><span class="n">secret</span><span class="p">,</span>
+            <span class="n">algorithm</span><span class="o">=</span><span class="s2">&quot;sha256&quot;</span><span class="p">,</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span>
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="AbstractBaseUser.get_email_field_name">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.AbstractBaseUser.get_email_field_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_email_field_name</span><span class="p">(</span><span class="bp">cls</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">cls</span><span class="o">.</span><span class="n">EMAIL_FIELD</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;email&quot;</span></div>
+
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="AbstractBaseUser.normalize_username">
+<a class="viewcode-back" href="../../../../autoapi/django/contrib/auth/base_user/index.html#django.contrib.auth.base_user.AbstractBaseUser.normalize_username">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">normalize_username</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">username</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="n">unicodedata</span><span class="o">.</span><span class="n">normalize</span><span class="p">(</span><span class="s2">&quot;NFKC&quot;</span><span class="p">,</span> <span class="n">username</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">username</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span>
+            <span class="k">else</span> <span class="n">username</span>
+        <span class="p">)</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

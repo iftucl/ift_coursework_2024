@@ -1,0 +1,215 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.core.serializers.pyyaml &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../serializers.html">django.core.serializers</a></li>
+      <li class="breadcrumb-item active">django.core.serializers.pyyaml</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.core.serializers.pyyaml</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">YAML serializer.</span>
+
+<span class="sd">Requires PyYaml (https://pyyaml.org/), but that&#39;s checked for in __init__.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">collections</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">decimal</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">io</span><span class="w"> </span><span class="kn">import</span> <span class="n">StringIO</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">yaml</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.serializers.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">DeserializationError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.serializers.python</span><span class="w"> </span><span class="kn">import</span> <span class="n">Deserializer</span> <span class="k">as</span> <span class="n">PythonDeserializer</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.serializers.python</span><span class="w"> </span><span class="kn">import</span> <span class="n">Serializer</span> <span class="k">as</span> <span class="n">PythonSerializer</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">models</span>
+
+<span class="c1"># Use the C (faster) implementation if possible</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">yaml</span><span class="w"> </span><span class="kn">import</span> <span class="n">CSafeDumper</span> <span class="k">as</span> <span class="n">SafeDumper</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">yaml</span><span class="w"> </span><span class="kn">import</span> <span class="n">CSafeLoader</span> <span class="k">as</span> <span class="n">SafeLoader</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">yaml</span><span class="w"> </span><span class="kn">import</span> <span class="n">SafeDumper</span><span class="p">,</span> <span class="n">SafeLoader</span>
+
+
+<div class="viewcode-block" id="DjangoSafeDumper">
+<a class="viewcode-back" href="../../../../autoapi/django/core/serializers/pyyaml/index.html#django.core.serializers.pyyaml.DjangoSafeDumper">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DjangoSafeDumper</span><span class="p">(</span><span class="n">SafeDumper</span><span class="p">):</span>
+<div class="viewcode-block" id="DjangoSafeDumper.represent_decimal">
+<a class="viewcode-back" href="../../../../autoapi/django/core/serializers/pyyaml/index.html#django.core.serializers.pyyaml.DjangoSafeDumper.represent_decimal">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">represent_decimal</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">represent_scalar</span><span class="p">(</span><span class="s2">&quot;tag:yaml.org,2002:str&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">data</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="DjangoSafeDumper.represent_ordered_dict">
+<a class="viewcode-back" href="../../../../autoapi/django/core/serializers/pyyaml/index.html#django.core.serializers.pyyaml.DjangoSafeDumper.represent_ordered_dict">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">represent_ordered_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">represent_mapping</span><span class="p">(</span><span class="s2">&quot;tag:yaml.org,2002:map&quot;</span><span class="p">,</span> <span class="n">data</span><span class="o">.</span><span class="n">items</span><span class="p">())</span></div>
+</div>
+
+
+
+<span class="n">DjangoSafeDumper</span><span class="o">.</span><span class="n">add_representer</span><span class="p">(</span><span class="n">decimal</span><span class="o">.</span><span class="n">Decimal</span><span class="p">,</span> <span class="n">DjangoSafeDumper</span><span class="o">.</span><span class="n">represent_decimal</span><span class="p">)</span>
+<span class="n">DjangoSafeDumper</span><span class="o">.</span><span class="n">add_representer</span><span class="p">(</span>
+    <span class="n">collections</span><span class="o">.</span><span class="n">OrderedDict</span><span class="p">,</span> <span class="n">DjangoSafeDumper</span><span class="o">.</span><span class="n">represent_ordered_dict</span>
+<span class="p">)</span>
+<span class="c1"># Workaround to represent dictionaries in insertion order.</span>
+<span class="c1"># See https://github.com/yaml/pyyaml/pull/143.</span>
+<span class="n">DjangoSafeDumper</span><span class="o">.</span><span class="n">add_representer</span><span class="p">(</span><span class="nb">dict</span><span class="p">,</span> <span class="n">DjangoSafeDumper</span><span class="o">.</span><span class="n">represent_ordered_dict</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="Serializer">
+<a class="viewcode-back" href="../../../../autoapi/django/core/serializers/pyyaml/index.html#django.core.serializers.pyyaml.Serializer">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Serializer</span><span class="p">(</span><span class="n">PythonSerializer</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert a queryset to YAML.&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="Serializer.internal_use_only">
+<a class="viewcode-back" href="../../../../autoapi/django/core/serializers/pyyaml/index.html#django.core.serializers.pyyaml.Serializer.internal_use_only">[docs]</a>
+    <span class="n">internal_use_only</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+
+<div class="viewcode-block" id="Serializer.handle_field">
+<a class="viewcode-back" href="../../../../autoapi/django/core/serializers/pyyaml/index.html#django.core.serializers.pyyaml.Serializer.handle_field">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle_field</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">field</span><span class="p">):</span>
+        <span class="c1"># A nasty special case: base YAML doesn&#39;t support serialization of time</span>
+        <span class="c1"># types (as opposed to dates or datetimes, which it does support). Since</span>
+        <span class="c1"># we want to use the &quot;safe&quot; serializer for better interoperability, we</span>
+        <span class="c1"># need to do something with those pesky times. Converting &#39;em to strings</span>
+        <span class="c1"># isn&#39;t perfect, but it&#39;s better than a &quot;!!python/time&quot; type which would</span>
+        <span class="c1"># halt deserialization under any other language.</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">TimeField</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">field</span><span class="o">.</span><span class="n">name</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_current</span><span class="p">[</span><span class="n">field</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">field</span><span class="o">.</span><span class="n">name</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">handle_field</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">field</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Serializer.end_serialization">
+<a class="viewcode-back" href="../../../../autoapi/django/core/serializers/pyyaml/index.html#django.core.serializers.pyyaml.Serializer.end_serialization">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">end_serialization</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">options</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">&quot;allow_unicode&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
+        <span class="n">yaml</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">objects</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">stream</span><span class="p">,</span> <span class="n">Dumper</span><span class="o">=</span><span class="n">DjangoSafeDumper</span><span class="p">,</span> <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">options</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Serializer.getvalue">
+<a class="viewcode-back" href="../../../../autoapi/django/core/serializers/pyyaml/index.html#django.core.serializers.pyyaml.Serializer.getvalue">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">getvalue</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Grandparent super</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">(</span><span class="n">PythonSerializer</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">getvalue</span><span class="p">()</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="Deserializer">
+<a class="viewcode-back" href="../../../../autoapi/django/core/serializers/pyyaml/index.html#django.core.serializers.pyyaml.Deserializer">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">Deserializer</span><span class="p">(</span><span class="n">stream_or_string</span><span class="p">,</span> <span class="o">**</span><span class="n">options</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Deserialize a stream or string of YAML data.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">stream_or_string</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
+        <span class="n">stream_or_string</span> <span class="o">=</span> <span class="n">stream_or_string</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">stream_or_string</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="n">stream</span> <span class="o">=</span> <span class="n">StringIO</span><span class="p">(</span><span class="n">stream_or_string</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">stream</span> <span class="o">=</span> <span class="n">stream_or_string</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">yield from</span> <span class="n">PythonDeserializer</span><span class="p">(</span><span class="n">yaml</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span> <span class="n">Loader</span><span class="o">=</span><span class="n">SafeLoader</span><span class="p">),</span> <span class="o">**</span><span class="n">options</span><span class="p">)</span>
+    <span class="k">except</span> <span class="p">(</span><span class="ne">GeneratorExit</span><span class="p">,</span> <span class="n">DeserializationError</span><span class="p">):</span>
+        <span class="k">raise</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">DeserializationError</span><span class="p">()</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

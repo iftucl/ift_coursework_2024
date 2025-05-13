@@ -1,0 +1,582 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.db.backends.sqlite3.introspection &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../../../db.html">django.db</a></li>
+      <li class="breadcrumb-item active">django.db.backends.sqlite3.introspection</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.db.backends.sqlite3.introspection</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">namedtuple</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">sqlparse</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.base.introspection</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseDatabaseIntrospection</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.base.introspection</span><span class="w"> </span><span class="kn">import</span> <span class="n">FieldInfo</span> <span class="k">as</span> <span class="n">BaseFieldInfo</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.base.introspection</span><span class="w"> </span><span class="kn">import</span> <span class="n">TableInfo</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">Index</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.regex_helper</span><span class="w"> </span><span class="kn">import</span> <span class="n">_lazy_re_compile</span>
+
+<div class="viewcode-block" id="FieldInfo">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/introspection/index.html#django.db.backends.sqlite3.introspection.FieldInfo">[docs]</a>
+<span class="n">FieldInfo</span> <span class="o">=</span> <span class="n">namedtuple</span><span class="p">(</span>
+    <span class="s2">&quot;FieldInfo&quot;</span><span class="p">,</span> <span class="n">BaseFieldInfo</span><span class="o">.</span><span class="n">_fields</span> <span class="o">+</span> <span class="p">(</span><span class="s2">&quot;pk&quot;</span><span class="p">,</span> <span class="s2">&quot;has_json_constraint&quot;</span><span class="p">)</span>
+<span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="field_size_re">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/introspection/index.html#django.db.backends.sqlite3.introspection.field_size_re">[docs]</a>
+<span class="n">field_size_re</span> <span class="o">=</span> <span class="n">_lazy_re_compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;^\s*(?:var)?char\s*\(\s*(\d+)\s*\)\s*$&quot;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="get_field_size">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/introspection/index.html#django.db.backends.sqlite3.introspection.get_field_size">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_field_size</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extract the size number from a &quot;varchar(11)&quot; type name&quot;&quot;&quot;</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">field_size_re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">m</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="k">if</span> <span class="n">m</span> <span class="k">else</span> <span class="kc">None</span></div>
+
+
+
+<span class="c1"># This light wrapper &quot;fakes&quot; a dictionary interface, because some SQLite data</span>
+<span class="c1"># types include variables in them -- e.g. &quot;varchar(30)&quot; -- and can&#39;t be matched</span>
+<span class="c1"># as a simple dictionary lookup.</span>
+<div class="viewcode-block" id="FlexibleFieldLookupDict">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/introspection/index.html#django.db.backends.sqlite3.introspection.FlexibleFieldLookupDict">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">FlexibleFieldLookupDict</span><span class="p">:</span>
+    <span class="c1"># Maps SQL types to Django Field types. Some of the SQL types have multiple</span>
+    <span class="c1"># entries here because SQLite allows for anything and doesn&#39;t normalize the</span>
+    <span class="c1"># field type; it uses whatever was given.</span>
+<div class="viewcode-block" id="FlexibleFieldLookupDict.base_data_types_reverse">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/introspection/index.html#django.db.backends.sqlite3.introspection.FlexibleFieldLookupDict.base_data_types_reverse">[docs]</a>
+    <span class="n">base_data_types_reverse</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;bool&quot;</span><span class="p">:</span> <span class="s2">&quot;BooleanField&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;boolean&quot;</span><span class="p">:</span> <span class="s2">&quot;BooleanField&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;smallint&quot;</span><span class="p">:</span> <span class="s2">&quot;SmallIntegerField&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;smallint unsigned&quot;</span><span class="p">:</span> <span class="s2">&quot;PositiveSmallIntegerField&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;smallinteger&quot;</span><span class="p">:</span> <span class="s2">&quot;SmallIntegerField&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;int&quot;</span><span class="p">:</span> <span class="s2">&quot;IntegerField&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;integer&quot;</span><span class="p">:</span> <span class="s2">&quot;IntegerField&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;bigint&quot;</span><span class="p">:</span> <span class="s2">&quot;BigIntegerField&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;integer unsigned&quot;</span><span class="p">:</span> <span class="s2">&quot;PositiveIntegerField&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;bigint unsigned&quot;</span><span class="p">:</span> <span class="s2">&quot;PositiveBigIntegerField&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;decimal&quot;</span><span class="p">:</span> <span class="s2">&quot;DecimalField&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;real&quot;</span><span class="p">:</span> <span class="s2">&quot;FloatField&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="s2">&quot;TextField&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;char&quot;</span><span class="p">:</span> <span class="s2">&quot;CharField&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;varchar&quot;</span><span class="p">:</span> <span class="s2">&quot;CharField&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;blob&quot;</span><span class="p">:</span> <span class="s2">&quot;BinaryField&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;date&quot;</span><span class="p">:</span> <span class="s2">&quot;DateField&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;datetime&quot;</span><span class="p">:</span> <span class="s2">&quot;DateTimeField&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="s2">&quot;TimeField&quot;</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;(&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_data_types_reverse</span><span class="p">[</span><span class="n">key</span><span class="p">]</span></div>
+
+
+
+<div class="viewcode-block" id="DatabaseIntrospection">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/introspection/index.html#django.db.backends.sqlite3.introspection.DatabaseIntrospection">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DatabaseIntrospection</span><span class="p">(</span><span class="n">BaseDatabaseIntrospection</span><span class="p">):</span>
+<div class="viewcode-block" id="DatabaseIntrospection.data_types_reverse">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/introspection/index.html#django.db.backends.sqlite3.introspection.DatabaseIntrospection.data_types_reverse">[docs]</a>
+    <span class="n">data_types_reverse</span> <span class="o">=</span> <span class="n">FlexibleFieldLookupDict</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="DatabaseIntrospection.get_field_type">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/introspection/index.html#django.db.backends.sqlite3.introspection.DatabaseIntrospection.get_field_type">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_field_type</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data_type</span><span class="p">,</span> <span class="n">description</span><span class="p">):</span>
+        <span class="n">field_type</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">get_field_type</span><span class="p">(</span><span class="n">data_type</span><span class="p">,</span> <span class="n">description</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">description</span><span class="o">.</span><span class="n">pk</span> <span class="ow">and</span> <span class="n">field_type</span> <span class="ow">in</span> <span class="p">{</span>
+            <span class="s2">&quot;BigIntegerField&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;IntegerField&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;SmallIntegerField&quot;</span><span class="p">,</span>
+        <span class="p">}:</span>
+            <span class="c1"># No support for BigAutoField or SmallAutoField as SQLite treats</span>
+            <span class="c1"># all integer primary keys as signed 64-bit integers.</span>
+            <span class="k">return</span> <span class="s2">&quot;AutoField&quot;</span>
+        <span class="k">if</span> <span class="n">description</span><span class="o">.</span><span class="n">has_json_constraint</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;JSONField&quot;</span>
+        <span class="k">return</span> <span class="n">field_type</span></div>
+
+
+<div class="viewcode-block" id="DatabaseIntrospection.get_table_list">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/introspection/index.html#django.db.backends.sqlite3.introspection.DatabaseIntrospection.get_table_list">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_table_list</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a list of table and view names in the current database.&quot;&quot;&quot;</span>
+        <span class="c1"># Skip the sqlite_sequence system table used for autoincrement key</span>
+        <span class="c1"># generation.</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            SELECT name, type FROM sqlite_master</span>
+<span class="sd">            WHERE type in (&#39;table&#39;, &#39;view&#39;) AND NOT name=&#39;sqlite_sequence&#39;</span>
+<span class="sd">            ORDER BY name&quot;&quot;&quot;</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">TableInfo</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">row</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()]</span></div>
+
+
+<div class="viewcode-block" id="DatabaseIntrospection.get_table_description">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/introspection/index.html#django.db.backends.sqlite3.introspection.DatabaseIntrospection.get_table_description">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_table_description</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a description of the table with the DB-API cursor.description</span>
+<span class="sd">        interface.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;PRAGMA table_info(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">table_name</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">table_info</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">table_info</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">DatabaseError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Table </span><span class="si">{</span><span class="n">table_name</span><span class="si">}</span><span class="s2"> does not exist (empty pragma).&quot;</span><span class="p">)</span>
+        <span class="n">collations</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_column_collations</span><span class="p">(</span><span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">)</span>
+        <span class="n">json_columns</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">can_introspect_json_field</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">table_info</span><span class="p">:</span>
+                <span class="n">column</span> <span class="o">=</span> <span class="n">line</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+                <span class="n">json_constraint_sql</span> <span class="o">=</span> <span class="s1">&#39;</span><span class="si">%%</span><span class="s1">json_valid(&quot;</span><span class="si">%s</span><span class="s1">&quot;)</span><span class="si">%%</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">column</span>
+                <span class="n">has_json_constraint</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">                    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">                    SELECT sql</span>
+<span class="sd">                    FROM sqlite_master</span>
+<span class="sd">                    WHERE</span>
+<span class="sd">                        type = &#39;table&#39; AND</span>
+<span class="sd">                        name = %s AND</span>
+<span class="sd">                        sql LIKE %s</span>
+<span class="sd">                &quot;&quot;&quot;</span><span class="p">,</span>
+                    <span class="p">[</span><span class="n">table_name</span><span class="p">,</span> <span class="n">json_constraint_sql</span><span class="p">],</span>
+                <span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">has_json_constraint</span><span class="p">:</span>
+                    <span class="n">json_columns</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">column</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span>
+            <span class="n">FieldInfo</span><span class="p">(</span>
+                <span class="n">name</span><span class="p">,</span>
+                <span class="n">data_type</span><span class="p">,</span>
+                <span class="n">get_field_size</span><span class="p">(</span><span class="n">data_type</span><span class="p">),</span>
+                <span class="kc">None</span><span class="p">,</span>
+                <span class="kc">None</span><span class="p">,</span>
+                <span class="kc">None</span><span class="p">,</span>
+                <span class="ow">not</span> <span class="n">notnull</span><span class="p">,</span>
+                <span class="n">default</span><span class="p">,</span>
+                <span class="n">collations</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="p">),</span>
+                <span class="n">pk</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span>
+                <span class="n">name</span> <span class="ow">in</span> <span class="n">json_columns</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">cid</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">data_type</span><span class="p">,</span> <span class="n">notnull</span><span class="p">,</span> <span class="n">default</span><span class="p">,</span> <span class="n">pk</span> <span class="ow">in</span> <span class="n">table_info</span>
+        <span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="DatabaseIntrospection.get_sequences">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/introspection/index.html#django.db.backends.sqlite3.introspection.DatabaseIntrospection.get_sequences">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_sequences</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">,</span> <span class="n">table_fields</span><span class="o">=</span><span class="p">()):</span>
+        <span class="n">pk_col</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_primary_key_column</span><span class="p">(</span><span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[{</span><span class="s2">&quot;table&quot;</span><span class="p">:</span> <span class="n">table_name</span><span class="p">,</span> <span class="s2">&quot;column&quot;</span><span class="p">:</span> <span class="n">pk_col</span><span class="p">}]</span></div>
+
+
+<div class="viewcode-block" id="DatabaseIntrospection.get_relations">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/introspection/index.html#django.db.backends.sqlite3.introspection.DatabaseIntrospection.get_relations">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_relations</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a dictionary of {column_name: (ref_column_name, ref_table_name)}</span>
+<span class="sd">        representing all foreign keys in the given table.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;PRAGMA foreign_key_list(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">table_name</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="n">column_name</span><span class="p">:</span> <span class="p">(</span><span class="n">ref_column_name</span><span class="p">,</span> <span class="n">ref_table_name</span><span class="p">)</span>
+            <span class="k">for</span> <span class="p">(</span>
+                <span class="n">_</span><span class="p">,</span>
+                <span class="n">_</span><span class="p">,</span>
+                <span class="n">ref_table_name</span><span class="p">,</span>
+                <span class="n">column_name</span><span class="p">,</span>
+                <span class="n">ref_column_name</span><span class="p">,</span>
+                <span class="o">*</span><span class="n">_</span><span class="p">,</span>
+            <span class="p">)</span> <span class="ow">in</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+        <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="DatabaseIntrospection.get_primary_key_columns">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/introspection/index.html#django.db.backends.sqlite3.introspection.DatabaseIntrospection.get_primary_key_columns">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_primary_key_columns</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">):</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;PRAGMA table_info(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">table_name</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">name</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="o">*</span><span class="n">_</span><span class="p">,</span> <span class="n">pk</span> <span class="ow">in</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span> <span class="k">if</span> <span class="n">pk</span><span class="p">]</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_parse_column_or_constraint_definition</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">columns</span><span class="p">):</span>
+        <span class="n">token</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">is_constraint_definition</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">field_name</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">constraint_name</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">unique</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">unique_columns</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">check</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">check_columns</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">braces_deep</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">tokens</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">token</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">sqlparse</span><span class="o">.</span><span class="n">tokens</span><span class="o">.</span><span class="n">Punctuation</span><span class="p">,</span> <span class="s2">&quot;(&quot;</span><span class="p">):</span>
+                <span class="n">braces_deep</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">elif</span> <span class="n">token</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">sqlparse</span><span class="o">.</span><span class="n">tokens</span><span class="o">.</span><span class="n">Punctuation</span><span class="p">,</span> <span class="s2">&quot;)&quot;</span><span class="p">):</span>
+                <span class="n">braces_deep</span> <span class="o">-=</span> <span class="mi">1</span>
+                <span class="k">if</span> <span class="n">braces_deep</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="c1"># End of columns and constraints for table definition.</span>
+                    <span class="k">break</span>
+            <span class="k">elif</span> <span class="n">braces_deep</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">token</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">sqlparse</span><span class="o">.</span><span class="n">tokens</span><span class="o">.</span><span class="n">Punctuation</span><span class="p">,</span> <span class="s2">&quot;,&quot;</span><span class="p">):</span>
+                <span class="c1"># End of current column or constraint definition.</span>
+                <span class="k">break</span>
+            <span class="c1"># Detect column or constraint definition by first token.</span>
+            <span class="k">if</span> <span class="n">is_constraint_definition</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">is_constraint_definition</span> <span class="o">=</span> <span class="n">token</span><span class="o">.</span><span class="n">match</span><span class="p">(</span>
+                    <span class="n">sqlparse</span><span class="o">.</span><span class="n">tokens</span><span class="o">.</span><span class="n">Keyword</span><span class="p">,</span> <span class="s2">&quot;CONSTRAINT&quot;</span>
+                <span class="p">)</span>
+                <span class="k">if</span> <span class="n">is_constraint_definition</span><span class="p">:</span>
+                    <span class="k">continue</span>
+            <span class="k">if</span> <span class="n">is_constraint_definition</span><span class="p">:</span>
+                <span class="c1"># Detect constraint name by second token.</span>
+                <span class="k">if</span> <span class="n">constraint_name</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">token</span><span class="o">.</span><span class="n">ttype</span> <span class="ow">in</span> <span class="p">(</span><span class="n">sqlparse</span><span class="o">.</span><span class="n">tokens</span><span class="o">.</span><span class="n">Name</span><span class="p">,</span> <span class="n">sqlparse</span><span class="o">.</span><span class="n">tokens</span><span class="o">.</span><span class="n">Keyword</span><span class="p">):</span>
+                        <span class="n">constraint_name</span> <span class="o">=</span> <span class="n">token</span><span class="o">.</span><span class="n">value</span>
+                    <span class="k">elif</span> <span class="n">token</span><span class="o">.</span><span class="n">ttype</span> <span class="o">==</span> <span class="n">sqlparse</span><span class="o">.</span><span class="n">tokens</span><span class="o">.</span><span class="n">Literal</span><span class="o">.</span><span class="n">String</span><span class="o">.</span><span class="n">Symbol</span><span class="p">:</span>
+                        <span class="n">constraint_name</span> <span class="o">=</span> <span class="n">token</span><span class="o">.</span><span class="n">value</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+                <span class="c1"># Start constraint columns parsing after UNIQUE keyword.</span>
+                <span class="k">if</span> <span class="n">token</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">sqlparse</span><span class="o">.</span><span class="n">tokens</span><span class="o">.</span><span class="n">Keyword</span><span class="p">,</span> <span class="s2">&quot;UNIQUE&quot;</span><span class="p">):</span>
+                    <span class="n">unique</span> <span class="o">=</span> <span class="kc">True</span>
+                    <span class="n">unique_braces_deep</span> <span class="o">=</span> <span class="n">braces_deep</span>
+                <span class="k">elif</span> <span class="n">unique</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">unique_braces_deep</span> <span class="o">==</span> <span class="n">braces_deep</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="n">unique_columns</span><span class="p">:</span>
+                            <span class="c1"># Stop constraint parsing.</span>
+                            <span class="n">unique</span> <span class="o">=</span> <span class="kc">False</span>
+                        <span class="k">continue</span>
+                    <span class="k">if</span> <span class="n">token</span><span class="o">.</span><span class="n">ttype</span> <span class="ow">in</span> <span class="p">(</span><span class="n">sqlparse</span><span class="o">.</span><span class="n">tokens</span><span class="o">.</span><span class="n">Name</span><span class="p">,</span> <span class="n">sqlparse</span><span class="o">.</span><span class="n">tokens</span><span class="o">.</span><span class="n">Keyword</span><span class="p">):</span>
+                        <span class="n">unique_columns</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">token</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>
+                    <span class="k">elif</span> <span class="n">token</span><span class="o">.</span><span class="n">ttype</span> <span class="o">==</span> <span class="n">sqlparse</span><span class="o">.</span><span class="n">tokens</span><span class="o">.</span><span class="n">Literal</span><span class="o">.</span><span class="n">String</span><span class="o">.</span><span class="n">Symbol</span><span class="p">:</span>
+                        <span class="n">unique_columns</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">token</span><span class="o">.</span><span class="n">value</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Detect field name by first token.</span>
+                <span class="k">if</span> <span class="n">field_name</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">token</span><span class="o">.</span><span class="n">ttype</span> <span class="ow">in</span> <span class="p">(</span><span class="n">sqlparse</span><span class="o">.</span><span class="n">tokens</span><span class="o">.</span><span class="n">Name</span><span class="p">,</span> <span class="n">sqlparse</span><span class="o">.</span><span class="n">tokens</span><span class="o">.</span><span class="n">Keyword</span><span class="p">):</span>
+                        <span class="n">field_name</span> <span class="o">=</span> <span class="n">token</span><span class="o">.</span><span class="n">value</span>
+                    <span class="k">elif</span> <span class="n">token</span><span class="o">.</span><span class="n">ttype</span> <span class="o">==</span> <span class="n">sqlparse</span><span class="o">.</span><span class="n">tokens</span><span class="o">.</span><span class="n">Literal</span><span class="o">.</span><span class="n">String</span><span class="o">.</span><span class="n">Symbol</span><span class="p">:</span>
+                        <span class="n">field_name</span> <span class="o">=</span> <span class="n">token</span><span class="o">.</span><span class="n">value</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+                <span class="k">if</span> <span class="n">token</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">sqlparse</span><span class="o">.</span><span class="n">tokens</span><span class="o">.</span><span class="n">Keyword</span><span class="p">,</span> <span class="s2">&quot;UNIQUE&quot;</span><span class="p">):</span>
+                    <span class="n">unique_columns</span> <span class="o">=</span> <span class="p">[</span><span class="n">field_name</span><span class="p">]</span>
+            <span class="c1"># Start constraint columns parsing after CHECK keyword.</span>
+            <span class="k">if</span> <span class="n">token</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">sqlparse</span><span class="o">.</span><span class="n">tokens</span><span class="o">.</span><span class="n">Keyword</span><span class="p">,</span> <span class="s2">&quot;CHECK&quot;</span><span class="p">):</span>
+                <span class="n">check</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="n">check_braces_deep</span> <span class="o">=</span> <span class="n">braces_deep</span>
+            <span class="k">elif</span> <span class="n">check</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">check_braces_deep</span> <span class="o">==</span> <span class="n">braces_deep</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">check_columns</span><span class="p">:</span>
+                        <span class="c1"># Stop constraint parsing.</span>
+                        <span class="n">check</span> <span class="o">=</span> <span class="kc">False</span>
+                    <span class="k">continue</span>
+                <span class="k">if</span> <span class="n">token</span><span class="o">.</span><span class="n">ttype</span> <span class="ow">in</span> <span class="p">(</span><span class="n">sqlparse</span><span class="o">.</span><span class="n">tokens</span><span class="o">.</span><span class="n">Name</span><span class="p">,</span> <span class="n">sqlparse</span><span class="o">.</span><span class="n">tokens</span><span class="o">.</span><span class="n">Keyword</span><span class="p">):</span>
+                    <span class="k">if</span> <span class="n">token</span><span class="o">.</span><span class="n">value</span> <span class="ow">in</span> <span class="n">columns</span><span class="p">:</span>
+                        <span class="n">check_columns</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">token</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>
+                <span class="k">elif</span> <span class="n">token</span><span class="o">.</span><span class="n">ttype</span> <span class="o">==</span> <span class="n">sqlparse</span><span class="o">.</span><span class="n">tokens</span><span class="o">.</span><span class="n">Literal</span><span class="o">.</span><span class="n">String</span><span class="o">.</span><span class="n">Symbol</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">token</span><span class="o">.</span><span class="n">value</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="ow">in</span> <span class="n">columns</span><span class="p">:</span>
+                        <span class="n">check_columns</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">token</span><span class="o">.</span><span class="n">value</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">unique_constraint</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;unique&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                <span class="s2">&quot;columns&quot;</span><span class="p">:</span> <span class="n">unique_columns</span><span class="p">,</span>
+                <span class="s2">&quot;primary_key&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                <span class="s2">&quot;foreign_key&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="s2">&quot;check&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                <span class="s2">&quot;index&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="p">}</span>
+            <span class="k">if</span> <span class="n">unique_columns</span>
+            <span class="k">else</span> <span class="kc">None</span>
+        <span class="p">)</span>
+        <span class="n">check_constraint</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;check&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                <span class="s2">&quot;columns&quot;</span><span class="p">:</span> <span class="n">check_columns</span><span class="p">,</span>
+                <span class="s2">&quot;primary_key&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                <span class="s2">&quot;unique&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                <span class="s2">&quot;foreign_key&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="s2">&quot;index&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="p">}</span>
+            <span class="k">if</span> <span class="n">check_columns</span>
+            <span class="k">else</span> <span class="kc">None</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">constraint_name</span><span class="p">,</span> <span class="n">unique_constraint</span><span class="p">,</span> <span class="n">check_constraint</span><span class="p">,</span> <span class="n">token</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_parse_table_constraints</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">columns</span><span class="p">):</span>
+        <span class="c1"># Check constraint parsing is based of SQLite syntax diagram.</span>
+        <span class="c1"># https://www.sqlite.org/syntaxdiagrams.html#table-constraint</span>
+        <span class="n">statement</span> <span class="o">=</span> <span class="n">sqlparse</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">sql</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">constraints</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">unnamed_constrains_index</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">tokens</span> <span class="o">=</span> <span class="p">(</span><span class="n">token</span> <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">statement</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">token</span><span class="o">.</span><span class="n">is_whitespace</span><span class="p">)</span>
+        <span class="c1"># Go to columns and constraint definition</span>
+        <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">tokens</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">token</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">sqlparse</span><span class="o">.</span><span class="n">tokens</span><span class="o">.</span><span class="n">Punctuation</span><span class="p">,</span> <span class="s2">&quot;(&quot;</span><span class="p">):</span>
+                <span class="k">break</span>
+        <span class="c1"># Parse columns and constraint definition</span>
+        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="p">(</span>
+                <span class="n">constraint_name</span><span class="p">,</span>
+                <span class="n">unique</span><span class="p">,</span>
+                <span class="n">check</span><span class="p">,</span>
+                <span class="n">end_token</span><span class="p">,</span>
+            <span class="p">)</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parse_column_or_constraint_definition</span><span class="p">(</span><span class="n">tokens</span><span class="p">,</span> <span class="n">columns</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">unique</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">constraint_name</span><span class="p">:</span>
+                    <span class="n">constraints</span><span class="p">[</span><span class="n">constraint_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">unique</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">unnamed_constrains_index</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="n">constraints</span><span class="p">[</span>
+                        <span class="s2">&quot;__unnamed_constraint_</span><span class="si">%s</span><span class="s2">__&quot;</span> <span class="o">%</span> <span class="n">unnamed_constrains_index</span>
+                    <span class="p">]</span> <span class="o">=</span> <span class="n">unique</span>
+            <span class="k">if</span> <span class="n">check</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">constraint_name</span><span class="p">:</span>
+                    <span class="n">constraints</span><span class="p">[</span><span class="n">constraint_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">check</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">unnamed_constrains_index</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="n">constraints</span><span class="p">[</span>
+                        <span class="s2">&quot;__unnamed_constraint_</span><span class="si">%s</span><span class="s2">__&quot;</span> <span class="o">%</span> <span class="n">unnamed_constrains_index</span>
+                    <span class="p">]</span> <span class="o">=</span> <span class="n">check</span>
+            <span class="k">if</span> <span class="n">end_token</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">sqlparse</span><span class="o">.</span><span class="n">tokens</span><span class="o">.</span><span class="n">Punctuation</span><span class="p">,</span> <span class="s2">&quot;)&quot;</span><span class="p">):</span>
+                <span class="k">break</span>
+        <span class="k">return</span> <span class="n">constraints</span>
+
+<div class="viewcode-block" id="DatabaseIntrospection.get_constraints">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/introspection/index.html#django.db.backends.sqlite3.introspection.DatabaseIntrospection.get_constraints">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_constraints</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Retrieve any constraints or keys (unique, pk, fk, check, index) across</span>
+<span class="sd">        one or more columns.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">constraints</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="c1"># Find inline check constraints.</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">table_schema</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+                <span class="s2">&quot;SELECT sql FROM sqlite_master WHERE type=&#39;table&#39; and name=</span><span class="si">%s</span><span class="s2">&quot;</span>
+                <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">table_name</span><span class="p">),)</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
+            <span class="c1"># table_name is a view.</span>
+            <span class="k">pass</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">columns</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="n">info</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">info</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_table_description</span><span class="p">(</span><span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">)</span>
+            <span class="p">}</span>
+            <span class="n">constraints</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_parse_table_constraints</span><span class="p">(</span><span class="n">table_schema</span><span class="p">,</span> <span class="n">columns</span><span class="p">))</span>
+
+        <span class="c1"># Get the index info</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;PRAGMA index_list(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">table_name</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">():</span>
+            <span class="c1"># SQLite 3.8.9+ has 5 columns, however older versions only give 3</span>
+            <span class="c1"># columns. Discard last 2 columns if there.</span>
+            <span class="n">number</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">unique</span> <span class="o">=</span> <span class="n">row</span><span class="p">[:</span><span class="mi">3</span><span class="p">]</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+                <span class="s2">&quot;SELECT sql FROM sqlite_master &quot;</span>
+                <span class="s2">&quot;WHERE type=&#39;index&#39; AND name=</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">index</span><span class="p">)</span>
+            <span class="p">)</span>
+            <span class="c1"># There&#39;s at most one row.</span>
+            <span class="p">(</span><span class="n">sql</span><span class="p">,)</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span> <span class="ow">or</span> <span class="p">(</span><span class="kc">None</span><span class="p">,)</span>
+            <span class="c1"># Inline constraints are already detected in</span>
+            <span class="c1"># _parse_table_constraints(). The reasons to avoid fetching inline</span>
+            <span class="c1"># constraints from `PRAGMA index_list` are:</span>
+            <span class="c1"># - Inline constraints can have a different name and information</span>
+            <span class="c1">#   than what `PRAGMA index_list` gives.</span>
+            <span class="c1"># - Not all inline constraints may appear in `PRAGMA index_list`.</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">sql</span><span class="p">:</span>
+                <span class="c1"># An inline constraint</span>
+                <span class="k">continue</span>
+            <span class="c1"># Get the index info for that index</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+                <span class="s2">&quot;PRAGMA index_info(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">index</span><span class="p">)</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">index_rank</span><span class="p">,</span> <span class="n">column_rank</span><span class="p">,</span> <span class="n">column</span> <span class="ow">in</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">():</span>
+                <span class="k">if</span> <span class="n">index</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">constraints</span><span class="p">:</span>
+                    <span class="n">constraints</span><span class="p">[</span><span class="n">index</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                        <span class="s2">&quot;columns&quot;</span><span class="p">:</span> <span class="p">[],</span>
+                        <span class="s2">&quot;primary_key&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                        <span class="s2">&quot;unique&quot;</span><span class="p">:</span> <span class="nb">bool</span><span class="p">(</span><span class="n">unique</span><span class="p">),</span>
+                        <span class="s2">&quot;foreign_key&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                        <span class="s2">&quot;check&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                        <span class="s2">&quot;index&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                    <span class="p">}</span>
+                <span class="n">constraints</span><span class="p">[</span><span class="n">index</span><span class="p">][</span><span class="s2">&quot;columns&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">column</span><span class="p">)</span>
+            <span class="c1"># Add type and column orders for indexes</span>
+            <span class="k">if</span> <span class="n">constraints</span><span class="p">[</span><span class="n">index</span><span class="p">][</span><span class="s2">&quot;index&quot;</span><span class="p">]:</span>
+                <span class="c1"># SQLite doesn&#39;t support any index type other than b-tree</span>
+                <span class="n">constraints</span><span class="p">[</span><span class="n">index</span><span class="p">][</span><span class="s2">&quot;type&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">Index</span><span class="o">.</span><span class="n">suffix</span>
+                <span class="n">orders</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_index_columns_orders</span><span class="p">(</span><span class="n">sql</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">orders</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">constraints</span><span class="p">[</span><span class="n">index</span><span class="p">][</span><span class="s2">&quot;orders&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">orders</span>
+        <span class="c1"># Get the PK</span>
+        <span class="n">pk_columns</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_primary_key_columns</span><span class="p">(</span><span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">pk_columns</span><span class="p">:</span>
+            <span class="c1"># SQLite doesn&#39;t actually give a name to the PK constraint,</span>
+            <span class="c1"># so we invent one. This is fine, as the SQLite backend never</span>
+            <span class="c1"># deletes PK constraints by name, as you can&#39;t delete constraints</span>
+            <span class="c1"># in SQLite; we remake the table with a new PK instead.</span>
+            <span class="n">constraints</span><span class="p">[</span><span class="s2">&quot;__primary__&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">&quot;columns&quot;</span><span class="p">:</span> <span class="n">pk_columns</span><span class="p">,</span>
+                <span class="s2">&quot;primary_key&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                <span class="s2">&quot;unique&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>  <span class="c1"># It&#39;s not actually a unique constraint.</span>
+                <span class="s2">&quot;foreign_key&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="s2">&quot;check&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                <span class="s2">&quot;index&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="n">relations</span> <span class="o">=</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_relations</span><span class="p">(</span><span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">)</span><span class="o">.</span><span class="n">items</span><span class="p">())</span>
+        <span class="n">constraints</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="sa">f</span><span class="s2">&quot;fk_</span><span class="si">{</span><span class="n">index</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;columns&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">column_name</span><span class="p">],</span>
+                    <span class="s2">&quot;primary_key&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                    <span class="s2">&quot;unique&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                    <span class="s2">&quot;foreign_key&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">ref_table_name</span><span class="p">,</span> <span class="n">ref_column_name</span><span class="p">),</span>
+                    <span class="s2">&quot;check&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                    <span class="s2">&quot;index&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                <span class="p">}</span>
+                <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="p">(</span><span class="n">column_name</span><span class="p">,</span> <span class="p">(</span><span class="n">ref_column_name</span><span class="p">,</span> <span class="n">ref_table_name</span><span class="p">))</span> <span class="ow">in</span> <span class="n">relations</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">constraints</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_index_columns_orders</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sql</span><span class="p">):</span>
+        <span class="n">tokens</span> <span class="o">=</span> <span class="n">sqlparse</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">sql</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">tokens</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">token</span><span class="p">,</span> <span class="n">sqlparse</span><span class="o">.</span><span class="n">sql</span><span class="o">.</span><span class="n">Parenthesis</span><span class="p">):</span>
+                <span class="n">columns</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">token</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="s2">&quot;()&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;, &quot;</span><span class="p">)</span>
+                <span class="k">return</span> <span class="p">[</span><span class="s2">&quot;DESC&quot;</span> <span class="k">if</span> <span class="n">info</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;DESC&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="s2">&quot;ASC&quot;</span> <span class="k">for</span> <span class="n">info</span> <span class="ow">in</span> <span class="n">columns</span><span class="p">]</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_column_collations</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">):</span>
+        <span class="n">row</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            SELECT sql</span>
+<span class="sd">            FROM sqlite_master</span>
+<span class="sd">            WHERE type = &#39;table&#39; AND name = %s</span>
+<span class="sd">        &quot;&quot;&quot;</span><span class="p">,</span>
+            <span class="p">[</span><span class="n">table_name</span><span class="p">],</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">row</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{}</span>
+
+        <span class="n">sql</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">columns</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">sqlparse</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">sql</span><span class="p">)[</span><span class="mi">0</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="s2">&quot;()&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;, &quot;</span><span class="p">)</span>
+        <span class="n">collations</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">column</span> <span class="ow">in</span> <span class="n">columns</span><span class="p">:</span>
+            <span class="n">tokens</span> <span class="o">=</span> <span class="n">column</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+            <span class="n">column_name</span> <span class="o">=</span> <span class="n">tokens</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="s1">&#39;&quot;&#39;</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">token</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">tokens</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">token</span> <span class="o">==</span> <span class="s2">&quot;COLLATE&quot;</span><span class="p">:</span>
+                    <span class="n">collation</span> <span class="o">=</span> <span class="n">tokens</span><span class="p">[</span><span class="n">index</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+                    <span class="k">break</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">collation</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="n">collations</span><span class="p">[</span><span class="n">column_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">collation</span>
+        <span class="k">return</span> <span class="n">collations</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,495 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.core.handlers.asgi &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../django.html">django</a></li>
+      <li class="breadcrumb-item active">django.core.handlers.asgi</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.core.handlers.asgi</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">traceback</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">asgiref.sync</span><span class="w"> </span><span class="kn">import</span> <span class="n">ThreadSensitiveContext</span><span class="p">,</span> <span class="n">sync_to_async</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">signals</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">RequestAborted</span><span class="p">,</span> <span class="n">RequestDataTooBig</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.handlers</span><span class="w"> </span><span class="kn">import</span> <span class="n">base</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.http</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">FileResponse</span><span class="p">,</span>
+    <span class="n">HttpRequest</span><span class="p">,</span>
+    <span class="n">HttpResponse</span><span class="p">,</span>
+    <span class="n">HttpResponseBadRequest</span><span class="p">,</span>
+    <span class="n">HttpResponseServerError</span><span class="p">,</span>
+    <span class="n">QueryDict</span><span class="p">,</span>
+    <span class="n">parse_cookie</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.urls</span><span class="w"> </span><span class="kn">import</span> <span class="n">set_script_prefix</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.asyncio</span><span class="w"> </span><span class="kn">import</span> <span class="n">aclosing</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">cached_property</span>
+
+<div class="viewcode-block" id="logger">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/asgi/index.html#django.core.handlers.asgi.logger">[docs]</a>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;django.request&quot;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="ASGIRequest">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/asgi/index.html#django.core.handlers.asgi.ASGIRequest">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ASGIRequest</span><span class="p">(</span><span class="n">HttpRequest</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Custom request subclass that decodes from an ASGI-standard request dict</span>
+<span class="sd">    and wraps request body handling.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># Number of seconds until a Request gives up on trying to read a request</span>
+    <span class="c1"># body and aborts.</span>
+<div class="viewcode-block" id="ASGIRequest.body_receive_timeout">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/asgi/index.html#django.core.handlers.asgi.ASGIRequest.body_receive_timeout">[docs]</a>
+    <span class="n">body_receive_timeout</span> <span class="o">=</span> <span class="mi">60</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="n">body_file</span><span class="p">):</span>
+<div class="viewcode-block" id="ASGIRequest.scope">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/asgi/index.html#django.core.handlers.asgi.ASGIRequest.scope">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scope</span> <span class="o">=</span> <span class="n">scope</span></div>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_post_parse_error</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_read_started</span> <span class="o">=</span> <span class="kc">False</span>
+<div class="viewcode-block" id="ASGIRequest.resolver_match">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/asgi/index.html#django.core.handlers.asgi.ASGIRequest.resolver_match">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">resolver_match</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="ASGIRequest.script_name">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/asgi/index.html#django.core.handlers.asgi.ASGIRequest.script_name">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">script_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scope</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;root_path&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span></div>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">script_name</span> <span class="ow">and</span> <span class="n">scope</span><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">script_name</span><span class="p">):</span>
+            <span class="c1"># TODO: Better is-prefix checking, slash handling?</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">path_info</span> <span class="o">=</span> <span class="n">scope</span><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">][</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">script_name</span><span class="p">)</span> <span class="p">:]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">path_info</span> <span class="o">=</span> <span class="n">scope</span><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">]</span>
+        <span class="c1"># The Django path is different from ASGI scope path args, it should</span>
+        <span class="c1"># combine with script name.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">script_name</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">path</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">/</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">script_name</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">),</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">path_info</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">path</span> <span class="o">=</span> <span class="n">scope</span><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">]</span>
+        <span class="c1"># HTTP basics.</span>
+<div class="viewcode-block" id="ASGIRequest.method">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/asgi/index.html#django.core.handlers.asgi.ASGIRequest.method">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scope</span><span class="p">[</span><span class="s2">&quot;method&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span></div>
+
+        <span class="c1"># Ensure query string is encoded correctly.</span>
+        <span class="n">query_string</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scope</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;query_string&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">query_string</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
+            <span class="n">query_string</span> <span class="o">=</span> <span class="n">query_string</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
+<div class="viewcode-block" id="ASGIRequest.META">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/asgi/index.html#django.core.handlers.asgi.ASGIRequest.META">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">META</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;REQUEST_METHOD&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="p">,</span>
+            <span class="s2">&quot;QUERY_STRING&quot;</span><span class="p">:</span> <span class="n">query_string</span><span class="p">,</span>
+            <span class="s2">&quot;SCRIPT_NAME&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">script_name</span><span class="p">,</span>
+            <span class="s2">&quot;PATH_INFO&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">path_info</span><span class="p">,</span>
+            <span class="c1"># WSGI-expecting code will need these for a while</span>
+            <span class="s2">&quot;wsgi.multithread&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+            <span class="s2">&quot;wsgi.multiprocess&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="p">}</span></div>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">scope</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;client&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;REMOTE_ADDR&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scope</span><span class="p">[</span><span class="s2">&quot;client&quot;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;REMOTE_HOST&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;REMOTE_ADDR&quot;</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;REMOTE_PORT&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scope</span><span class="p">[</span><span class="s2">&quot;client&quot;</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">scope</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;server&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;SERVER_NAME&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scope</span><span class="p">[</span><span class="s2">&quot;server&quot;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;SERVER_PORT&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scope</span><span class="p">[</span><span class="s2">&quot;server&quot;</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;SERVER_NAME&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;unknown&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;SERVER_PORT&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;0&quot;</span>
+        <span class="c1"># Headers go into META.</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">scope</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;headers&quot;</span><span class="p">,</span> <span class="p">[]):</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="n">name</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;latin1&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;content-length&quot;</span><span class="p">:</span>
+                <span class="n">corrected_name</span> <span class="o">=</span> <span class="s2">&quot;CONTENT_LENGTH&quot;</span>
+            <span class="k">elif</span> <span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;content-type&quot;</span><span class="p">:</span>
+                <span class="n">corrected_name</span> <span class="o">=</span> <span class="s2">&quot;CONTENT_TYPE&quot;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">corrected_name</span> <span class="o">=</span> <span class="s2">&quot;HTTP_</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">name</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">,</span> <span class="s2">&quot;_&quot;</span><span class="p">)</span>
+            <span class="c1"># HTTP/2 say only ASCII chars are allowed in headers, but decode</span>
+            <span class="c1"># latin1 just in case.</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;latin1&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">corrected_name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">:</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="n">corrected_name</span><span class="p">]</span> <span class="o">+</span> <span class="s2">&quot;,&quot;</span> <span class="o">+</span> <span class="n">value</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="n">corrected_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+        <span class="c1"># Pull out request encoding, if provided.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_content_type_params</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">)</span>
+        <span class="c1"># Directly assign the body file to be our stream.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_stream</span> <span class="o">=</span> <span class="n">body_file</span>
+        <span class="c1"># Other bits.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">resolver_match</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="ASGIRequest.GET">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/asgi/index.html#django.core.handlers.asgi.ASGIRequest.GET">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">GET</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">QueryDict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;QUERY_STRING&quot;</span><span class="p">])</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_scheme</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">scope</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;scheme&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">_get_scheme</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_post</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;_post&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_load_post_and_files</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_post</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_set_post</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">post</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_post</span> <span class="o">=</span> <span class="n">post</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_files</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;_files&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_load_post_and_files</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_files</span>
+
+<div class="viewcode-block" id="ASGIRequest.POST">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/asgi/index.html#django.core.handlers.asgi.ASGIRequest.POST">[docs]</a>
+    <span class="n">POST</span> <span class="o">=</span> <span class="nb">property</span><span class="p">(</span><span class="n">_get_post</span><span class="p">,</span> <span class="n">_set_post</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="ASGIRequest.FILES">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/asgi/index.html#django.core.handlers.asgi.ASGIRequest.FILES">[docs]</a>
+    <span class="n">FILES</span> <span class="o">=</span> <span class="nb">property</span><span class="p">(</span><span class="n">_get_files</span><span class="p">)</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="ASGIRequest.COOKIES">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/asgi/index.html#django.core.handlers.asgi.ASGIRequest.COOKIES">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">COOKIES</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">parse_cookie</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">META</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;HTTP_COOKIE&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="ASGIRequest.close">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/asgi/index.html#django.core.handlers.asgi.ASGIRequest.close">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_stream</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="ASGIHandler">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/asgi/index.html#django.core.handlers.asgi.ASGIHandler">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ASGIHandler</span><span class="p">(</span><span class="n">base</span><span class="o">.</span><span class="n">BaseHandler</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Handler for ASGI requests.&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="ASGIHandler.request_class">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/asgi/index.html#django.core.handlers.asgi.ASGIHandler.request_class">[docs]</a>
+    <span class="n">request_class</span> <span class="o">=</span> <span class="n">ASGIRequest</span></div>
+
+    <span class="c1"># Size to chunk response bodies into for multiple response messages.</span>
+<div class="viewcode-block" id="ASGIHandler.chunk_size">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/asgi/index.html#django.core.handlers.asgi.ASGIHandler.chunk_size">[docs]</a>
+    <span class="n">chunk_size</span> <span class="o">=</span> <span class="mi">2</span><span class="o">**</span><span class="mi">16</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">load_middleware</span><span class="p">(</span><span class="n">is_async</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="n">receive</span><span class="p">,</span> <span class="n">send</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Async entrypoint - parses the request and hands off to get_response.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Serve only HTTP connections.</span>
+        <span class="c1"># FIXME: Allow to override this.</span>
+        <span class="k">if</span> <span class="n">scope</span><span class="p">[</span><span class="s2">&quot;type&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;http&quot;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;Django can only handle ASGI/HTTP connections, not </span><span class="si">%s</span><span class="s2">.&quot;</span> <span class="o">%</span> <span class="n">scope</span><span class="p">[</span><span class="s2">&quot;type&quot;</span><span class="p">]</span>
+            <span class="p">)</span>
+
+        <span class="k">async</span> <span class="k">with</span> <span class="n">ThreadSensitiveContext</span><span class="p">():</span>
+            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="n">receive</span><span class="p">,</span> <span class="n">send</span><span class="p">)</span>
+
+<div class="viewcode-block" id="ASGIHandler.handle">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/asgi/index.html#django.core.handlers.asgi.ASGIHandler.handle">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">handle</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="n">receive</span><span class="p">,</span> <span class="n">send</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Handles the ASGI request. Called via the __call__ method.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Receive the HTTP request body as a stream object.</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">body_file</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">read_body</span><span class="p">(</span><span class="n">receive</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">RequestAborted</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="c1"># Request is complete and can be served.</span>
+        <span class="n">set_script_prefix</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_script_prefix</span><span class="p">(</span><span class="n">scope</span><span class="p">))</span>
+        <span class="k">await</span> <span class="n">sync_to_async</span><span class="p">(</span><span class="n">signals</span><span class="o">.</span><span class="n">request_started</span><span class="o">.</span><span class="n">send</span><span class="p">,</span> <span class="n">thread_sensitive</span><span class="o">=</span><span class="kc">True</span><span class="p">)(</span>
+            <span class="n">sender</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span> <span class="n">scope</span><span class="o">=</span><span class="n">scope</span>
+        <span class="p">)</span>
+        <span class="c1"># Get the request and check for basic issues.</span>
+        <span class="n">request</span><span class="p">,</span> <span class="n">error_response</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_request</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="n">body_file</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">request</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">body_file</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">send_response</span><span class="p">(</span><span class="n">error_response</span><span class="p">,</span> <span class="n">send</span><span class="p">)</span>
+            <span class="k">return</span>
+        <span class="c1"># Get the response, using the async mode of BaseHandler.</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_response_async</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+        <span class="n">response</span><span class="o">.</span><span class="n">_handler_class</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span>
+        <span class="c1"># Increase chunk size on file responses (ASGI servers handles low-level</span>
+        <span class="c1"># chunking).</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">response</span><span class="p">,</span> <span class="n">FileResponse</span><span class="p">):</span>
+            <span class="n">response</span><span class="o">.</span><span class="n">block_size</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">chunk_size</span>
+        <span class="c1"># Send the response.</span>
+        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">send_response</span><span class="p">(</span><span class="n">response</span><span class="p">,</span> <span class="n">send</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ASGIHandler.read_body">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/asgi/index.html#django.core.handlers.asgi.ASGIHandler.read_body">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">read_body</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">receive</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Reads an HTTP body from an ASGI connection.&quot;&quot;&quot;</span>
+        <span class="c1"># Use the tempfile that auto rolls-over to a disk file as it fills up.</span>
+        <span class="n">body_file</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">SpooledTemporaryFile</span><span class="p">(</span>
+            <span class="n">max_size</span><span class="o">=</span><span class="n">settings</span><span class="o">.</span><span class="n">FILE_UPLOAD_MAX_MEMORY_SIZE</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;w+b&quot;</span>
+        <span class="p">)</span>
+        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="n">message</span> <span class="o">=</span> <span class="k">await</span> <span class="n">receive</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">message</span><span class="p">[</span><span class="s2">&quot;type&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;http.disconnect&quot;</span><span class="p">:</span>
+                <span class="n">body_file</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+                <span class="c1"># Early client disconnect.</span>
+                <span class="k">raise</span> <span class="n">RequestAborted</span><span class="p">()</span>
+            <span class="c1"># Add a body chunk from the message, if provided.</span>
+            <span class="k">if</span> <span class="s2">&quot;body&quot;</span> <span class="ow">in</span> <span class="n">message</span><span class="p">:</span>
+                <span class="n">body_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">message</span><span class="p">[</span><span class="s2">&quot;body&quot;</span><span class="p">])</span>
+            <span class="c1"># Quit out if that&#39;s the end.</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">message</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;more_body&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
+                <span class="k">break</span>
+        <span class="n">body_file</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">body_file</span></div>
+
+
+<div class="viewcode-block" id="ASGIHandler.create_request">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/asgi/index.html#django.core.handlers.asgi.ASGIHandler.create_request">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_request</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scope</span><span class="p">,</span> <span class="n">body_file</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create the Request object and returns either (request, None) or</span>
+<span class="sd">        (None, response) if there is an error response.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">request_class</span><span class="p">(</span><span class="n">scope</span><span class="p">,</span> <span class="n">body_file</span><span class="p">),</span> <span class="kc">None</span>
+        <span class="k">except</span> <span class="ne">UnicodeDecodeError</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                <span class="s2">&quot;Bad Request (UnicodeDecodeError)&quot;</span><span class="p">,</span>
+                <span class="n">exc_info</span><span class="o">=</span><span class="n">sys</span><span class="o">.</span><span class="n">exc_info</span><span class="p">(),</span>
+                <span class="n">extra</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;status_code&quot;</span><span class="p">:</span> <span class="mi">400</span><span class="p">},</span>
+            <span class="p">)</span>
+            <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="n">HttpResponseBadRequest</span><span class="p">()</span>
+        <span class="k">except</span> <span class="n">RequestDataTooBig</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="n">HttpResponse</span><span class="p">(</span><span class="s2">&quot;413 Payload too large&quot;</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="mi">413</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ASGIHandler.handle_uncaught_exception">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/asgi/index.html#django.core.handlers.asgi.ASGIHandler.handle_uncaught_exception">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle_uncaught_exception</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">resolver</span><span class="p">,</span> <span class="n">exc_info</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Last-chance handler for exceptions.&quot;&quot;&quot;</span>
+        <span class="c1"># There&#39;s no WSGI server to catch the exception further up</span>
+        <span class="c1"># if this fails, so translate it into a plain text response.</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">handle_uncaught_exception</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">resolver</span><span class="p">,</span> <span class="n">exc_info</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">HttpResponseServerError</span><span class="p">(</span>
+                <span class="n">traceback</span><span class="o">.</span><span class="n">format_exc</span><span class="p">()</span> <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">DEBUG</span> <span class="k">else</span> <span class="s2">&quot;Internal Server Error&quot;</span><span class="p">,</span>
+                <span class="n">content_type</span><span class="o">=</span><span class="s2">&quot;text/plain&quot;</span><span class="p">,</span>
+            <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ASGIHandler.send_response">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/asgi/index.html#django.core.handlers.asgi.ASGIHandler.send_response">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">send_response</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">response</span><span class="p">,</span> <span class="n">send</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Encode and send a response out over ASGI.&quot;&quot;&quot;</span>
+        <span class="c1"># Collect cookies into headers. Have to preserve header case as there</span>
+        <span class="c1"># are some non-RFC compliant clients that require e.g. Content-Type.</span>
+        <span class="n">response_headers</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">header</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">response</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">header</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+                <span class="n">header</span> <span class="o">=</span> <span class="n">header</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;ascii&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;latin1&quot;</span><span class="p">)</span>
+            <span class="n">response_headers</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="nb">bytes</span><span class="p">(</span><span class="n">header</span><span class="p">),</span> <span class="nb">bytes</span><span class="p">(</span><span class="n">value</span><span class="p">)))</span>
+        <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">response</span><span class="o">.</span><span class="n">cookies</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+            <span class="n">response_headers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="p">(</span><span class="sa">b</span><span class="s2">&quot;Set-Cookie&quot;</span><span class="p">,</span> <span class="n">c</span><span class="o">.</span><span class="n">output</span><span class="p">(</span><span class="n">header</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;ascii&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span>
+            <span class="p">)</span>
+        <span class="c1"># Initial response message.</span>
+        <span class="k">await</span> <span class="n">send</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;http.response.start&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span><span class="p">,</span>
+                <span class="s2">&quot;headers&quot;</span><span class="p">:</span> <span class="n">response_headers</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+        <span class="c1"># Streaming responses need to be pinned to their iterator.</span>
+        <span class="k">if</span> <span class="n">response</span><span class="o">.</span><span class="n">streaming</span><span class="p">:</span>
+            <span class="c1"># - Consume via `__aiter__` and not `streaming_content` directly, to</span>
+            <span class="c1">#   allow mapping of a sync iterator.</span>
+            <span class="c1"># - Use aclosing() when consuming aiter.</span>
+            <span class="c1">#   See https://github.com/python/cpython/commit/6e8dcda</span>
+            <span class="k">async</span> <span class="k">with</span> <span class="n">aclosing</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="fm">__aiter__</span><span class="p">())</span> <span class="k">as</span> <span class="n">content</span><span class="p">:</span>
+                <span class="k">async</span> <span class="k">for</span> <span class="n">part</span> <span class="ow">in</span> <span class="n">content</span><span class="p">:</span>
+                    <span class="k">for</span> <span class="n">chunk</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">chunk_bytes</span><span class="p">(</span><span class="n">part</span><span class="p">):</span>
+                        <span class="k">await</span> <span class="n">send</span><span class="p">(</span>
+                            <span class="p">{</span>
+                                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;http.response.body&quot;</span><span class="p">,</span>
+                                <span class="s2">&quot;body&quot;</span><span class="p">:</span> <span class="n">chunk</span><span class="p">,</span>
+                                <span class="c1"># Ignore &quot;more&quot; as there may be more parts; instead,</span>
+                                <span class="c1"># use an empty final closing message with False.</span>
+                                <span class="s2">&quot;more_body&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                            <span class="p">}</span>
+                        <span class="p">)</span>
+            <span class="c1"># Final closing message.</span>
+            <span class="k">await</span> <span class="n">send</span><span class="p">({</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;http.response.body&quot;</span><span class="p">})</span>
+        <span class="c1"># Other responses just need chunking.</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Yield chunks of response.</span>
+            <span class="k">for</span> <span class="n">chunk</span><span class="p">,</span> <span class="n">last</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">chunk_bytes</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">content</span><span class="p">):</span>
+                <span class="k">await</span> <span class="n">send</span><span class="p">(</span>
+                    <span class="p">{</span>
+                        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;http.response.body&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;body&quot;</span><span class="p">:</span> <span class="n">chunk</span><span class="p">,</span>
+                        <span class="s2">&quot;more_body&quot;</span><span class="p">:</span> <span class="ow">not</span> <span class="n">last</span><span class="p">,</span>
+                    <span class="p">}</span>
+                <span class="p">)</span>
+        <span class="k">await</span> <span class="n">sync_to_async</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">close</span><span class="p">,</span> <span class="n">thread_sensitive</span><span class="o">=</span><span class="kc">True</span><span class="p">)()</span></div>
+
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="ASGIHandler.chunk_bytes">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/asgi/index.html#django.core.handlers.asgi.ASGIHandler.chunk_bytes">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">chunk_bytes</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Chunks some data up so it can be sent in reasonable size messages.</span>
+<span class="sd">        Yields (chunk, last_chunk) tuples.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">position</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">data</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="n">data</span><span class="p">,</span> <span class="kc">True</span>
+            <span class="k">return</span>
+        <span class="k">while</span> <span class="n">position</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">):</span>
+            <span class="k">yield</span> <span class="p">(</span>
+                <span class="n">data</span><span class="p">[</span><span class="n">position</span> <span class="p">:</span> <span class="n">position</span> <span class="o">+</span> <span class="bp">cls</span><span class="o">.</span><span class="n">chunk_size</span><span class="p">],</span>
+                <span class="p">(</span><span class="n">position</span> <span class="o">+</span> <span class="bp">cls</span><span class="o">.</span><span class="n">chunk_size</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">),</span>
+            <span class="p">)</span>
+            <span class="n">position</span> <span class="o">+=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">chunk_size</span></div>
+
+
+<div class="viewcode-block" id="ASGIHandler.get_script_prefix">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/asgi/index.html#django.core.handlers.asgi.ASGIHandler.get_script_prefix">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_script_prefix</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scope</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the script prefix to use from either the scope or a setting.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">FORCE_SCRIPT_NAME</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">settings</span><span class="o">.</span><span class="n">FORCE_SCRIPT_NAME</span>
+        <span class="k">return</span> <span class="n">scope</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;root_path&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

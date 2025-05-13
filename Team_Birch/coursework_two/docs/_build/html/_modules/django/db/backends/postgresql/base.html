@@ -1,0 +1,693 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.db.backends.postgresql.base &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../../../db.html">django.db</a></li>
+      <li class="breadcrumb-item active">django.db.backends.postgresql.base</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.db.backends.postgresql.base</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">PostgreSQL database backend for Django.</span>
+
+<span class="sd">Requires psycopg2 &gt;= 2.8.4 or psycopg &gt;= 3.1.8</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">threading</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">contextmanager</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImproperlyConfigured</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseError</span> <span class="k">as</span> <span class="n">WrappedDatabaseError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">connections</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.base.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseDatabaseWrapper</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">CursorDebugWrapper</span> <span class="k">as</span> <span class="n">BaseCursorDebugWrapper</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.asyncio</span><span class="w"> </span><span class="kn">import</span> <span class="n">async_unsafe</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">cached_property</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.safestring</span><span class="w"> </span><span class="kn">import</span> <span class="n">SafeString</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.version</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_version_tuple</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">psycopg</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">Database</span>
+    <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">psycopg2</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">Database</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span><span class="s2">&quot;Error loading psycopg2 or psycopg module&quot;</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="psycopg_version">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.psycopg_version">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">psycopg_version</span><span class="p">():</span>
+    <span class="n">version</span> <span class="o">=</span> <span class="n">Database</span><span class="o">.</span><span class="n">__version__</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">get_version_tuple</span><span class="p">(</span><span class="n">version</span><span class="p">)</span></div>
+
+
+
+<span class="k">if</span> <span class="n">psycopg_version</span><span class="p">()</span> <span class="o">&lt;</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">4</span><span class="p">):</span>
+    <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;psycopg2 version 2.8.4 or newer is required; you have </span><span class="si">{</span><span class="n">Database</span><span class="o">.</span><span class="n">__version__</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="p">)</span>
+<span class="k">if</span> <span class="p">(</span><span class="mi">3</span><span class="p">,)</span> <span class="o">&lt;=</span> <span class="n">psycopg_version</span><span class="p">()</span> <span class="o">&lt;</span> <span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">8</span><span class="p">):</span>
+    <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;psycopg version 3.1.8 or newer is required; you have </span><span class="si">{</span><span class="n">Database</span><span class="o">.</span><span class="n">__version__</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="p">)</span>
+
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.psycopg_any</span><span class="w"> </span><span class="kn">import</span> <span class="n">IsolationLevel</span><span class="p">,</span> <span class="n">is_psycopg3</span>  <span class="c1"># NOQA isort:skip</span>
+
+<span class="k">if</span> <span class="n">is_psycopg3</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">psycopg</span><span class="w"> </span><span class="kn">import</span> <span class="n">adapters</span><span class="p">,</span> <span class="n">sql</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">psycopg.pq</span><span class="w"> </span><span class="kn">import</span> <span class="n">Format</span>
+
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.psycopg_any</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_adapters_template</span><span class="p">,</span> <span class="n">register_tzloader</span>
+
+<div class="viewcode-block" id="TIMESTAMPTZ_OID">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.TIMESTAMPTZ_OID">[docs]</a>
+    <span class="n">TIMESTAMPTZ_OID</span> <span class="o">=</span> <span class="n">adapters</span><span class="o">.</span><span class="n">types</span><span class="p">[</span><span class="s2">&quot;timestamptz&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">oid</span></div>
+
+
+<span class="k">else</span><span class="p">:</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">psycopg2.extensions</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">psycopg2.extras</span>
+
+    <span class="n">psycopg2</span><span class="o">.</span><span class="n">extensions</span><span class="o">.</span><span class="n">register_adapter</span><span class="p">(</span><span class="n">SafeString</span><span class="p">,</span> <span class="n">psycopg2</span><span class="o">.</span><span class="n">extensions</span><span class="o">.</span><span class="n">QuotedString</span><span class="p">)</span>
+    <span class="n">psycopg2</span><span class="o">.</span><span class="n">extras</span><span class="o">.</span><span class="n">register_uuid</span><span class="p">()</span>
+
+    <span class="c1"># Register support for inet[] manually so we don&#39;t have to handle the Inet()</span>
+    <span class="c1"># object on load all the time.</span>
+    <span class="n">INETARRAY_OID</span> <span class="o">=</span> <span class="mi">1041</span>
+    <span class="n">INETARRAY</span> <span class="o">=</span> <span class="n">psycopg2</span><span class="o">.</span><span class="n">extensions</span><span class="o">.</span><span class="n">new_array_type</span><span class="p">(</span>
+        <span class="p">(</span><span class="n">INETARRAY_OID</span><span class="p">,),</span>
+        <span class="s2">&quot;INETARRAY&quot;</span><span class="p">,</span>
+        <span class="n">psycopg2</span><span class="o">.</span><span class="n">extensions</span><span class="o">.</span><span class="n">UNICODE</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">psycopg2</span><span class="o">.</span><span class="n">extensions</span><span class="o">.</span><span class="n">register_type</span><span class="p">(</span><span class="n">INETARRAY</span><span class="p">)</span>
+
+<span class="c1"># Some of these import psycopg, so import them after checking if it&#39;s installed.</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.client</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseClient</span>  <span class="c1"># NOQA isort:skip</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.creation</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseCreation</span>  <span class="c1"># NOQA isort:skip</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.features</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseFeatures</span>  <span class="c1"># NOQA isort:skip</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.introspection</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseIntrospection</span>  <span class="c1"># NOQA isort:skip</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.operations</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseOperations</span>  <span class="c1"># NOQA isort:skip</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.schema</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseSchemaEditor</span>  <span class="c1"># NOQA isort:skip</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_get_varchar_column</span><span class="p">(</span><span class="n">data</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">data</span><span class="p">[</span><span class="s2">&quot;max_length&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;varchar&quot;</span>
+    <span class="k">return</span> <span class="s2">&quot;varchar(</span><span class="si">%(max_length)s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="n">data</span>
+
+
+<div class="viewcode-block" id="DatabaseWrapper">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DatabaseWrapper</span><span class="p">(</span><span class="n">BaseDatabaseWrapper</span><span class="p">):</span>
+<div class="viewcode-block" id="DatabaseWrapper.vendor">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.vendor">[docs]</a>
+    <span class="n">vendor</span> <span class="o">=</span> <span class="s2">&quot;postgresql&quot;</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.display_name">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.display_name">[docs]</a>
+    <span class="n">display_name</span> <span class="o">=</span> <span class="s2">&quot;PostgreSQL&quot;</span></div>
+
+    <span class="c1"># This dictionary maps Field objects to their associated PostgreSQL column</span>
+    <span class="c1"># types, as strings. Column-type strings can contain format strings; they&#39;ll</span>
+    <span class="c1"># be interpolated against the values of Field.__dict__ before being output.</span>
+    <span class="c1"># If a column type is set to None, it won&#39;t be included in the output.</span>
+<div class="viewcode-block" id="DatabaseWrapper.data_types">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.data_types">[docs]</a>
+    <span class="n">data_types</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;AutoField&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;BigAutoField&quot;</span><span class="p">:</span> <span class="s2">&quot;bigint&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;BinaryField&quot;</span><span class="p">:</span> <span class="s2">&quot;bytea&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;BooleanField&quot;</span><span class="p">:</span> <span class="s2">&quot;boolean&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;CharField&quot;</span><span class="p">:</span> <span class="n">_get_varchar_column</span><span class="p">,</span>
+        <span class="s2">&quot;DateField&quot;</span><span class="p">:</span> <span class="s2">&quot;date&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;DateTimeField&quot;</span><span class="p">:</span> <span class="s2">&quot;timestamp with time zone&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;DecimalField&quot;</span><span class="p">:</span> <span class="s2">&quot;numeric(</span><span class="si">%(max_digits)s</span><span class="s2">, </span><span class="si">%(decimal_places)s</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;DurationField&quot;</span><span class="p">:</span> <span class="s2">&quot;interval&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;FileField&quot;</span><span class="p">:</span> <span class="s2">&quot;varchar(</span><span class="si">%(max_length)s</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;FilePathField&quot;</span><span class="p">:</span> <span class="s2">&quot;varchar(</span><span class="si">%(max_length)s</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;FloatField&quot;</span><span class="p">:</span> <span class="s2">&quot;double precision&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;IntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;BigIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;bigint&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;IPAddressField&quot;</span><span class="p">:</span> <span class="s2">&quot;inet&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;GenericIPAddressField&quot;</span><span class="p">:</span> <span class="s2">&quot;inet&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;JSONField&quot;</span><span class="p">:</span> <span class="s2">&quot;jsonb&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;OneToOneField&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;PositiveBigIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;bigint&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;PositiveIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;PositiveSmallIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;smallint&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;SlugField&quot;</span><span class="p">:</span> <span class="s2">&quot;varchar(</span><span class="si">%(max_length)s</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;SmallAutoField&quot;</span><span class="p">:</span> <span class="s2">&quot;smallint&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;SmallIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;smallint&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;TextField&quot;</span><span class="p">:</span> <span class="s2">&quot;text&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;TimeField&quot;</span><span class="p">:</span> <span class="s2">&quot;time&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;UUIDField&quot;</span><span class="p">:</span> <span class="s2">&quot;uuid&quot;</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.data_type_check_constraints">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.data_type_check_constraints">[docs]</a>
+    <span class="n">data_type_check_constraints</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;PositiveBigIntegerField&quot;</span><span class="p">:</span> <span class="s1">&#39;&quot;</span><span class="si">%(column)s</span><span class="s1">&quot; &gt;= 0&#39;</span><span class="p">,</span>
+        <span class="s2">&quot;PositiveIntegerField&quot;</span><span class="p">:</span> <span class="s1">&#39;&quot;</span><span class="si">%(column)s</span><span class="s1">&quot; &gt;= 0&#39;</span><span class="p">,</span>
+        <span class="s2">&quot;PositiveSmallIntegerField&quot;</span><span class="p">:</span> <span class="s1">&#39;&quot;</span><span class="si">%(column)s</span><span class="s1">&quot; &gt;= 0&#39;</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.data_types_suffix">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.data_types_suffix">[docs]</a>
+    <span class="n">data_types_suffix</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;AutoField&quot;</span><span class="p">:</span> <span class="s2">&quot;GENERATED BY DEFAULT AS IDENTITY&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;BigAutoField&quot;</span><span class="p">:</span> <span class="s2">&quot;GENERATED BY DEFAULT AS IDENTITY&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;SmallAutoField&quot;</span><span class="p">:</span> <span class="s2">&quot;GENERATED BY DEFAULT AS IDENTITY&quot;</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.operators">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.operators">[docs]</a>
+    <span class="n">operators</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;exact&quot;</span><span class="p">:</span> <span class="s2">&quot;= </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;iexact&quot;</span><span class="p">:</span> <span class="s2">&quot;= UPPER(</span><span class="si">%s</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;contains&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;icontains&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE UPPER(</span><span class="si">%s</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;regex&quot;</span><span class="p">:</span> <span class="s2">&quot;~ </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;iregex&quot;</span><span class="p">:</span> <span class="s2">&quot;~* </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;gt&quot;</span><span class="p">:</span> <span class="s2">&quot;&gt; </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;gte&quot;</span><span class="p">:</span> <span class="s2">&quot;&gt;= </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;lt&quot;</span><span class="p">:</span> <span class="s2">&quot;&lt; </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;lte&quot;</span><span class="p">:</span> <span class="s2">&quot;&lt;= </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;startswith&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;endswith&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;istartswith&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE UPPER(</span><span class="si">%s</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;iendswith&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE UPPER(</span><span class="si">%s</span><span class="s2">)&quot;</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+
+    <span class="c1"># The patterns below are used to generate SQL pattern lookup clauses when</span>
+    <span class="c1"># the right-hand side of the lookup isn&#39;t a raw string (it might be an expression</span>
+    <span class="c1"># or the result of a bilateral transformation).</span>
+    <span class="c1"># In those cases, special characters for LIKE operators (e.g. \, *, _) should be</span>
+    <span class="c1"># escaped on database side.</span>
+    <span class="c1">#</span>
+    <span class="c1"># Note: we use str.format() here for readability as &#39;%&#39; is used as a wildcard for</span>
+    <span class="c1"># the LIKE operator.</span>
+<div class="viewcode-block" id="DatabaseWrapper.pattern_esc">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.pattern_esc">[docs]</a>
+    <span class="n">pattern_esc</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="sa">r</span><span class="s2">&quot;REPLACE(REPLACE(REPLACE(</span><span class="si">{}</span><span class="s2">, E&#39;</span><span class="se">\\</span><span class="s2">&#39;, E&#39;</span><span class="se">\\\\</span><span class="s2">&#39;), E&#39;</span><span class="si">%%</span><span class="s2">&#39;, E&#39;</span><span class="se">\\</span><span class="si">%%</span><span class="s2">&#39;), E&#39;_&#39;, E&#39;</span><span class="se">\\</span><span class="s2">_&#39;)&quot;</span>
+    <span class="p">)</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.pattern_ops">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.pattern_ops">[docs]</a>
+    <span class="n">pattern_ops</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;contains&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE &#39;</span><span class="si">%%</span><span class="s2">&#39; || </span><span class="si">{}</span><span class="s2"> || &#39;</span><span class="si">%%</span><span class="s2">&#39;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;icontains&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE &#39;</span><span class="si">%%</span><span class="s2">&#39; || UPPER(</span><span class="si">{}</span><span class="s2">) || &#39;</span><span class="si">%%</span><span class="s2">&#39;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;startswith&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE </span><span class="si">{}</span><span class="s2"> || &#39;</span><span class="si">%%</span><span class="s2">&#39;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;istartswith&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE UPPER(</span><span class="si">{}</span><span class="s2">) || &#39;</span><span class="si">%%</span><span class="s2">&#39;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;endswith&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE &#39;</span><span class="si">%%</span><span class="s2">&#39; || </span><span class="si">{}</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;iendswith&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE &#39;</span><span class="si">%%</span><span class="s2">&#39; || UPPER(</span><span class="si">{}</span><span class="s2">)&quot;</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.Database">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.Database">[docs]</a>
+    <span class="n">Database</span> <span class="o">=</span> <span class="n">Database</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.SchemaEditorClass">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.SchemaEditorClass">[docs]</a>
+    <span class="n">SchemaEditorClass</span> <span class="o">=</span> <span class="n">DatabaseSchemaEditor</span></div>
+
+    <span class="c1"># Classes instantiated in __init__().</span>
+<div class="viewcode-block" id="DatabaseWrapper.client_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.client_class">[docs]</a>
+    <span class="n">client_class</span> <span class="o">=</span> <span class="n">DatabaseClient</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.creation_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.creation_class">[docs]</a>
+    <span class="n">creation_class</span> <span class="o">=</span> <span class="n">DatabaseCreation</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.features_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.features_class">[docs]</a>
+    <span class="n">features_class</span> <span class="o">=</span> <span class="n">DatabaseFeatures</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.introspection_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.introspection_class">[docs]</a>
+    <span class="n">introspection_class</span> <span class="o">=</span> <span class="n">DatabaseIntrospection</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.ops_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.ops_class">[docs]</a>
+    <span class="n">ops_class</span> <span class="o">=</span> <span class="n">DatabaseOperations</span></div>
+
+    <span class="c1"># PostgreSQL backend-specific attributes.</span>
+    <span class="n">_named_cursor_idx</span> <span class="o">=</span> <span class="mi">0</span>
+
+<div class="viewcode-block" id="DatabaseWrapper.get_database_version">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.get_database_version">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_database_version</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a tuple of the database&#39;s version.</span>
+<span class="sd">        E.g. for pg_version 120004, return (12, 4).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">divmod</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">pg_version</span><span class="p">,</span> <span class="mi">10000</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.get_connection_params">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.get_connection_params">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_connection_params</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">settings_dict</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">settings_dict</span>
+        <span class="c1"># None may be used to connect to the default &#39;postgres&#39; db</span>
+        <span class="k">if</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;NAME&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;&quot;</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">settings_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;OPTIONS&quot;</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+            <span class="s2">&quot;service&quot;</span>
+        <span class="p">):</span>
+            <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+                <span class="s2">&quot;settings.DATABASES is improperly configured. &quot;</span>
+                <span class="s2">&quot;Please supply the NAME or OPTIONS[&#39;service&#39;] value.&quot;</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;NAME&quot;</span><span class="p">]</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">max_name_length</span><span class="p">():</span>
+            <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+                <span class="s2">&quot;The database name &#39;</span><span class="si">%s</span><span class="s2">&#39; (</span><span class="si">%d</span><span class="s2"> characters) is longer than &quot;</span>
+                <span class="s2">&quot;PostgreSQL&#39;s limit of </span><span class="si">%d</span><span class="s2"> characters. Supply a shorter NAME &quot;</span>
+                <span class="s2">&quot;in settings.DATABASES.&quot;</span>
+                <span class="o">%</span> <span class="p">(</span>
+                    <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;NAME&quot;</span><span class="p">],</span>
+                    <span class="nb">len</span><span class="p">(</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;NAME&quot;</span><span class="p">]),</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">max_name_length</span><span class="p">(),</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;NAME&quot;</span><span class="p">]:</span>
+            <span class="n">conn_params</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">&quot;dbname&quot;</span><span class="p">:</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;NAME&quot;</span><span class="p">],</span>
+                <span class="o">**</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;OPTIONS&quot;</span><span class="p">],</span>
+            <span class="p">}</span>
+        <span class="k">elif</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;NAME&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Connect to the default &#39;postgres&#39; db.</span>
+            <span class="n">settings_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;OPTIONS&quot;</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;service&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="n">conn_params</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;dbname&quot;</span><span class="p">:</span> <span class="s2">&quot;postgres&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;OPTIONS&quot;</span><span class="p">]}</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">conn_params</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;OPTIONS&quot;</span><span class="p">]}</span>
+        <span class="n">conn_params</span><span class="p">[</span><span class="s2">&quot;client_encoding&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;UTF8&quot;</span>
+
+        <span class="n">conn_params</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;assume_role&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="n">conn_params</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;isolation_level&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="n">server_side_binding</span> <span class="o">=</span> <span class="n">conn_params</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;server_side_binding&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="n">conn_params</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span>
+            <span class="s2">&quot;cursor_factory&quot;</span><span class="p">,</span>
+            <span class="n">ServerBindingCursor</span>
+            <span class="k">if</span> <span class="n">is_psycopg3</span> <span class="ow">and</span> <span class="n">server_side_binding</span> <span class="ow">is</span> <span class="kc">True</span>
+            <span class="k">else</span> <span class="n">Cursor</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;USER&quot;</span><span class="p">]:</span>
+            <span class="n">conn_params</span><span class="p">[</span><span class="s2">&quot;user&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;USER&quot;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;PASSWORD&quot;</span><span class="p">]:</span>
+            <span class="n">conn_params</span><span class="p">[</span><span class="s2">&quot;password&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;PASSWORD&quot;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;HOST&quot;</span><span class="p">]:</span>
+            <span class="n">conn_params</span><span class="p">[</span><span class="s2">&quot;host&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;HOST&quot;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;PORT&quot;</span><span class="p">]:</span>
+            <span class="n">conn_params</span><span class="p">[</span><span class="s2">&quot;port&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;PORT&quot;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">is_psycopg3</span><span class="p">:</span>
+            <span class="n">conn_params</span><span class="p">[</span><span class="s2">&quot;context&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">get_adapters_template</span><span class="p">(</span>
+                <span class="n">settings</span><span class="o">.</span><span class="n">USE_TZ</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">timezone</span>
+            <span class="p">)</span>
+            <span class="c1"># Disable prepared statements by default to keep connection poolers</span>
+            <span class="c1"># working. Can be reenabled via OPTIONS in the settings dict.</span>
+            <span class="n">conn_params</span><span class="p">[</span><span class="s2">&quot;prepare_threshold&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">conn_params</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span>
+                <span class="s2">&quot;prepare_threshold&quot;</span><span class="p">,</span> <span class="kc">None</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">conn_params</span></div>
+
+
+    <span class="nd">@async_unsafe</span>
+<div class="viewcode-block" id="DatabaseWrapper.get_new_connection">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.get_new_connection">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_new_connection</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">conn_params</span><span class="p">):</span>
+        <span class="c1"># self.isolation_level must be set:</span>
+        <span class="c1"># - after connecting to the database in order to obtain the database&#39;s</span>
+        <span class="c1">#   default when no value is explicitly specified in options.</span>
+        <span class="c1"># - before calling _set_autocommit() because if autocommit is on, that</span>
+        <span class="c1">#   will set connection.isolation_level to ISOLATION_LEVEL_AUTOCOMMIT.</span>
+        <span class="n">options</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;OPTIONS&quot;</span><span class="p">]</span>
+        <span class="n">set_isolation_level</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">isolation_level_value</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;isolation_level&quot;</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">isolation_level</span> <span class="o">=</span> <span class="n">IsolationLevel</span><span class="o">.</span><span class="n">READ_COMMITTED</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Set the isolation level to the value from OPTIONS.</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">isolation_level</span> <span class="o">=</span> <span class="n">IsolationLevel</span><span class="p">(</span><span class="n">isolation_level_value</span><span class="p">)</span>
+                <span class="n">set_isolation_level</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;Invalid transaction isolation level </span><span class="si">{</span><span class="n">isolation_level_value</span><span class="si">}</span><span class="s2"> &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;specified. Use one of the psycopg.IsolationLevel values.&quot;</span>
+                <span class="p">)</span>
+        <span class="n">connection</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Database</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="o">**</span><span class="n">conn_params</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">set_isolation_level</span><span class="p">:</span>
+            <span class="n">connection</span><span class="o">.</span><span class="n">isolation_level</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">isolation_level</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">is_psycopg3</span><span class="p">:</span>
+            <span class="c1"># Register dummy loads() to avoid a round trip from psycopg2&#39;s</span>
+            <span class="c1"># decode to json.dumps() to json.loads(), when using a custom</span>
+            <span class="c1"># decoder in JSONField.</span>
+            <span class="n">psycopg2</span><span class="o">.</span><span class="n">extras</span><span class="o">.</span><span class="n">register_default_jsonb</span><span class="p">(</span>
+                <span class="n">conn_or_curs</span><span class="o">=</span><span class="n">connection</span><span class="p">,</span> <span class="n">loads</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">connection</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.ensure_timezone">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.ensure_timezone">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">ensure_timezone</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">conn_timezone_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">parameter_status</span><span class="p">(</span><span class="s2">&quot;TimeZone&quot;</span><span class="p">)</span>
+        <span class="n">timezone_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">timezone_name</span>
+        <span class="k">if</span> <span class="n">timezone_name</span> <span class="ow">and</span> <span class="n">conn_timezone_name</span> <span class="o">!=</span> <span class="n">timezone_name</span><span class="p">:</span>
+            <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+                <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">set_time_zone_sql</span><span class="p">(),</span> <span class="p">[</span><span class="n">timezone_name</span><span class="p">])</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.ensure_role">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.ensure_role">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">ensure_role</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="n">new_role</span> <span class="o">:=</span> <span class="bp">self</span><span class="o">.</span><span class="n">settings_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;OPTIONS&quot;</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;assume_role&quot;</span><span class="p">):</span>
+            <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+                <span class="n">sql</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">compose_sql</span><span class="p">(</span><span class="s2">&quot;SET ROLE </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="p">[</span><span class="n">new_role</span><span class="p">])</span>
+                <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">sql</span><span class="p">)</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.init_connection_state">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.init_connection_state">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">init_connection_state</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">init_connection_state</span><span class="p">()</span>
+
+        <span class="c1"># Commit after setting the time zone.</span>
+        <span class="n">commit_tz</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ensure_timezone</span><span class="p">()</span>
+        <span class="c1"># Set the role on the connection. This is useful if the credential used</span>
+        <span class="c1"># to login is not the same as the role that owns database resources. As</span>
+        <span class="c1"># can be the case when using temporary or ephemeral credentials.</span>
+        <span class="n">commit_role</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ensure_role</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="n">commit_role</span> <span class="ow">or</span> <span class="n">commit_tz</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_autocommit</span><span class="p">():</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span></div>
+
+
+    <span class="nd">@async_unsafe</span>
+<div class="viewcode-block" id="DatabaseWrapper.create_cursor">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.create_cursor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_cursor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">name</span><span class="p">:</span>
+            <span class="c1"># In autocommit mode, the cursor will be used outside of a</span>
+            <span class="c1"># transaction, hence use a holdable cursor.</span>
+            <span class="n">cursor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">cursor</span><span class="p">(</span>
+                <span class="n">name</span><span class="p">,</span> <span class="n">scrollable</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">withhold</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">autocommit</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">cursor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">is_psycopg3</span><span class="p">:</span>
+            <span class="c1"># Register the cursor timezone only if the connection disagrees, to</span>
+            <span class="c1"># avoid copying the adapter map.</span>
+            <span class="n">tzloader</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">adapters</span><span class="o">.</span><span class="n">get_loader</span><span class="p">(</span><span class="n">TIMESTAMPTZ_OID</span><span class="p">,</span> <span class="n">Format</span><span class="o">.</span><span class="n">TEXT</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">timezone</span> <span class="o">!=</span> <span class="n">tzloader</span><span class="o">.</span><span class="n">timezone</span><span class="p">:</span>
+                <span class="n">register_tzloader</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">timezone</span><span class="p">,</span> <span class="n">cursor</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">tzinfo_factory</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tzinfo_factory</span> <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">USE_TZ</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="k">return</span> <span class="n">cursor</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.tzinfo_factory">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.tzinfo_factory">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">tzinfo_factory</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">offset</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">timezone</span></div>
+
+
+    <span class="nd">@async_unsafe</span>
+<div class="viewcode-block" id="DatabaseWrapper.chunked_cursor">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.chunked_cursor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">chunked_cursor</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_named_cursor_idx</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="c1"># Get the current async task</span>
+        <span class="c1"># Note that right now this is behind @async_unsafe, so this is</span>
+        <span class="c1"># unreachable, but in future we&#39;ll start loosening this restriction.</span>
+        <span class="c1"># For now, it&#39;s here so that every use of &quot;threading&quot; is</span>
+        <span class="c1"># also async-compatible.</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">current_task</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">current_task</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">RuntimeError</span><span class="p">:</span>
+            <span class="n">current_task</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="c1"># Current task can be none even if the current_task call didn&#39;t error</span>
+        <span class="k">if</span> <span class="n">current_task</span><span class="p">:</span>
+            <span class="n">task_ident</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="nb">id</span><span class="p">(</span><span class="n">current_task</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">task_ident</span> <span class="o">=</span> <span class="s2">&quot;sync&quot;</span>
+        <span class="c1"># Use that and the thread ident to get a unique name</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cursor</span><span class="p">(</span>
+            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;_django_curs_</span><span class="si">%d</span><span class="s2">_</span><span class="si">%s</span><span class="s2">_</span><span class="si">%d</span><span class="s2">&quot;</span>
+            <span class="o">%</span> <span class="p">(</span>
+                <span class="c1"># Avoid reusing name in other threads / tasks</span>
+                <span class="n">threading</span><span class="o">.</span><span class="n">current_thread</span><span class="p">()</span><span class="o">.</span><span class="n">ident</span><span class="p">,</span>
+                <span class="n">task_ident</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_named_cursor_idx</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_set_autocommit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">autocommit</span><span class="p">):</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">wrap_database_errors</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">autocommit</span> <span class="o">=</span> <span class="n">autocommit</span>
+
+<div class="viewcode-block" id="DatabaseWrapper.check_constraints">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.check_constraints">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_constraints</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table_names</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Check constraints by setting them to immediate. Return them to deferred</span>
+<span class="sd">        afterward.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;SET CONSTRAINTS ALL IMMEDIATE&quot;</span><span class="p">)</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;SET CONSTRAINTS ALL DEFERRED&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.is_usable">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.is_usable">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_usable</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># Use a psycopg cursor directly, bypassing Django&#39;s utilities.</span>
+            <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+                <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;SELECT 1&quot;</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">Database</span><span class="o">.</span><span class="n">Error</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span></div>
+
+
+    <span class="nd">@contextmanager</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_nodb_cursor</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">cursor</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">_nodb_cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+                <span class="k">yield</span> <span class="n">cursor</span>
+        <span class="k">except</span> <span class="p">(</span><span class="n">Database</span><span class="o">.</span><span class="n">DatabaseError</span><span class="p">,</span> <span class="n">WrappedDatabaseError</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">cursor</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+                <span class="s2">&quot;Normally Django will use a connection to the &#39;postgres&#39; database &quot;</span>
+                <span class="s2">&quot;to avoid running initialization queries against the production &quot;</span>
+                <span class="s2">&quot;database when it&#39;s not needed (for example, when running tests). &quot;</span>
+                <span class="s2">&quot;Django was unable to create a connection to the &#39;postgres&#39; database &quot;</span>
+                <span class="s2">&quot;and will use the first PostgreSQL database instead.&quot;</span><span class="p">,</span>
+                <span class="ne">RuntimeWarning</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">connection</span> <span class="ow">in</span> <span class="n">connections</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
+                <span class="k">if</span> <span class="p">(</span>
+                    <span class="n">connection</span><span class="o">.</span><span class="n">vendor</span> <span class="o">==</span> <span class="s2">&quot;postgresql&quot;</span>
+                    <span class="ow">and</span> <span class="n">connection</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;NAME&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;postgres&quot;</span>
+                <span class="p">):</span>
+                    <span class="n">conn</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="p">(</span>
+                        <span class="p">{</span>
+                            <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">,</span>
+                            <span class="s2">&quot;NAME&quot;</span><span class="p">:</span> <span class="n">connection</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;NAME&quot;</span><span class="p">],</span>
+                        <span class="p">},</span>
+                        <span class="n">alias</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">alias</span><span class="p">,</span>
+                    <span class="p">)</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="k">with</span> <span class="n">conn</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+                            <span class="k">yield</span> <span class="n">cursor</span>
+                    <span class="k">finally</span><span class="p">:</span>
+                        <span class="n">conn</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+                    <span class="k">break</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span>
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="DatabaseWrapper.pg_version">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.pg_version">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">pg_version</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">temporary_connection</span><span class="p">():</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">server_version</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.make_debug_cursor">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.DatabaseWrapper.make_debug_cursor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">make_debug_cursor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">CursorDebugWrapper</span><span class="p">(</span><span class="n">cursor</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span></div>
+</div>
+
+
+
+<span class="k">if</span> <span class="n">is_psycopg3</span><span class="p">:</span>
+
+<div class="viewcode-block" id="CursorMixin">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.CursorMixin">[docs]</a>
+    <span class="k">class</span><span class="w"> </span><span class="nc">CursorMixin</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        A subclass of psycopg cursor implementing callproc.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="CursorMixin.callproc">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/base/index.html#django.db.backends.postgresql.base.CursorMixin.callproc">[docs]</a>
+        <span class="k">def</span><span class="w"> </span><span class="nf">callproc</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">sql</span><span class="o">.</span><span class="n">Identifier</span><span class="p">):</span>
+                <span class="n">name</span> <span class="o">=</span> <span class="n">sql</span><span class="o">.</span><span class="n">Identifier</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+
+            <span class="n">qparts</span> <span class="o">=</span> <span class="p">[</span><span class="n">sql</span><span class="o">.</span><span class="n">SQL</span><span class="p">(</span><span class="s2">&quot;SELECT * FROM &quot;</span><span class="p">),</span> <span class="n">name</span><span class="p">,</span> <span class="n">sql</span><span class="o">.</span><span class="n">SQL</span><span class="p">(</span><span class="s2">&quot;(&quot;</span><span class="p">)]</span>
+            <span class="k">if</span> <span class="n">args</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">args</span><span class="p">:</span>
+                    <span class="n">qparts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">sql</span><span class="o">.</span><span class="n">Literal</span><span class="p">(</span><span class="n">item</span><span class="p">))</span>
+                    <span class="n">qparts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">sql</span><span class="o">.</span><span class="n">SQL</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">))</span>
+                <span class="k">del</span> <span class="n">qparts</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+
+            <span class="n">qparts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">sql</span><span class="o">.</span><span class="n">SQL</span><span class="p">(</span><span class="s2">&quot;)&quot;</span><span class="p">))</span>
+            <span class="n">stmt</span> <span class="o">=</span> <span class="n">sql</span><span class="o">.</span><span class="n">Composed</span><span class="p">(</span><span class="n">qparts</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">stmt</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">args</span></div>
+</div>
+
+
+    <span class="k">class</span><span class="w"> </span><span class="nc">ServerBindingCursor</span><span class="p">(</span><span class="n">CursorMixin</span><span class="p">,</span> <span class="n">Database</span><span class="o">.</span><span class="n">Cursor</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+    <span class="k">class</span><span class="w"> </span><span class="nc">Cursor</span><span class="p">(</span><span class="n">CursorMixin</span><span class="p">,</span> <span class="n">Database</span><span class="o">.</span><span class="n">ClientCursor</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+    <span class="k">class</span><span class="w"> </span><span class="nc">CursorDebugWrapper</span><span class="p">(</span><span class="n">BaseCursorDebugWrapper</span><span class="p">):</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">copy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">statement</span><span class="p">):</span>
+            <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">debug_sql</span><span class="p">(</span><span class="n">statement</span><span class="p">):</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">statement</span><span class="p">)</span>
+
+<span class="k">else</span><span class="p">:</span>
+    <span class="n">Cursor</span> <span class="o">=</span> <span class="n">psycopg2</span><span class="o">.</span><span class="n">extensions</span><span class="o">.</span><span class="n">cursor</span>
+
+    <span class="k">class</span><span class="w"> </span><span class="nc">CursorDebugWrapper</span><span class="p">(</span><span class="n">BaseCursorDebugWrapper</span><span class="p">):</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">copy_expert</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">file</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">):</span>
+            <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">debug_sql</span><span class="p">(</span><span class="n">sql</span><span class="p">):</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="o">.</span><span class="n">copy_expert</span><span class="p">(</span><span class="n">sql</span><span class="p">,</span> <span class="n">file</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">)</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">copy_to</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">file</span><span class="p">,</span> <span class="n">table</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+            <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">debug_sql</span><span class="p">(</span><span class="n">sql</span><span class="o">=</span><span class="s2">&quot;COPY </span><span class="si">%s</span><span class="s2"> TO STDOUT&quot;</span> <span class="o">%</span> <span class="n">table</span><span class="p">):</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="o">.</span><span class="n">copy_to</span><span class="p">(</span><span class="n">file</span><span class="p">,</span> <span class="n">table</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

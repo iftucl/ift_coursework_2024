@@ -1,0 +1,643 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.db.backends.postgresql.operations &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../../../db.html">django.db</a></li>
+      <li class="breadcrumb-item active">django.db.backends.postgresql.operations</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.db.backends.postgresql.operations</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">lru_cache</span><span class="p">,</span> <span class="n">partial</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.base.operations</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseDatabaseOperations</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.postgresql.psycopg_any</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">Inet</span><span class="p">,</span>
+    <span class="n">Jsonb</span><span class="p">,</span>
+    <span class="n">errors</span><span class="p">,</span>
+    <span class="n">is_psycopg3</span><span class="p">,</span>
+    <span class="n">mogrify</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">split_tzname_delta</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.models.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">OnConflict</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.regex_helper</span><span class="w"> </span><span class="kn">import</span> <span class="n">_lazy_re_compile</span>
+
+
+<span class="nd">@lru_cache</span>
+<div class="viewcode-block" id="get_json_dumps">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.get_json_dumps">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_json_dumps</span><span class="p">(</span><span class="n">encoder</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">encoder</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span>
+    <span class="k">return</span> <span class="n">partial</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">,</span> <span class="bp">cls</span><span class="o">=</span><span class="n">encoder</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="DatabaseOperations">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DatabaseOperations</span><span class="p">(</span><span class="n">BaseDatabaseOperations</span><span class="p">):</span>
+<div class="viewcode-block" id="DatabaseOperations.cast_char_field_without_max_length">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.cast_char_field_without_max_length">[docs]</a>
+    <span class="n">cast_char_field_without_max_length</span> <span class="o">=</span> <span class="s2">&quot;varchar&quot;</span></div>
+
+<div class="viewcode-block" id="DatabaseOperations.explain_prefix">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.explain_prefix">[docs]</a>
+    <span class="n">explain_prefix</span> <span class="o">=</span> <span class="s2">&quot;EXPLAIN&quot;</span></div>
+
+<div class="viewcode-block" id="DatabaseOperations.explain_options">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.explain_options">[docs]</a>
+    <span class="n">explain_options</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">(</span>
+        <span class="p">[</span>
+            <span class="s2">&quot;ANALYZE&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;BUFFERS&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;COSTS&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;SETTINGS&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;SUMMARY&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;TIMING&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;VERBOSE&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;WAL&quot;</span><span class="p">,</span>
+        <span class="p">]</span>
+    <span class="p">)</span></div>
+
+<div class="viewcode-block" id="DatabaseOperations.cast_data_types">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.cast_data_types">[docs]</a>
+    <span class="n">cast_data_types</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;AutoField&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;BigAutoField&quot;</span><span class="p">:</span> <span class="s2">&quot;bigint&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;SmallAutoField&quot;</span><span class="p">:</span> <span class="s2">&quot;smallint&quot;</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+
+    <span class="k">if</span> <span class="n">is_psycopg3</span><span class="p">:</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">psycopg.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">numeric</span>
+
+<div class="viewcode-block" id="DatabaseOperations.integerfield_type_map">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.integerfield_type_map">[docs]</a>
+        <span class="n">integerfield_type_map</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;SmallIntegerField&quot;</span><span class="p">:</span> <span class="n">numeric</span><span class="o">.</span><span class="n">Int2</span><span class="p">,</span>
+            <span class="s2">&quot;IntegerField&quot;</span><span class="p">:</span> <span class="n">numeric</span><span class="o">.</span><span class="n">Int4</span><span class="p">,</span>
+            <span class="s2">&quot;BigIntegerField&quot;</span><span class="p">:</span> <span class="n">numeric</span><span class="o">.</span><span class="n">Int8</span><span class="p">,</span>
+            <span class="s2">&quot;PositiveSmallIntegerField&quot;</span><span class="p">:</span> <span class="n">numeric</span><span class="o">.</span><span class="n">Int2</span><span class="p">,</span>
+            <span class="s2">&quot;PositiveIntegerField&quot;</span><span class="p">:</span> <span class="n">numeric</span><span class="o">.</span><span class="n">Int4</span><span class="p">,</span>
+            <span class="s2">&quot;PositiveBigIntegerField&quot;</span><span class="p">:</span> <span class="n">numeric</span><span class="o">.</span><span class="n">Int8</span><span class="p">,</span>
+        <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.unification_cast_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.unification_cast_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">unification_cast_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">output_field</span><span class="p">):</span>
+        <span class="n">internal_type</span> <span class="o">=</span> <span class="n">output_field</span><span class="o">.</span><span class="n">get_internal_type</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">internal_type</span> <span class="ow">in</span> <span class="p">(</span>
+            <span class="s2">&quot;GenericIPAddressField&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;IPAddressField&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;TimeField&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;UUIDField&quot;</span><span class="p">,</span>
+        <span class="p">):</span>
+            <span class="c1"># PostgreSQL will resolve a union as type &#39;text&#39; if input types are</span>
+            <span class="c1"># &#39;unknown&#39;.</span>
+            <span class="c1"># https://www.postgresql.org/docs/current/typeconv-union-case.html</span>
+            <span class="c1"># These fields cannot be implicitly cast back in the default</span>
+            <span class="c1"># PostgreSQL configuration so we need to explicitly cast them.</span>
+            <span class="c1"># We must also remove components of the type within brackets:</span>
+            <span class="c1"># varchar(255) -&gt; varchar.</span>
+            <span class="k">return</span> <span class="p">(</span>
+                <span class="s2">&quot;CAST(</span><span class="si">%%</span><span class="s2">s AS </span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="n">output_field</span><span class="o">.</span><span class="n">db_type</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;(&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">&quot;</span></div>
+
+
+    <span class="c1"># EXTRACT format cannot be passed in parameters.</span>
+    <span class="n">_extract_format_re</span> <span class="o">=</span> <span class="n">_lazy_re_compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;[A-Z_]+&quot;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="DatabaseOperations.date_extract_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.date_extract_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">date_extract_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="c1"># https://www.postgresql.org/docs/current/functions-datetime.html#FUNCTIONS-DATETIME-EXTRACT</span>
+        <span class="k">if</span> <span class="n">lookup_type</span> <span class="o">==</span> <span class="s2">&quot;week_day&quot;</span><span class="p">:</span>
+            <span class="c1"># For consistency across backends, we return Sunday=1, Saturday=7.</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;EXTRACT(DOW FROM </span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">) + 1&quot;</span><span class="p">,</span> <span class="n">params</span>
+        <span class="k">elif</span> <span class="n">lookup_type</span> <span class="o">==</span> <span class="s2">&quot;iso_week_day&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;EXTRACT(ISODOW FROM </span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span> <span class="n">params</span>
+        <span class="k">elif</span> <span class="n">lookup_type</span> <span class="o">==</span> <span class="s2">&quot;iso_year&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;EXTRACT(ISOYEAR FROM </span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span> <span class="n">params</span>
+
+        <span class="n">lookup_type</span> <span class="o">=</span> <span class="n">lookup_type</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_extract_format_re</span><span class="o">.</span><span class="n">fullmatch</span><span class="p">(</span><span class="n">lookup_type</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Invalid lookup type: </span><span class="si">{</span><span class="n">lookup_type</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;EXTRACT(</span><span class="si">{</span><span class="n">lookup_type</span><span class="si">}</span><span class="s2"> FROM </span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span> <span class="n">params</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.date_trunc_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.date_trunc_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">date_trunc_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="n">sql</span><span class="p">,</span> <span class="n">params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_sql_to_tz</span><span class="p">(</span><span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">)</span>
+        <span class="c1"># https://www.postgresql.org/docs/current/functions-datetime.html#FUNCTIONS-DATETIME-TRUNC</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;DATE_TRUNC(%s, </span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">lookup_type</span><span class="p">,</span> <span class="o">*</span><span class="n">params</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_prepare_tzname_delta</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tzname</span><span class="p">):</span>
+        <span class="n">tzname</span><span class="p">,</span> <span class="n">sign</span><span class="p">,</span> <span class="n">offset</span> <span class="o">=</span> <span class="n">split_tzname_delta</span><span class="p">(</span><span class="n">tzname</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">offset</span><span class="p">:</span>
+            <span class="n">sign</span> <span class="o">=</span> <span class="s2">&quot;-&quot;</span> <span class="k">if</span> <span class="n">sign</span> <span class="o">==</span> <span class="s2">&quot;+&quot;</span> <span class="k">else</span> <span class="s2">&quot;+&quot;</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">tzname</span><span class="si">}{</span><span class="n">sign</span><span class="si">}{</span><span class="n">offset</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="k">return</span> <span class="n">tzname</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_convert_sql_to_tz</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">tzname</span> <span class="ow">and</span> <span class="n">settings</span><span class="o">.</span><span class="n">USE_TZ</span><span class="p">:</span>
+            <span class="n">tzname_param</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prepare_tzname_delta</span><span class="p">(</span><span class="n">tzname</span><span class="p">)</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2"> AT TIME ZONE %s&quot;</span><span class="p">,</span> <span class="p">(</span><span class="o">*</span><span class="n">params</span><span class="p">,</span> <span class="n">tzname_param</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span>
+
+<div class="viewcode-block" id="DatabaseOperations.datetime_cast_date_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.datetime_cast_date_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">datetime_cast_date_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">):</span>
+        <span class="n">sql</span><span class="p">,</span> <span class="n">params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_sql_to_tz</span><span class="p">(</span><span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">)</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;(</span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">)::date&quot;</span><span class="p">,</span> <span class="n">params</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.datetime_cast_time_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.datetime_cast_time_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">datetime_cast_time_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">):</span>
+        <span class="n">sql</span><span class="p">,</span> <span class="n">params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_sql_to_tz</span><span class="p">(</span><span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">)</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;(</span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">)::time&quot;</span><span class="p">,</span> <span class="n">params</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.datetime_extract_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.datetime_extract_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">datetime_extract_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">):</span>
+        <span class="n">sql</span><span class="p">,</span> <span class="n">params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_sql_to_tz</span><span class="p">(</span><span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">lookup_type</span> <span class="o">==</span> <span class="s2">&quot;second&quot;</span><span class="p">:</span>
+            <span class="c1"># Truncate fractional seconds.</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;EXTRACT(SECOND FROM DATE_TRUNC(%s, </span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">))&quot;</span><span class="p">,</span> <span class="p">(</span><span class="s2">&quot;second&quot;</span><span class="p">,</span> <span class="o">*</span><span class="n">params</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">date_extract_sql</span><span class="p">(</span><span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.datetime_trunc_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.datetime_trunc_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">datetime_trunc_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">):</span>
+        <span class="n">sql</span><span class="p">,</span> <span class="n">params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_sql_to_tz</span><span class="p">(</span><span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">)</span>
+        <span class="c1"># https://www.postgresql.org/docs/current/functions-datetime.html#FUNCTIONS-DATETIME-TRUNC</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;DATE_TRUNC(%s, </span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">lookup_type</span><span class="p">,</span> <span class="o">*</span><span class="n">params</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.time_extract_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.time_extract_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">time_extract_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">lookup_type</span> <span class="o">==</span> <span class="s2">&quot;second&quot;</span><span class="p">:</span>
+            <span class="c1"># Truncate fractional seconds.</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;EXTRACT(SECOND FROM DATE_TRUNC(%s, </span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">))&quot;</span><span class="p">,</span> <span class="p">(</span><span class="s2">&quot;second&quot;</span><span class="p">,</span> <span class="o">*</span><span class="n">params</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">date_extract_sql</span><span class="p">(</span><span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.time_trunc_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.time_trunc_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">time_trunc_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="n">sql</span><span class="p">,</span> <span class="n">params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_sql_to_tz</span><span class="p">(</span><span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">)</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;DATE_TRUNC(%s, </span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">)::time&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">lookup_type</span><span class="p">,</span> <span class="o">*</span><span class="n">params</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.deferrable_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.deferrable_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">deferrable_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot; DEFERRABLE INITIALLY DEFERRED&quot;</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.fetch_returned_insert_rows">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.fetch_returned_insert_rows">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">fetch_returned_insert_rows</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Given a cursor object that has just performed an INSERT...RETURNING</span>
+<span class="sd">        statement into a table, return the tuple of returned data.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.lookup_cast">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.lookup_cast">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">lookup_cast</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">internal_type</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="n">lookup</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">&quot;</span>
+        <span class="c1"># Cast text lookups to text to allow things like filter(x__contains=4)</span>
+        <span class="k">if</span> <span class="n">lookup_type</span> <span class="ow">in</span> <span class="p">(</span>
+            <span class="s2">&quot;iexact&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;contains&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;icontains&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;startswith&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;istartswith&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;endswith&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;iendswith&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;regex&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;iregex&quot;</span><span class="p">,</span>
+        <span class="p">):</span>
+            <span class="k">if</span> <span class="n">internal_type</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;IPAddressField&quot;</span><span class="p">,</span> <span class="s2">&quot;GenericIPAddressField&quot;</span><span class="p">):</span>
+                <span class="n">lookup</span> <span class="o">=</span> <span class="s2">&quot;HOST(</span><span class="si">%s</span><span class="s2">)&quot;</span>
+            <span class="c1"># RemovedInDjango51Warning.</span>
+            <span class="k">elif</span> <span class="n">internal_type</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;CICharField&quot;</span><span class="p">,</span> <span class="s2">&quot;CIEmailField&quot;</span><span class="p">,</span> <span class="s2">&quot;CITextField&quot;</span><span class="p">):</span>
+                <span class="n">lookup</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">::citext&quot;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">lookup</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">::text&quot;</span>
+
+        <span class="c1"># Use UPPER(x) for case-insensitive lookups; it&#39;s faster.</span>
+        <span class="k">if</span> <span class="n">lookup_type</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;iexact&quot;</span><span class="p">,</span> <span class="s2">&quot;icontains&quot;</span><span class="p">,</span> <span class="s2">&quot;istartswith&quot;</span><span class="p">,</span> <span class="s2">&quot;iendswith&quot;</span><span class="p">):</span>
+            <span class="n">lookup</span> <span class="o">=</span> <span class="s2">&quot;UPPER(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="n">lookup</span>
+
+        <span class="k">return</span> <span class="n">lookup</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.no_limit_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.no_limit_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">no_limit_value</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.prepare_sql_script">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.prepare_sql_script">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">prepare_sql_script</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sql</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">sql</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.quote_name">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.quote_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">quote_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">&#39;&quot;&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">name</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">&#39;&quot;&#39;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">name</span>  <span class="c1"># Quoting once is enough.</span>
+        <span class="k">return</span> <span class="s1">&#39;&quot;</span><span class="si">%s</span><span class="s1">&quot;&#39;</span> <span class="o">%</span> <span class="n">name</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.compose_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.compose_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">compose_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">mogrify</span><span class="p">(</span><span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.set_time_zone_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.set_time_zone_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_time_zone_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;SELECT set_config(&#39;TimeZone&#39;, </span><span class="si">%s</span><span class="s2">, false)&quot;</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.sql_flush">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.sql_flush">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">sql_flush</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">style</span><span class="p">,</span> <span class="n">tables</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">reset_sequences</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">allow_cascade</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">tables</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+        <span class="c1"># Perform a single SQL &#39;TRUNCATE x, y, z...;&#39; statement. It allows us</span>
+        <span class="c1"># to truncate tables referenced by a foreign key in any other table.</span>
+        <span class="n">sql_parts</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;TRUNCATE&quot;</span><span class="p">),</span>
+            <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">style</span><span class="o">.</span><span class="n">SQL_FIELD</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">table</span><span class="p">))</span> <span class="k">for</span> <span class="n">table</span> <span class="ow">in</span> <span class="n">tables</span><span class="p">),</span>
+        <span class="p">]</span>
+        <span class="k">if</span> <span class="n">reset_sequences</span><span class="p">:</span>
+            <span class="n">sql_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;RESTART IDENTITY&quot;</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">allow_cascade</span><span class="p">:</span>
+            <span class="n">sql_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;CASCADE&quot;</span><span class="p">))</span>
+        <span class="k">return</span> <span class="p">[</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">;&quot;</span> <span class="o">%</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">sql_parts</span><span class="p">)]</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.sequence_reset_by_name_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.sequence_reset_by_name_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">sequence_reset_by_name_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">style</span><span class="p">,</span> <span class="n">sequences</span><span class="p">):</span>
+        <span class="c1"># &#39;ALTER SEQUENCE sequence_name RESTART WITH 1;&#39;... style SQL statements</span>
+        <span class="c1"># to reset sequence indices</span>
+        <span class="n">sql</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">sequence_info</span> <span class="ow">in</span> <span class="n">sequences</span><span class="p">:</span>
+            <span class="n">table_name</span> <span class="o">=</span> <span class="n">sequence_info</span><span class="p">[</span><span class="s2">&quot;table&quot;</span><span class="p">]</span>
+            <span class="c1"># &#39;id&#39; will be the case if it&#39;s an m2m using an autogenerated</span>
+            <span class="c1"># intermediate table (see BaseDatabaseIntrospection.sequence_list).</span>
+            <span class="n">column_name</span> <span class="o">=</span> <span class="n">sequence_info</span><span class="p">[</span><span class="s2">&quot;column&quot;</span><span class="p">]</span> <span class="ow">or</span> <span class="s2">&quot;id&quot;</span>
+            <span class="n">sql</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> setval(pg_get_serial_sequence(&#39;</span><span class="si">%s</span><span class="s2">&#39;,&#39;</span><span class="si">%s</span><span class="s2">&#39;), 1, false);&quot;</span>
+                <span class="o">%</span> <span class="p">(</span>
+                    <span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;SELECT&quot;</span><span class="p">),</span>
+                    <span class="n">style</span><span class="o">.</span><span class="n">SQL_TABLE</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">table_name</span><span class="p">)),</span>
+                    <span class="n">style</span><span class="o">.</span><span class="n">SQL_FIELD</span><span class="p">(</span><span class="n">column_name</span><span class="p">),</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">sql</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.tablespace_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.tablespace_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">tablespace_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tablespace</span><span class="p">,</span> <span class="n">inline</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">inline</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;USING INDEX TABLESPACE </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">tablespace</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;TABLESPACE </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">tablespace</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.sequence_reset_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.sequence_reset_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">sequence_reset_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">style</span><span class="p">,</span> <span class="n">model_list</span><span class="p">):</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">models</span>
+
+        <span class="n">output</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">qn</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span>
+        <span class="k">for</span> <span class="n">model</span> <span class="ow">in</span> <span class="n">model_list</span><span class="p">:</span>
+            <span class="c1"># Use `coalesce` to set the sequence for each model to the max pk</span>
+            <span class="c1"># value if there are records, or 1 if there are none. Set the</span>
+            <span class="c1"># `is_called` property (the third argument to `setval`) to true if</span>
+            <span class="c1"># there are records (as the max pk value is already in use),</span>
+            <span class="c1"># otherwise set it to false. Use pg_get_serial_sequence to get the</span>
+            <span class="c1"># underlying sequence name from the table name and column name.</span>
+
+            <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">local_fields</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">AutoField</span><span class="p">):</span>
+                    <span class="n">output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                        <span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> setval(pg_get_serial_sequence(&#39;</span><span class="si">%s</span><span class="s2">&#39;,&#39;</span><span class="si">%s</span><span class="s2">&#39;), &quot;</span>
+                        <span class="s2">&quot;coalesce(max(</span><span class="si">%s</span><span class="s2">), 1), max(</span><span class="si">%s</span><span class="s2">) </span><span class="si">%s</span><span class="s2"> null) </span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2">;&quot;</span>
+                        <span class="o">%</span> <span class="p">(</span>
+                            <span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;SELECT&quot;</span><span class="p">),</span>
+                            <span class="n">style</span><span class="o">.</span><span class="n">SQL_TABLE</span><span class="p">(</span><span class="n">qn</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span><span class="p">)),</span>
+                            <span class="n">style</span><span class="o">.</span><span class="n">SQL_FIELD</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">column</span><span class="p">),</span>
+                            <span class="n">style</span><span class="o">.</span><span class="n">SQL_FIELD</span><span class="p">(</span><span class="n">qn</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">column</span><span class="p">)),</span>
+                            <span class="n">style</span><span class="o">.</span><span class="n">SQL_FIELD</span><span class="p">(</span><span class="n">qn</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">column</span><span class="p">)),</span>
+                            <span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;IS NOT&quot;</span><span class="p">),</span>
+                            <span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;FROM&quot;</span><span class="p">),</span>
+                            <span class="n">style</span><span class="o">.</span><span class="n">SQL_TABLE</span><span class="p">(</span><span class="n">qn</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span><span class="p">)),</span>
+                        <span class="p">)</span>
+                    <span class="p">)</span>
+                    <span class="c1"># Only one AutoField is allowed per model, so don&#39;t bother</span>
+                    <span class="c1"># continuing.</span>
+                    <span class="k">break</span>
+        <span class="k">return</span> <span class="n">output</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.prep_for_iexact_query">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.prep_for_iexact_query">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">prep_for_iexact_query</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">x</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.max_name_length">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.max_name_length">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">max_name_length</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the maximum length of an identifier.</span>
+
+<span class="sd">        The maximum length of an identifier is 63 by default, but can be</span>
+<span class="sd">        changed by recompiling PostgreSQL after editing the NAMEDATALEN</span>
+<span class="sd">        macro in src/include/pg_config_manual.h.</span>
+
+<span class="sd">        This implementation returns 63, but can be overridden by a custom</span>
+<span class="sd">        database backend that inherits most of its behavior from this one.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="mi">63</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.distinct_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.distinct_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">distinct_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">fields</span><span class="p">:</span>
+            <span class="n">params</span> <span class="o">=</span> <span class="p">[</span><span class="n">param</span> <span class="k">for</span> <span class="n">param_list</span> <span class="ow">in</span> <span class="n">params</span> <span class="k">for</span> <span class="n">param</span> <span class="ow">in</span> <span class="n">param_list</span><span class="p">]</span>
+            <span class="k">return</span> <span class="p">([</span><span class="s2">&quot;DISTINCT ON (</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">fields</span><span class="p">)],</span> <span class="n">params</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[</span><span class="s2">&quot;DISTINCT&quot;</span><span class="p">],</span> <span class="p">[]</span></div>
+
+
+    <span class="k">if</span> <span class="n">is_psycopg3</span><span class="p">:</span>
+
+<div class="viewcode-block" id="DatabaseOperations.last_executed_query">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.last_executed_query">[docs]</a>
+        <span class="k">def</span><span class="w"> </span><span class="nf">last_executed_query</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">compose_sql</span><span class="p">(</span><span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">errors</span><span class="o">.</span><span class="n">DataError</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">None</span></div>
+
+
+    <span class="k">else</span><span class="p">:</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">last_executed_query</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+            <span class="c1"># https://www.psycopg.org/docs/cursor.html#cursor.query</span>
+            <span class="c1"># The query attribute is a Psycopg extension to the DB API 2.0.</span>
+            <span class="k">if</span> <span class="n">cursor</span><span class="o">.</span><span class="n">query</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">cursor</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+<div class="viewcode-block" id="DatabaseOperations.return_insert_columns">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.return_insert_columns">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">return_insert_columns</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fields</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">fields</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="p">()</span>
+        <span class="n">columns</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2">&quot;</span>
+            <span class="o">%</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">field</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span><span class="p">),</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">field</span><span class="o">.</span><span class="n">column</span><span class="p">),</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">fields</span>
+        <span class="p">]</span>
+        <span class="k">return</span> <span class="s2">&quot;RETURNING </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">columns</span><span class="p">),</span> <span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.bulk_insert_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.bulk_insert_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">bulk_insert_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">placeholder_rows</span><span class="p">):</span>
+        <span class="n">placeholder_rows_sql</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">row</span><span class="p">)</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">placeholder_rows</span><span class="p">)</span>
+        <span class="n">values_sql</span> <span class="o">=</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s2">&quot;(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="n">sql</span> <span class="k">for</span> <span class="n">sql</span> <span class="ow">in</span> <span class="n">placeholder_rows_sql</span><span class="p">)</span>
+        <span class="k">return</span> <span class="s2">&quot;VALUES &quot;</span> <span class="o">+</span> <span class="n">values_sql</span></div>
+
+
+    <span class="k">if</span> <span class="n">is_psycopg3</span><span class="p">:</span>
+
+<div class="viewcode-block" id="DatabaseOperations.adapt_integerfield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.adapt_integerfield_value">[docs]</a>
+        <span class="k">def</span><span class="w"> </span><span class="nf">adapt_integerfield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">internal_type</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;resolve_expression&quot;</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">value</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">integerfield_type_map</span><span class="p">[</span><span class="n">internal_type</span><span class="p">](</span><span class="n">value</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.adapt_datefield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.adapt_datefield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">adapt_datefield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.adapt_datetimefield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.adapt_datetimefield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">adapt_datetimefield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.adapt_timefield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.adapt_timefield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">adapt_timefield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.adapt_decimalfield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.adapt_decimalfield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">adapt_decimalfield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">max_digits</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">decimal_places</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.adapt_ipaddressfield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.adapt_ipaddressfield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">adapt_ipaddressfield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">value</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">Inet</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.adapt_json_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.adapt_json_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">adapt_json_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">encoder</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">Jsonb</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">dumps</span><span class="o">=</span><span class="n">get_json_dumps</span><span class="p">(</span><span class="n">encoder</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.subtract_temporals">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.subtract_temporals">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">subtract_temporals</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">internal_type</span><span class="p">,</span> <span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">internal_type</span> <span class="o">==</span> <span class="s2">&quot;DateField&quot;</span><span class="p">:</span>
+            <span class="n">lhs_sql</span><span class="p">,</span> <span class="n">lhs_params</span> <span class="o">=</span> <span class="n">lhs</span>
+            <span class="n">rhs_sql</span><span class="p">,</span> <span class="n">rhs_params</span> <span class="o">=</span> <span class="n">rhs</span>
+            <span class="n">params</span> <span class="o">=</span> <span class="p">(</span><span class="o">*</span><span class="n">lhs_params</span><span class="p">,</span> <span class="o">*</span><span class="n">rhs_params</span><span class="p">)</span>
+            <span class="k">return</span> <span class="s2">&quot;(interval &#39;1 day&#39; * (</span><span class="si">%s</span><span class="s2"> - </span><span class="si">%s</span><span class="s2">))&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">lhs_sql</span><span class="p">,</span> <span class="n">rhs_sql</span><span class="p">),</span> <span class="n">params</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">subtract_temporals</span><span class="p">(</span><span class="n">internal_type</span><span class="p">,</span> <span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.explain_query_prefix">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.explain_query_prefix">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">explain_query_prefix</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">options</span><span class="p">):</span>
+        <span class="n">extra</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="c1"># Normalize options.</span>
+        <span class="k">if</span> <span class="n">options</span><span class="p">:</span>
+            <span class="n">options</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="n">name</span><span class="o">.</span><span class="n">upper</span><span class="p">():</span> <span class="s2">&quot;true&quot;</span> <span class="k">if</span> <span class="n">value</span> <span class="k">else</span> <span class="s2">&quot;false&quot;</span>
+                <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">options</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+            <span class="p">}</span>
+            <span class="k">for</span> <span class="n">valid_option</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">explain_options</span><span class="p">:</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="n">options</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">valid_option</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">extra</span><span class="p">[</span><span class="n">valid_option</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+        <span class="n">prefix</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">explain_query_prefix</span><span class="p">(</span><span class="nb">format</span><span class="p">,</span> <span class="o">**</span><span class="n">options</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">format</span><span class="p">:</span>
+            <span class="n">extra</span><span class="p">[</span><span class="s2">&quot;FORMAT&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">format</span>
+        <span class="k">if</span> <span class="n">extra</span><span class="p">:</span>
+            <span class="n">prefix</span> <span class="o">+=</span> <span class="s2">&quot; (</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">extra</span><span class="o">.</span><span class="n">items</span><span class="p">())</span>
+        <span class="k">return</span> <span class="n">prefix</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.on_conflict_suffix_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/postgresql/operations/index.html#django.db.backends.postgresql.operations.DatabaseOperations.on_conflict_suffix_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_conflict_suffix_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">on_conflict</span><span class="p">,</span> <span class="n">update_fields</span><span class="p">,</span> <span class="n">unique_fields</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">on_conflict</span> <span class="o">==</span> <span class="n">OnConflict</span><span class="o">.</span><span class="n">IGNORE</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;ON CONFLICT DO NOTHING&quot;</span>
+        <span class="k">if</span> <span class="n">on_conflict</span> <span class="o">==</span> <span class="n">OnConflict</span><span class="o">.</span><span class="n">UPDATE</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;ON CONFLICT(</span><span class="si">%s</span><span class="s2">) DO UPDATE SET </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span>
+                <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">,</span> <span class="n">unique_fields</span><span class="p">)),</span>
+                <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+                    <span class="p">[</span>
+                        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field</span><span class="si">}</span><span class="s2"> = EXCLUDED.</span><span class="si">{</span><span class="n">field</span><span class="si">}</span><span class="s2">&quot;</span>
+                        <span class="k">for</span> <span class="n">field</span> <span class="ow">in</span> <span class="nb">map</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">,</span> <span class="n">update_fields</span><span class="p">)</span>
+                    <span class="p">]</span>
+                <span class="p">),</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">on_conflict_suffix_sql</span><span class="p">(</span>
+            <span class="n">fields</span><span class="p">,</span>
+            <span class="n">on_conflict</span><span class="p">,</span>
+            <span class="n">update_fields</span><span class="p">,</span>
+            <span class="n">unique_fields</span><span class="p">,</span>
+        <span class="p">)</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

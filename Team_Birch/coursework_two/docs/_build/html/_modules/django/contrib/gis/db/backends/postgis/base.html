@@ -1,0 +1,268 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.contrib.gis.db.backends.postgis.base &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../../../django.html">django</a></li>
+      <li class="breadcrumb-item active">django.contrib.gis.db.backends.postgis.base</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.contrib.gis.db.backends.postgis.base</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">lru_cache</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.base.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">NO_DB_ALIAS</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.postgresql.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseWrapper</span> <span class="k">as</span> <span class="n">PsycopgDatabaseWrapper</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.postgresql.psycopg_any</span><span class="w"> </span><span class="kn">import</span> <span class="n">is_psycopg3</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.adapter</span><span class="w"> </span><span class="kn">import</span> <span class="n">PostGISAdapter</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.features</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseFeatures</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.introspection</span><span class="w"> </span><span class="kn">import</span> <span class="n">PostGISIntrospection</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.operations</span><span class="w"> </span><span class="kn">import</span> <span class="n">PostGISOperations</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.schema</span><span class="w"> </span><span class="kn">import</span> <span class="n">PostGISSchemaEditor</span>
+
+<span class="k">if</span> <span class="n">is_psycopg3</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">psycopg.adapt</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dumper</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">psycopg.pq</span><span class="w"> </span><span class="kn">import</span> <span class="n">Format</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">psycopg.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">TypeInfo</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">psycopg.types.string</span><span class="w"> </span><span class="kn">import</span> <span class="n">TextBinaryLoader</span><span class="p">,</span> <span class="n">TextLoader</span>
+
+<div class="viewcode-block" id="GeometryType">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/base/index.html#django.contrib.gis.db.backends.postgis.base.GeometryType">[docs]</a>
+    <span class="k">class</span><span class="w"> </span><span class="nc">GeometryType</span><span class="p">:</span>
+        <span class="k">pass</span></div>
+
+
+    <span class="k">class</span><span class="w"> </span><span class="nc">GeographyType</span><span class="p">:</span>
+        <span class="k">pass</span>
+
+    <span class="k">class</span><span class="w"> </span><span class="nc">RasterType</span><span class="p">:</span>
+        <span class="k">pass</span>
+
+    <span class="k">class</span><span class="w"> </span><span class="nc">BaseTextDumper</span><span class="p">(</span><span class="n">Dumper</span><span class="p">):</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">dump</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+            <span class="c1"># Return bytes as hex for text formatting</span>
+            <span class="k">return</span> <span class="n">obj</span><span class="o">.</span><span class="n">ewkb</span><span class="o">.</span><span class="n">hex</span><span class="p">()</span><span class="o">.</span><span class="n">encode</span><span class="p">()</span>
+
+    <span class="k">class</span><span class="w"> </span><span class="nc">BaseBinaryDumper</span><span class="p">(</span><span class="n">Dumper</span><span class="p">):</span>
+        <span class="nb">format</span> <span class="o">=</span> <span class="n">Format</span><span class="o">.</span><span class="n">BINARY</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">dump</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">obj</span><span class="o">.</span><span class="n">ewkb</span>
+
+    <span class="nd">@lru_cache</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">postgis_adapters</span><span class="p">(</span><span class="n">geo_oid</span><span class="p">,</span> <span class="n">geog_oid</span><span class="p">,</span> <span class="n">raster_oid</span><span class="p">):</span>
+        <span class="k">class</span><span class="w"> </span><span class="nc">BaseDumper</span><span class="p">(</span><span class="n">Dumper</span><span class="p">):</span>
+            <span class="k">def</span><span class="w"> </span><span class="nf">__init_subclass__</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">base_dumper</span><span class="p">):</span>
+                <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">__init_subclass__</span><span class="p">()</span>
+
+                <span class="bp">cls</span><span class="o">.</span><span class="n">GeometryDumper</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span>
+                    <span class="s2">&quot;GeometryDumper&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">base_dumper</span><span class="p">,),</span> <span class="p">{</span><span class="s2">&quot;oid&quot;</span><span class="p">:</span> <span class="n">geo_oid</span><span class="p">}</span>
+                <span class="p">)</span>
+                <span class="bp">cls</span><span class="o">.</span><span class="n">GeographyDumper</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span>
+                    <span class="s2">&quot;GeographyDumper&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">base_dumper</span><span class="p">,),</span> <span class="p">{</span><span class="s2">&quot;oid&quot;</span><span class="p">:</span> <span class="n">geog_oid</span><span class="p">}</span>
+                <span class="p">)</span>
+                <span class="bp">cls</span><span class="o">.</span><span class="n">RasterDumper</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span>
+                    <span class="s2">&quot;RasterDumper&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">BaseTextDumper</span><span class="p">,),</span> <span class="p">{</span><span class="s2">&quot;oid&quot;</span><span class="p">:</span> <span class="n">raster_oid</span><span class="p">}</span>
+                <span class="p">)</span>
+
+            <span class="k">def</span><span class="w"> </span><span class="nf">get_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="nb">format</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">obj</span><span class="o">.</span><span class="n">is_geometry</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="n">GeographyType</span> <span class="k">if</span> <span class="n">obj</span><span class="o">.</span><span class="n">geography</span> <span class="k">else</span> <span class="n">GeometryType</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="n">RasterType</span>
+
+            <span class="k">def</span><span class="w"> </span><span class="nf">upgrade</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="nb">format</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">obj</span><span class="o">.</span><span class="n">is_geometry</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">obj</span><span class="o">.</span><span class="n">geography</span><span class="p">:</span>
+                        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">GeographyDumper</span><span class="p">(</span><span class="n">GeographyType</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">GeometryDumper</span><span class="p">(</span><span class="n">GeometryType</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">RasterDumper</span><span class="p">(</span><span class="n">RasterType</span><span class="p">)</span>
+
+            <span class="k">def</span><span class="w"> </span><span class="nf">dump</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">NotImplementedError</span>
+
+        <span class="k">class</span><span class="w"> </span><span class="nc">PostGISTextDumper</span><span class="p">(</span><span class="n">BaseDumper</span><span class="p">,</span> <span class="n">base_dumper</span><span class="o">=</span><span class="n">BaseTextDumper</span><span class="p">):</span>
+            <span class="k">pass</span>
+
+        <span class="k">class</span><span class="w"> </span><span class="nc">PostGISBinaryDumper</span><span class="p">(</span><span class="n">BaseDumper</span><span class="p">,</span> <span class="n">base_dumper</span><span class="o">=</span><span class="n">BaseBinaryDumper</span><span class="p">):</span>
+            <span class="nb">format</span> <span class="o">=</span> <span class="n">Format</span><span class="o">.</span><span class="n">BINARY</span>
+
+        <span class="k">return</span> <span class="n">PostGISTextDumper</span><span class="p">,</span> <span class="n">PostGISBinaryDumper</span>
+
+
+<div class="viewcode-block" id="DatabaseWrapper">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/base/index.html#django.contrib.gis.db.backends.postgis.base.DatabaseWrapper">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DatabaseWrapper</span><span class="p">(</span><span class="n">PsycopgDatabaseWrapper</span><span class="p">):</span>
+<div class="viewcode-block" id="DatabaseWrapper.SchemaEditorClass">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/base/index.html#django.contrib.gis.db.backends.postgis.base.DatabaseWrapper.SchemaEditorClass">[docs]</a>
+    <span class="n">SchemaEditorClass</span> <span class="o">=</span> <span class="n">PostGISSchemaEditor</span></div>
+
+
+    <span class="n">_type_infos</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;geometry&quot;</span><span class="p">:</span> <span class="p">{},</span>
+        <span class="s2">&quot;geography&quot;</span><span class="p">:</span> <span class="p">{},</span>
+        <span class="s2">&quot;raster&quot;</span><span class="p">:</span> <span class="p">{},</span>
+    <span class="p">}</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;alias&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="o">!=</span> <span class="n">NO_DB_ALIAS</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">features</span> <span class="o">=</span> <span class="n">DatabaseFeatures</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ops</span> <span class="o">=</span> <span class="n">PostGISOperations</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">introspection</span> <span class="o">=</span> <span class="n">PostGISIntrospection</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+<div class="viewcode-block" id="DatabaseWrapper.prepare_database">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/base/index.html#django.contrib.gis.db.backends.postgis.base.DatabaseWrapper.prepare_database">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">prepare_database</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">prepare_database</span><span class="p">()</span>
+        <span class="c1"># Check that postgis extension is installed.</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;SELECT 1 FROM pg_extension WHERE extname = </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;postgis&quot;</span><span class="p">])</span>
+            <span class="k">if</span> <span class="nb">bool</span><span class="p">(</span><span class="n">cursor</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()):</span>
+                <span class="k">return</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;CREATE EXTENSION IF NOT EXISTS postgis&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">is_psycopg3</span><span class="p">:</span>
+                <span class="c1"># Ensure adapters are registers if PostGIS is used within this</span>
+                <span class="c1"># connection.</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">register_geometry_adapters</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.get_new_connection">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/base/index.html#django.contrib.gis.db.backends.postgis.base.DatabaseWrapper.get_new_connection">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_new_connection</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">conn_params</span><span class="p">):</span>
+        <span class="n">connection</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">get_new_connection</span><span class="p">(</span><span class="n">conn_params</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">is_psycopg3</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">register_geometry_adapters</span><span class="p">(</span><span class="n">connection</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">connection</span></div>
+
+
+    <span class="k">if</span> <span class="n">is_psycopg3</span><span class="p">:</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">_register_type</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pg_connection</span><span class="p">,</span> <span class="n">typename</span><span class="p">):</span>
+            <span class="n">registry</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_type_infos</span><span class="p">[</span><span class="n">typename</span><span class="p">]</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">info</span> <span class="o">=</span> <span class="n">registry</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">alias</span><span class="p">]</span>
+            <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+                <span class="n">info</span> <span class="o">=</span> <span class="n">TypeInfo</span><span class="o">.</span><span class="n">fetch</span><span class="p">(</span><span class="n">pg_connection</span><span class="p">,</span> <span class="n">typename</span><span class="p">)</span>
+                <span class="n">registry</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">alias</span><span class="p">]</span> <span class="o">=</span> <span class="n">info</span>
+
+            <span class="k">if</span> <span class="n">info</span><span class="p">:</span>  <span class="c1"># Can be None if the type does not exist (yet).</span>
+                <span class="n">info</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">pg_connection</span><span class="p">)</span>
+                <span class="n">pg_connection</span><span class="o">.</span><span class="n">adapters</span><span class="o">.</span><span class="n">register_loader</span><span class="p">(</span><span class="n">info</span><span class="o">.</span><span class="n">oid</span><span class="p">,</span> <span class="n">TextLoader</span><span class="p">)</span>
+                <span class="n">pg_connection</span><span class="o">.</span><span class="n">adapters</span><span class="o">.</span><span class="n">register_loader</span><span class="p">(</span><span class="n">info</span><span class="o">.</span><span class="n">oid</span><span class="p">,</span> <span class="n">TextBinaryLoader</span><span class="p">)</span>
+
+            <span class="k">return</span> <span class="n">info</span><span class="o">.</span><span class="n">oid</span> <span class="k">if</span> <span class="n">info</span> <span class="k">else</span> <span class="kc">None</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">register_geometry_adapters</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pg_connection</span><span class="p">,</span> <span class="n">clear_caches</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">clear_caches</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">typename</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_type_infos</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_type_infos</span><span class="p">[</span><span class="n">typename</span><span class="p">]</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">alias</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+
+            <span class="n">geo_oid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_register_type</span><span class="p">(</span><span class="n">pg_connection</span><span class="p">,</span> <span class="s2">&quot;geometry&quot;</span><span class="p">)</span>
+            <span class="n">geog_oid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_register_type</span><span class="p">(</span><span class="n">pg_connection</span><span class="p">,</span> <span class="s2">&quot;geography&quot;</span><span class="p">)</span>
+            <span class="n">raster_oid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_register_type</span><span class="p">(</span><span class="n">pg_connection</span><span class="p">,</span> <span class="s2">&quot;raster&quot;</span><span class="p">)</span>
+
+            <span class="n">PostGISTextDumper</span><span class="p">,</span> <span class="n">PostGISBinaryDumper</span> <span class="o">=</span> <span class="n">postgis_adapters</span><span class="p">(</span>
+                <span class="n">geo_oid</span><span class="p">,</span> <span class="n">geog_oid</span><span class="p">,</span> <span class="n">raster_oid</span>
+            <span class="p">)</span>
+            <span class="n">pg_connection</span><span class="o">.</span><span class="n">adapters</span><span class="o">.</span><span class="n">register_dumper</span><span class="p">(</span><span class="n">PostGISAdapter</span><span class="p">,</span> <span class="n">PostGISTextDumper</span><span class="p">)</span>
+            <span class="n">pg_connection</span><span class="o">.</span><span class="n">adapters</span><span class="o">.</span><span class="n">register_dumper</span><span class="p">(</span><span class="n">PostGISAdapter</span><span class="p">,</span> <span class="n">PostGISBinaryDumper</span><span class="p">)</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,782 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.contrib.gis.db.models.fields &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../../django.html">django</a></li>
+      <li class="breadcrumb-item active">django.contrib.gis.db.models.fields</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.contrib.gis.db.models.fields</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">defaultdict</span><span class="p">,</span> <span class="n">namedtuple</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis</span><span class="w"> </span><span class="kn">import</span> <span class="n">forms</span><span class="p">,</span> <span class="n">gdal</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.db.models.proxy</span><span class="w"> </span><span class="kn">import</span> <span class="n">SpatialProxy</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.gdal.error</span><span class="w"> </span><span class="kn">import</span> <span class="n">GDALException</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.geos</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">GeometryCollection</span><span class="p">,</span>
+    <span class="n">GEOSException</span><span class="p">,</span>
+    <span class="n">GEOSGeometry</span><span class="p">,</span>
+    <span class="n">LineString</span><span class="p">,</span>
+    <span class="n">MultiLineString</span><span class="p">,</span>
+    <span class="n">MultiPoint</span><span class="p">,</span>
+    <span class="n">MultiPolygon</span><span class="p">,</span>
+    <span class="n">Point</span><span class="p">,</span>
+    <span class="n">Polygon</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImproperlyConfigured</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">Field</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.translation</span><span class="w"> </span><span class="kn">import</span> <span class="n">gettext_lazy</span> <span class="k">as</span> <span class="n">_</span>
+
+<span class="c1"># Local cache of the spatial_ref_sys table, which holds SRID data for each</span>
+<span class="c1"># spatial database alias. This cache exists so that the database isn&#39;t queried</span>
+<span class="c1"># for SRID info each time a distance query is constructed.</span>
+<span class="n">_srid_cache</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">dict</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="SRIDCacheEntry.geodetic">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.SRIDCacheEntry.geodetic">[docs]</a>
+<div class="viewcode-block" id="SRIDCacheEntry.spheroid">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.SRIDCacheEntry.spheroid">[docs]</a>
+<div class="viewcode-block" id="SRIDCacheEntry.units_name">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.SRIDCacheEntry.units_name">[docs]</a>
+<div class="viewcode-block" id="SRIDCacheEntry.units">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.SRIDCacheEntry.units">[docs]</a>
+<div class="viewcode-block" id="SRIDCacheEntry">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.SRIDCacheEntry">[docs]</a>
+<span class="n">SRIDCacheEntry</span> <span class="o">=</span> <span class="n">namedtuple</span><span class="p">(</span>
+    <span class="s2">&quot;SRIDCacheEntry&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;units&quot;</span><span class="p">,</span> <span class="s2">&quot;units_name&quot;</span><span class="p">,</span> <span class="s2">&quot;spheroid&quot;</span><span class="p">,</span> <span class="s2">&quot;geodetic&quot;</span><span class="p">]</span>
+<span class="p">)</span></div>
+</div>
+</div>
+</div>
+</div>
+
+
+
+<div class="viewcode-block" id="get_srid_info">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.get_srid_info">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_srid_info</span><span class="p">(</span><span class="n">srid</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the units, unit name, and spheroid WKT associated with the</span>
+<span class="sd">    given SRID from the `spatial_ref_sys` (or equivalent) spatial database</span>
+<span class="sd">    table for the given database connection.  These results are cached.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.gdal</span><span class="w"> </span><span class="kn">import</span> <span class="n">SpatialReference</span>
+
+    <span class="k">global</span> <span class="n">_srid_cache</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="c1"># The SpatialRefSys model for the spatial backend.</span>
+        <span class="n">SpatialRefSys</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">spatial_ref_sys</span><span class="p">()</span>
+    <span class="k">except</span> <span class="ne">NotImplementedError</span><span class="p">:</span>
+        <span class="n">SpatialRefSys</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="n">alias</span><span class="p">,</span> <span class="n">get_srs</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="p">(</span>
+            <span class="n">connection</span><span class="o">.</span><span class="n">alias</span><span class="p">,</span>
+            <span class="k">lambda</span> <span class="n">srid</span><span class="p">:</span> <span class="n">SpatialRefSys</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">using</span><span class="p">(</span><span class="n">connection</span><span class="o">.</span><span class="n">alias</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">srid</span><span class="o">=</span><span class="n">srid</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">srs</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">SpatialRefSys</span>
+        <span class="k">else</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">SpatialReference</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">srid</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">_srid_cache</span><span class="p">[</span><span class="n">alias</span><span class="p">]:</span>
+        <span class="n">srs</span> <span class="o">=</span> <span class="n">get_srs</span><span class="p">(</span><span class="n">srid</span><span class="p">)</span>
+        <span class="n">units</span><span class="p">,</span> <span class="n">units_name</span> <span class="o">=</span> <span class="n">srs</span><span class="o">.</span><span class="n">units</span>
+        <span class="n">_srid_cache</span><span class="p">[</span><span class="n">alias</span><span class="p">][</span><span class="n">srid</span><span class="p">]</span> <span class="o">=</span> <span class="n">SRIDCacheEntry</span><span class="p">(</span>
+            <span class="n">units</span><span class="o">=</span><span class="n">units</span><span class="p">,</span>
+            <span class="n">units_name</span><span class="o">=</span><span class="n">units_name</span><span class="p">,</span>
+            <span class="n">spheroid</span><span class="o">=</span><span class="s1">&#39;SPHEROID[&quot;</span><span class="si">%s</span><span class="s1">&quot;,</span><span class="si">%s</span><span class="s1">,</span><span class="si">%s</span><span class="s1">]&#39;</span>
+            <span class="o">%</span> <span class="p">(</span><span class="n">srs</span><span class="p">[</span><span class="s2">&quot;spheroid&quot;</span><span class="p">],</span> <span class="n">srs</span><span class="o">.</span><span class="n">semi_major</span><span class="p">,</span> <span class="n">srs</span><span class="o">.</span><span class="n">inverse_flattening</span><span class="p">),</span>
+            <span class="n">geodetic</span><span class="o">=</span><span class="n">srs</span><span class="o">.</span><span class="n">geographic</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">_srid_cache</span><span class="p">[</span><span class="n">alias</span><span class="p">][</span><span class="n">srid</span><span class="p">]</span></div>
+
+
+
+<div class="viewcode-block" id="BaseSpatialField">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.BaseSpatialField">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BaseSpatialField</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    The Base GIS Field.</span>
+
+<span class="sd">    It&#39;s used as a base class for GeometryField and RasterField. Defines</span>
+<span class="sd">    properties that are common to all GIS fields such as the characteristics</span>
+<span class="sd">    of the spatial reference system of the field.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="BaseSpatialField.description">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.BaseSpatialField.description">[docs]</a>
+    <span class="n">description</span> <span class="o">=</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;The base GIS field.&quot;</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="BaseSpatialField.empty_strings_allowed">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.BaseSpatialField.empty_strings_allowed">[docs]</a>
+    <span class="n">empty_strings_allowed</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">verbose_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="mi">4326</span><span class="p">,</span> <span class="n">spatial_index</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The initialization function for base spatial fields. Takes the following</span>
+<span class="sd">        as keyword arguments:</span>
+
+<span class="sd">        srid:</span>
+<span class="sd">         The spatial reference system identifier, an OGC standard.</span>
+<span class="sd">         Defaults to 4326 (WGS84).</span>
+
+<span class="sd">        spatial_index:</span>
+<span class="sd">         Indicates whether to create a spatial index.  Defaults to True.</span>
+<span class="sd">         Set this instead of &#39;db_index&#39; for geographic fields since index</span>
+<span class="sd">         creation is different for geometry columns.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># Setting the index flag with the value of the `spatial_index` keyword.</span>
+<div class="viewcode-block" id="BaseSpatialField.spatial_index">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.BaseSpatialField.spatial_index">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">spatial_index</span> <span class="o">=</span> <span class="n">spatial_index</span></div>
+
+
+        <span class="c1"># Setting the SRID and getting the units.  Unit information must be</span>
+        <span class="c1"># easily available in the field instance for distance queries.</span>
+<div class="viewcode-block" id="BaseSpatialField.srid">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.BaseSpatialField.srid">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">srid</span> <span class="o">=</span> <span class="n">srid</span></div>
+
+
+        <span class="c1"># Setting the verbose_name keyword argument with the positional</span>
+        <span class="c1"># first parameter, so this works like normal fields.</span>
+        <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;verbose_name&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">verbose_name</span>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="BaseSpatialField.deconstruct">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.BaseSpatialField.deconstruct">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">deconstruct</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">name</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">deconstruct</span><span class="p">()</span>
+        <span class="c1"># Always include SRID for less fragility; include spatial index if it&#39;s</span>
+        <span class="c1"># not the default value.</span>
+        <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;srid&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">srid</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">spatial_index</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;spatial_index&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">spatial_index</span>
+        <span class="k">return</span> <span class="n">name</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span></div>
+
+
+<div class="viewcode-block" id="BaseSpatialField.db_type">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.BaseSpatialField.db_type">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">db_type</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">geo_db_type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseSpatialField.spheroid">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.BaseSpatialField.spheroid">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">spheroid</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">get_srid_info</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">srid</span><span class="p">,</span> <span class="n">connection</span><span class="p">)</span><span class="o">.</span><span class="n">spheroid</span></div>
+
+
+<div class="viewcode-block" id="BaseSpatialField.units">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.BaseSpatialField.units">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">units</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">get_srid_info</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">srid</span><span class="p">,</span> <span class="n">connection</span><span class="p">)</span><span class="o">.</span><span class="n">units</span></div>
+
+
+<div class="viewcode-block" id="BaseSpatialField.units_name">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.BaseSpatialField.units_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">units_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">get_srid_info</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">srid</span><span class="p">,</span> <span class="n">connection</span><span class="p">)</span><span class="o">.</span><span class="n">units_name</span></div>
+
+
+<div class="viewcode-block" id="BaseSpatialField.geodetic">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.BaseSpatialField.geodetic">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">geodetic</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return true if this field&#39;s SRID corresponds with a coordinate</span>
+<span class="sd">        system that uses non-projected units (e.g., latitude/longitude).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">get_srid_info</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">srid</span><span class="p">,</span> <span class="n">connection</span><span class="p">)</span><span class="o">.</span><span class="n">geodetic</span></div>
+
+
+<div class="viewcode-block" id="BaseSpatialField.get_placeholder">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.BaseSpatialField.get_placeholder">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_placeholder</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">compiler</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the placeholder for the spatial column for the</span>
+<span class="sd">        given value.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">get_geom_placeholder</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">compiler</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseSpatialField.get_srid">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.BaseSpatialField.get_srid">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_srid</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the default SRID for the given geometry or raster, taking into</span>
+<span class="sd">        account the SRID set for the field. For example, if the input geometry</span>
+<span class="sd">        or raster doesn&#39;t have an SRID, then the SRID of the field will be</span>
+<span class="sd">        returned.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">srid</span> <span class="o">=</span> <span class="n">obj</span><span class="o">.</span><span class="n">srid</span>  <span class="c1"># SRID of given geometry.</span>
+        <span class="k">if</span> <span class="n">srid</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">srid</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span> <span class="ow">or</span> <span class="p">(</span><span class="n">srid</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">srid</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">srid</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">srid</span></div>
+
+
+<div class="viewcode-block" id="BaseSpatialField.get_db_prep_value">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.BaseSpatialField.get_db_prep_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_db_prep_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">connection</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="k">return</span> <span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">Adapter</span><span class="p">(</span>
+            <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">get_db_prep_value</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">connection</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">),</span>
+            <span class="o">**</span><span class="p">(</span>
+                <span class="p">{</span><span class="s2">&quot;geography&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">geography</span> <span class="ow">and</span> <span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">supports_geography</span>
+                <span class="k">else</span> <span class="p">{}</span>
+            <span class="p">),</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseSpatialField.get_raster_prep_value">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.BaseSpatialField.get_raster_prep_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_raster_prep_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">is_candidate</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a GDALRaster if conversion is successful, otherwise return None.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">gdal</span><span class="o">.</span><span class="n">GDALRaster</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">value</span>
+        <span class="k">elif</span> <span class="n">is_candidate</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">gdal</span><span class="o">.</span><span class="n">GDALRaster</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">GDALException</span><span class="p">:</span>
+                <span class="k">pass</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">gdal</span><span class="o">.</span><span class="n">GDALRaster</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">GDALException</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">&quot;Couldn&#39;t create spatial object from lookup value &#39;</span><span class="si">%s</span><span class="s2">&#39;.&quot;</span> <span class="o">%</span> <span class="n">value</span>
+                <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseSpatialField.get_prep_value">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.BaseSpatialField.get_prep_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_prep_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="n">obj</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">get_prep_value</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">obj</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="c1"># When the input is not a geometry or raster, attempt to construct one</span>
+        <span class="c1"># from the given string input.</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">GEOSGeometry</span><span class="p">):</span>
+            <span class="k">pass</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Check if input is a candidate for conversion to raster or geometry.</span>
+            <span class="n">is_candidate</span> <span class="o">=</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="p">(</span><span class="nb">bytes</span><span class="p">,</span> <span class="nb">str</span><span class="p">))</span> <span class="ow">or</span> <span class="nb">hasattr</span><span class="p">(</span>
+                <span class="n">obj</span><span class="p">,</span> <span class="s2">&quot;__geo_interface__&quot;</span>
+            <span class="p">)</span>
+            <span class="c1"># Try to convert the input to raster.</span>
+            <span class="n">raster</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_raster_prep_value</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">is_candidate</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">raster</span><span class="p">:</span>
+                <span class="n">obj</span> <span class="o">=</span> <span class="n">raster</span>
+            <span class="k">elif</span> <span class="n">is_candidate</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">obj</span> <span class="o">=</span> <span class="n">GEOSGeometry</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span>
+                <span class="k">except</span> <span class="p">(</span><span class="n">GEOSException</span><span class="p">,</span> <span class="n">GDALException</span><span class="p">):</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                        <span class="s2">&quot;Couldn&#39;t create spatial object from lookup value &#39;</span><span class="si">%s</span><span class="s2">&#39;.&quot;</span> <span class="o">%</span> <span class="n">obj</span>
+                    <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">&quot;Cannot use object with type </span><span class="si">%s</span><span class="s2"> for a spatial lookup parameter.&quot;</span>
+                    <span class="o">%</span> <span class="nb">type</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span>
+                <span class="p">)</span>
+
+        <span class="c1"># Assigning the SRID value.</span>
+        <span class="n">obj</span><span class="o">.</span><span class="n">srid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_srid</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">obj</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="GeometryField">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.GeometryField">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">GeometryField</span><span class="p">(</span><span class="n">BaseSpatialField</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    The base Geometry field -- maps to the OpenGIS Specification Geometry type.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="GeometryField.description">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.GeometryField.description">[docs]</a>
+    <span class="n">description</span> <span class="o">=</span> <span class="n">_</span><span class="p">(</span>
+        <span class="s2">&quot;The base Geometry field — maps to the OpenGIS Specification Geometry type.&quot;</span>
+    <span class="p">)</span></div>
+
+<div class="viewcode-block" id="GeometryField.form_class">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.GeometryField.form_class">[docs]</a>
+    <span class="n">form_class</span> <span class="o">=</span> <span class="n">forms</span><span class="o">.</span><span class="n">GeometryField</span></div>
+
+    <span class="c1"># The OpenGIS Geometry name.</span>
+<div class="viewcode-block" id="GeometryField.geom_type">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.GeometryField.geom_type">[docs]</a>
+    <span class="n">geom_type</span> <span class="o">=</span> <span class="s2">&quot;GEOMETRY&quot;</span></div>
+
+<div class="viewcode-block" id="GeometryField.geom_class">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.GeometryField.geom_class">[docs]</a>
+    <span class="n">geom_class</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">verbose_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">dim</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+        <span class="n">geography</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">extent</span><span class="o">=</span><span class="p">(</span><span class="o">-</span><span class="mf">180.0</span><span class="p">,</span> <span class="o">-</span><span class="mf">90.0</span><span class="p">,</span> <span class="mf">180.0</span><span class="p">,</span> <span class="mf">90.0</span><span class="p">),</span>
+        <span class="n">tolerance</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The initialization function for geometry fields. In addition to the</span>
+<span class="sd">        parameters from BaseSpatialField, it takes the following as keyword</span>
+<span class="sd">        arguments:</span>
+
+<span class="sd">        dim:</span>
+<span class="sd">         The number of dimensions for this geometry.  Defaults to 2.</span>
+
+<span class="sd">        extent:</span>
+<span class="sd">         Customize the extent, in a 4-tuple of WGS 84 coordinates, for the</span>
+<span class="sd">         geometry field entry in the `USER_SDO_GEOM_METADATA` table.  Defaults</span>
+<span class="sd">         to (-180.0, -90.0, 180.0, 90.0).</span>
+
+<span class="sd">        tolerance:</span>
+<span class="sd">         Define the tolerance, in meters, to use for the geometry field</span>
+<span class="sd">         entry in the `USER_SDO_GEOM_METADATA` table.  Defaults to 0.05.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Setting the dimension of the geometry field.</span>
+<div class="viewcode-block" id="GeometryField.dim">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.GeometryField.dim">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dim</span> <span class="o">=</span> <span class="n">dim</span></div>
+
+
+        <span class="c1"># Is this a geography rather than a geometry column?</span>
+<div class="viewcode-block" id="GeometryField.geography">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.GeometryField.geography">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">geography</span> <span class="o">=</span> <span class="n">geography</span></div>
+
+
+        <span class="c1"># Oracle-specific private attributes for creating the entry in</span>
+        <span class="c1"># `USER_SDO_GEOM_METADATA`</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_extent</span> <span class="o">=</span> <span class="n">extent</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tolerance</span> <span class="o">=</span> <span class="n">tolerance</span>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">verbose_name</span><span class="o">=</span><span class="n">verbose_name</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="GeometryField.deconstruct">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.GeometryField.deconstruct">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">deconstruct</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">name</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">deconstruct</span><span class="p">()</span>
+        <span class="c1"># Include kwargs if they&#39;re not the default values.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dim</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;dim&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">dim</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">geography</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">False</span><span class="p">:</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;geography&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">geography</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_extent</span> <span class="o">!=</span> <span class="p">(</span><span class="o">-</span><span class="mf">180.0</span><span class="p">,</span> <span class="o">-</span><span class="mf">90.0</span><span class="p">,</span> <span class="mf">180.0</span><span class="p">,</span> <span class="mf">90.0</span><span class="p">):</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;extent&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_extent</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tolerance</span> <span class="o">!=</span> <span class="mf">0.05</span><span class="p">:</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;tolerance&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tolerance</span>
+        <span class="k">return</span> <span class="n">name</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span></div>
+
+
+<div class="viewcode-block" id="GeometryField.contribute_to_class">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.GeometryField.contribute_to_class">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">contribute_to_class</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="bp">cls</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">contribute_to_class</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="c1"># Setup for lazy-instantiated Geometry object.</span>
+        <span class="nb">setattr</span><span class="p">(</span>
+            <span class="bp">cls</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">attname</span><span class="p">,</span>
+            <span class="n">SpatialProxy</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">geom_class</span> <span class="ow">or</span> <span class="n">GEOSGeometry</span><span class="p">,</span> <span class="bp">self</span><span class="p">,</span> <span class="n">load_func</span><span class="o">=</span><span class="n">GEOSGeometry</span><span class="p">),</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="GeometryField.formfield">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.GeometryField.formfield">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">formfield</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">defaults</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;form_class&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">form_class</span><span class="p">,</span>
+            <span class="s2">&quot;geom_type&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">geom_type</span><span class="p">,</span>
+            <span class="s2">&quot;srid&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">srid</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+        <span class="p">}</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dim</span> <span class="o">&gt;</span> <span class="mi">2</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">getattr</span><span class="p">(</span>
+            <span class="n">defaults</span><span class="p">[</span><span class="s2">&quot;form_class&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">widget</span><span class="p">,</span> <span class="s2">&quot;supports_3d&quot;</span><span class="p">,</span> <span class="kc">False</span>
+        <span class="p">):</span>
+            <span class="n">defaults</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">&quot;widget&quot;</span><span class="p">,</span> <span class="n">forms</span><span class="o">.</span><span class="n">Textarea</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">formfield</span><span class="p">(</span><span class="o">**</span><span class="n">defaults</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="GeometryField.select_format">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.GeometryField.select_format">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">select_format</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">compiler</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the selection format string, depending on the requirements</span>
+<span class="sd">        of the spatial backend. For example, Oracle and MySQL require custom</span>
+<span class="sd">        selection formats in order to retrieve geometries in OGC WKB.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">compiler</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">subquery</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">compiler</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">select</span> <span class="o">%</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span>
+        <span class="k">return</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span></div>
+</div>
+
+
+
+<span class="c1"># The OpenGIS Geometry Type Fields</span>
+<div class="viewcode-block" id="PointField">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.PointField">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">PointField</span><span class="p">(</span><span class="n">GeometryField</span><span class="p">):</span>
+<div class="viewcode-block" id="PointField.geom_type">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.PointField.geom_type">[docs]</a>
+    <span class="n">geom_type</span> <span class="o">=</span> <span class="s2">&quot;POINT&quot;</span></div>
+
+<div class="viewcode-block" id="PointField.geom_class">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.PointField.geom_class">[docs]</a>
+    <span class="n">geom_class</span> <span class="o">=</span> <span class="n">Point</span></div>
+
+<div class="viewcode-block" id="PointField.form_class">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.PointField.form_class">[docs]</a>
+    <span class="n">form_class</span> <span class="o">=</span> <span class="n">forms</span><span class="o">.</span><span class="n">PointField</span></div>
+
+<div class="viewcode-block" id="PointField.description">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.PointField.description">[docs]</a>
+    <span class="n">description</span> <span class="o">=</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Point&quot;</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="LineStringField">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.LineStringField">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">LineStringField</span><span class="p">(</span><span class="n">GeometryField</span><span class="p">):</span>
+<div class="viewcode-block" id="LineStringField.geom_type">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.LineStringField.geom_type">[docs]</a>
+    <span class="n">geom_type</span> <span class="o">=</span> <span class="s2">&quot;LINESTRING&quot;</span></div>
+
+<div class="viewcode-block" id="LineStringField.geom_class">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.LineStringField.geom_class">[docs]</a>
+    <span class="n">geom_class</span> <span class="o">=</span> <span class="n">LineString</span></div>
+
+<div class="viewcode-block" id="LineStringField.form_class">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.LineStringField.form_class">[docs]</a>
+    <span class="n">form_class</span> <span class="o">=</span> <span class="n">forms</span><span class="o">.</span><span class="n">LineStringField</span></div>
+
+<div class="viewcode-block" id="LineStringField.description">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.LineStringField.description">[docs]</a>
+    <span class="n">description</span> <span class="o">=</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Line string&quot;</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="PolygonField">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.PolygonField">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">PolygonField</span><span class="p">(</span><span class="n">GeometryField</span><span class="p">):</span>
+<div class="viewcode-block" id="PolygonField.geom_type">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.PolygonField.geom_type">[docs]</a>
+    <span class="n">geom_type</span> <span class="o">=</span> <span class="s2">&quot;POLYGON&quot;</span></div>
+
+<div class="viewcode-block" id="PolygonField.geom_class">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.PolygonField.geom_class">[docs]</a>
+    <span class="n">geom_class</span> <span class="o">=</span> <span class="n">Polygon</span></div>
+
+<div class="viewcode-block" id="PolygonField.form_class">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.PolygonField.form_class">[docs]</a>
+    <span class="n">form_class</span> <span class="o">=</span> <span class="n">forms</span><span class="o">.</span><span class="n">PolygonField</span></div>
+
+<div class="viewcode-block" id="PolygonField.description">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.PolygonField.description">[docs]</a>
+    <span class="n">description</span> <span class="o">=</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Polygon&quot;</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="MultiPointField">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.MultiPointField">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MultiPointField</span><span class="p">(</span><span class="n">GeometryField</span><span class="p">):</span>
+<div class="viewcode-block" id="MultiPointField.geom_type">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.MultiPointField.geom_type">[docs]</a>
+    <span class="n">geom_type</span> <span class="o">=</span> <span class="s2">&quot;MULTIPOINT&quot;</span></div>
+
+<div class="viewcode-block" id="MultiPointField.geom_class">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.MultiPointField.geom_class">[docs]</a>
+    <span class="n">geom_class</span> <span class="o">=</span> <span class="n">MultiPoint</span></div>
+
+<div class="viewcode-block" id="MultiPointField.form_class">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.MultiPointField.form_class">[docs]</a>
+    <span class="n">form_class</span> <span class="o">=</span> <span class="n">forms</span><span class="o">.</span><span class="n">MultiPointField</span></div>
+
+<div class="viewcode-block" id="MultiPointField.description">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.MultiPointField.description">[docs]</a>
+    <span class="n">description</span> <span class="o">=</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Multi-point&quot;</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="MultiLineStringField">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.MultiLineStringField">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MultiLineStringField</span><span class="p">(</span><span class="n">GeometryField</span><span class="p">):</span>
+<div class="viewcode-block" id="MultiLineStringField.geom_type">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.MultiLineStringField.geom_type">[docs]</a>
+    <span class="n">geom_type</span> <span class="o">=</span> <span class="s2">&quot;MULTILINESTRING&quot;</span></div>
+
+<div class="viewcode-block" id="MultiLineStringField.geom_class">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.MultiLineStringField.geom_class">[docs]</a>
+    <span class="n">geom_class</span> <span class="o">=</span> <span class="n">MultiLineString</span></div>
+
+<div class="viewcode-block" id="MultiLineStringField.form_class">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.MultiLineStringField.form_class">[docs]</a>
+    <span class="n">form_class</span> <span class="o">=</span> <span class="n">forms</span><span class="o">.</span><span class="n">MultiLineStringField</span></div>
+
+<div class="viewcode-block" id="MultiLineStringField.description">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.MultiLineStringField.description">[docs]</a>
+    <span class="n">description</span> <span class="o">=</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Multi-line string&quot;</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="MultiPolygonField">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.MultiPolygonField">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MultiPolygonField</span><span class="p">(</span><span class="n">GeometryField</span><span class="p">):</span>
+<div class="viewcode-block" id="MultiPolygonField.geom_type">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.MultiPolygonField.geom_type">[docs]</a>
+    <span class="n">geom_type</span> <span class="o">=</span> <span class="s2">&quot;MULTIPOLYGON&quot;</span></div>
+
+<div class="viewcode-block" id="MultiPolygonField.geom_class">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.MultiPolygonField.geom_class">[docs]</a>
+    <span class="n">geom_class</span> <span class="o">=</span> <span class="n">MultiPolygon</span></div>
+
+<div class="viewcode-block" id="MultiPolygonField.form_class">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.MultiPolygonField.form_class">[docs]</a>
+    <span class="n">form_class</span> <span class="o">=</span> <span class="n">forms</span><span class="o">.</span><span class="n">MultiPolygonField</span></div>
+
+<div class="viewcode-block" id="MultiPolygonField.description">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.MultiPolygonField.description">[docs]</a>
+    <span class="n">description</span> <span class="o">=</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Multi polygon&quot;</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="GeometryCollectionField">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.GeometryCollectionField">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">GeometryCollectionField</span><span class="p">(</span><span class="n">GeometryField</span><span class="p">):</span>
+<div class="viewcode-block" id="GeometryCollectionField.geom_type">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.GeometryCollectionField.geom_type">[docs]</a>
+    <span class="n">geom_type</span> <span class="o">=</span> <span class="s2">&quot;GEOMETRYCOLLECTION&quot;</span></div>
+
+<div class="viewcode-block" id="GeometryCollectionField.geom_class">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.GeometryCollectionField.geom_class">[docs]</a>
+    <span class="n">geom_class</span> <span class="o">=</span> <span class="n">GeometryCollection</span></div>
+
+<div class="viewcode-block" id="GeometryCollectionField.form_class">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.GeometryCollectionField.form_class">[docs]</a>
+    <span class="n">form_class</span> <span class="o">=</span> <span class="n">forms</span><span class="o">.</span><span class="n">GeometryCollectionField</span></div>
+
+<div class="viewcode-block" id="GeometryCollectionField.description">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.GeometryCollectionField.description">[docs]</a>
+    <span class="n">description</span> <span class="o">=</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Geometry collection&quot;</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="ExtentField">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.ExtentField">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ExtentField</span><span class="p">(</span><span class="n">Field</span><span class="p">):</span>
+    <span class="s2">&quot;Used as a return value from an extent aggregate&quot;</span>
+
+<div class="viewcode-block" id="ExtentField.description">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.ExtentField.description">[docs]</a>
+    <span class="n">description</span> <span class="o">=</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Extent Aggregate Field&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ExtentField.get_internal_type">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.ExtentField.get_internal_type">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_internal_type</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;ExtentField&quot;</span></div>
+
+
+<div class="viewcode-block" id="ExtentField.select_format">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.ExtentField.select_format">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">select_format</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">compiler</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="n">select</span> <span class="o">=</span> <span class="n">compiler</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">select_extent</span>
+        <span class="k">return</span> <span class="n">select</span> <span class="o">%</span> <span class="n">sql</span> <span class="k">if</span> <span class="n">select</span> <span class="k">else</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="RasterField">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.RasterField">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">RasterField</span><span class="p">(</span><span class="n">BaseSpatialField</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Raster field for GeoDjango -- evaluates into GDALRaster objects.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="RasterField.description">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.RasterField.description">[docs]</a>
+    <span class="n">description</span> <span class="o">=</span> <span class="n">_</span><span class="p">(</span><span class="s2">&quot;Raster Field&quot;</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="RasterField.geom_type">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.RasterField.geom_type">[docs]</a>
+    <span class="n">geom_type</span> <span class="o">=</span> <span class="s2">&quot;RASTER&quot;</span></div>
+
+<div class="viewcode-block" id="RasterField.geography">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.RasterField.geography">[docs]</a>
+    <span class="n">geography</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_connection</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="c1"># Make sure raster fields are used only on backends with raster support.</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="ow">not</span> <span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">gis_enabled</span>
+            <span class="ow">or</span> <span class="ow">not</span> <span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">supports_raster</span>
+        <span class="p">):</span>
+            <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+                <span class="s2">&quot;Raster fields require backends with raster support.&quot;</span>
+            <span class="p">)</span>
+
+<div class="viewcode-block" id="RasterField.db_type">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.RasterField.db_type">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">db_type</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_check_connection</span><span class="p">(</span><span class="n">connection</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">db_type</span><span class="p">(</span><span class="n">connection</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="RasterField.from_db_value">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.RasterField.from_db_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">from_db_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">parse_raster</span><span class="p">(</span><span class="n">value</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="RasterField.contribute_to_class">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.RasterField.contribute_to_class">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">contribute_to_class</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="bp">cls</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">contribute_to_class</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="c1"># Setup for lazy-instantiated Raster object. For large querysets, the</span>
+        <span class="c1"># instantiation of all GDALRasters can potentially be expensive. This</span>
+        <span class="c1"># delays the instantiation of the objects to the moment of evaluation</span>
+        <span class="c1"># of the raster attribute.</span>
+        <span class="nb">setattr</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">attname</span><span class="p">,</span> <span class="n">SpatialProxy</span><span class="p">(</span><span class="n">gdal</span><span class="o">.</span><span class="n">GDALRaster</span><span class="p">,</span> <span class="bp">self</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="RasterField.get_transform">
+<a class="viewcode-back" href="../../../../../../autoapi/django/contrib/gis/db/models/fields/index.html#django.contrib.gis.db.models.fields.RasterField.get_transform">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_transform</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.db.models.lookups</span><span class="w"> </span><span class="kn">import</span> <span class="n">RasterBandTransform</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">band_index</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+            <span class="k">return</span> <span class="nb">type</span><span class="p">(</span>
+                <span class="s2">&quot;SpecificRasterBandTransform&quot;</span><span class="p">,</span>
+                <span class="p">(</span><span class="n">RasterBandTransform</span><span class="p">,),</span>
+                <span class="p">{</span><span class="s2">&quot;band_index&quot;</span><span class="p">:</span> <span class="n">band_index</span><span class="p">},</span>
+            <span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">get_transform</span><span class="p">(</span><span class="n">name</span><span class="p">)</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

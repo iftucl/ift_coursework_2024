@@ -1,0 +1,488 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>packaging.markers &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">packaging.markers</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for packaging.markers</h1><div class="highlight"><pre>
+<span></span><span class="c1"># This file is dual licensed under the terms of the Apache License, Version</span>
+<span class="c1"># 2.0, and the BSD License. See the LICENSE file in the root of this repository</span>
+<span class="c1"># for complete details.</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">operator</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">platform</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">AbstractSet</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">TypedDict</span><span class="p">,</span> <span class="n">Union</span><span class="p">,</span> <span class="n">cast</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">._parser</span><span class="w"> </span><span class="kn">import</span> <span class="n">MarkerAtom</span><span class="p">,</span> <span class="n">MarkerList</span><span class="p">,</span> <span class="n">Op</span><span class="p">,</span> <span class="n">Value</span><span class="p">,</span> <span class="n">Variable</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">._parser</span><span class="w"> </span><span class="kn">import</span> <span class="n">parse_marker</span> <span class="k">as</span> <span class="n">_parse_marker</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">._tokenizer</span><span class="w"> </span><span class="kn">import</span> <span class="n">ParserSyntaxError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.specifiers</span><span class="w"> </span><span class="kn">import</span> <span class="n">InvalidSpecifier</span><span class="p">,</span> <span class="n">Specifier</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">canonicalize_name</span>
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;EvaluateContext&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;InvalidMarker&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Marker&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;UndefinedComparison&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;UndefinedEnvironmentName&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;default_environment&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+
+<span class="n">Operator</span> <span class="o">=</span> <span class="n">Callable</span><span class="p">[[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">AbstractSet</span><span class="p">[</span><span class="nb">str</span><span class="p">]]],</span> <span class="nb">bool</span><span class="p">]</span>
+<div class="viewcode-block" id="EvaluateContext">
+<a class="viewcode-back" href="../../autoapi/packaging/markers/index.html#packaging.markers.EvaluateContext">[docs]</a>
+<span class="n">EvaluateContext</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;metadata&quot;</span><span class="p">,</span> <span class="s2">&quot;lock_file&quot;</span><span class="p">,</span> <span class="s2">&quot;requirement&quot;</span><span class="p">]</span></div>
+
+<span class="n">MARKERS_ALLOWING_SET</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;extras&quot;</span><span class="p">,</span> <span class="s2">&quot;dependency_groups&quot;</span><span class="p">}</span>
+
+
+<div class="viewcode-block" id="InvalidMarker">
+<a class="viewcode-back" href="../../autoapi/packaging/markers/index.html#packaging.markers.InvalidMarker">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">InvalidMarker</span><span class="p">(</span><span class="ne">ValueError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    An invalid marker was found, users should refer to PEP 508.</span>
+<span class="sd">    &quot;&quot;&quot;</span></div>
+
+
+
+<div class="viewcode-block" id="UndefinedComparison">
+<a class="viewcode-back" href="../../autoapi/packaging/markers/index.html#packaging.markers.UndefinedComparison">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">UndefinedComparison</span><span class="p">(</span><span class="ne">ValueError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    An invalid operation was attempted on a value that doesn&#39;t support it.</span>
+<span class="sd">    &quot;&quot;&quot;</span></div>
+
+
+
+<div class="viewcode-block" id="UndefinedEnvironmentName">
+<a class="viewcode-back" href="../../autoapi/packaging/markers/index.html#packaging.markers.UndefinedEnvironmentName">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">UndefinedEnvironmentName</span><span class="p">(</span><span class="ne">ValueError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A name was attempted to be used that does not exist inside of the</span>
+<span class="sd">    environment.</span>
+<span class="sd">    &quot;&quot;&quot;</span></div>
+
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Environment</span><span class="p">(</span><span class="n">TypedDict</span><span class="p">):</span>
+    <span class="n">implementation_name</span><span class="p">:</span> <span class="nb">str</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The implementation&#39;s identifier, e.g. ``&#39;cpython&#39;``.&quot;&quot;&quot;</span>
+
+    <span class="n">implementation_version</span><span class="p">:</span> <span class="nb">str</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    The implementation&#39;s version, e.g. ``&#39;3.13.0a2&#39;`` for CPython 3.13.0a2, or</span>
+<span class="sd">    ``&#39;7.3.13&#39;`` for PyPy3.10 v7.3.13.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">os_name</span><span class="p">:</span> <span class="nb">str</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    The value of :py:data:`os.name`. The name of the operating system dependent module</span>
+<span class="sd">    imported, e.g. ``&#39;posix&#39;``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">platform_machine</span><span class="p">:</span> <span class="nb">str</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Returns the machine type, e.g. ``&#39;i386&#39;``.</span>
+
+<span class="sd">    An empty string if the value cannot be determined.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">platform_release</span><span class="p">:</span> <span class="nb">str</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    The system&#39;s release, e.g. ``&#39;2.2.0&#39;`` or ``&#39;NT&#39;``.</span>
+
+<span class="sd">    An empty string if the value cannot be determined.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">platform_system</span><span class="p">:</span> <span class="nb">str</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    The system/OS name, e.g. ``&#39;Linux&#39;``, ``&#39;Windows&#39;`` or ``&#39;Java&#39;``.</span>
+
+<span class="sd">    An empty string if the value cannot be determined.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">platform_version</span><span class="p">:</span> <span class="nb">str</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    The system&#39;s release version, e.g. ``&#39;#3 on degas&#39;``.</span>
+
+<span class="sd">    An empty string if the value cannot be determined.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">python_full_version</span><span class="p">:</span> <span class="nb">str</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    The Python version as string ``&#39;major.minor.patchlevel&#39;``.</span>
+
+<span class="sd">    Note that unlike the Python :py:data:`sys.version`, this value will always include</span>
+<span class="sd">    the patchlevel (it defaults to 0).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">platform_python_implementation</span><span class="p">:</span> <span class="nb">str</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A string identifying the Python implementation, e.g. ``&#39;CPython&#39;``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">python_version</span><span class="p">:</span> <span class="nb">str</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The Python version as string ``&#39;major.minor&#39;``.&quot;&quot;&quot;</span>
+
+    <span class="n">sys_platform</span><span class="p">:</span> <span class="nb">str</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    This string contains a platform identifier that can be used to append</span>
+<span class="sd">    platform-specific components to :py:data:`sys.path`, for instance.</span>
+
+<span class="sd">    For Unix systems, except on Linux and AIX, this is the lowercased OS name as</span>
+<span class="sd">    returned by ``uname -s`` with the first part of the version as returned by</span>
+<span class="sd">    ``uname -r`` appended, e.g. ``&#39;sunos5&#39;`` or ``&#39;freebsd8&#39;``, at the time when Python</span>
+<span class="sd">    was built.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_normalize_extra_values</span><span class="p">(</span><span class="n">results</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Normalize extra values.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="nb">tuple</span><span class="p">):</span>
+        <span class="n">lhs</span><span class="p">,</span> <span class="n">op</span><span class="p">,</span> <span class="n">rhs</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">lhs</span><span class="p">,</span> <span class="n">Variable</span><span class="p">)</span> <span class="ow">and</span> <span class="n">lhs</span><span class="o">.</span><span class="n">value</span> <span class="o">==</span> <span class="s2">&quot;extra&quot;</span><span class="p">:</span>
+            <span class="n">normalized_extra</span> <span class="o">=</span> <span class="n">canonicalize_name</span><span class="p">(</span><span class="n">rhs</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>
+            <span class="n">rhs</span> <span class="o">=</span> <span class="n">Value</span><span class="p">(</span><span class="n">normalized_extra</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">rhs</span><span class="p">,</span> <span class="n">Variable</span><span class="p">)</span> <span class="ow">and</span> <span class="n">rhs</span><span class="o">.</span><span class="n">value</span> <span class="o">==</span> <span class="s2">&quot;extra&quot;</span><span class="p">:</span>
+            <span class="n">normalized_extra</span> <span class="o">=</span> <span class="n">canonicalize_name</span><span class="p">(</span><span class="n">lhs</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>
+            <span class="n">lhs</span> <span class="o">=</span> <span class="n">Value</span><span class="p">(</span><span class="n">normalized_extra</span><span class="p">)</span>
+        <span class="n">results</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">lhs</span><span class="p">,</span> <span class="n">op</span><span class="p">,</span> <span class="n">rhs</span>
+    <span class="k">return</span> <span class="n">results</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_format_marker</span><span class="p">(</span>
+    <span class="n">marker</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="n">MarkerAtom</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span> <span class="n">first</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">True</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">marker</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">,</span> <span class="nb">str</span><span class="p">))</span>
+
+    <span class="c1"># Sometimes we have a structure like [[...]] which is a single item list</span>
+    <span class="c1"># where the single item is itself it&#39;s own list. In that case we want skip</span>
+    <span class="c1"># the rest of this function so that we don&#39;t get extraneous () on the</span>
+    <span class="c1"># outside.</span>
+    <span class="k">if</span> <span class="p">(</span>
+        <span class="nb">isinstance</span><span class="p">(</span><span class="n">marker</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span>
+        <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">marker</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>
+        <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">marker</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">))</span>
+    <span class="p">):</span>
+        <span class="k">return</span> <span class="n">_format_marker</span><span class="p">(</span><span class="n">marker</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">marker</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="n">inner</span> <span class="o">=</span> <span class="p">(</span><span class="n">_format_marker</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">first</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">marker</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">first</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">inner</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;(&quot;</span> <span class="o">+</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">inner</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;)&quot;</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">marker</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">m</span><span class="o">.</span><span class="n">serialize</span><span class="p">()</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">marker</span><span class="p">])</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">marker</span>
+
+
+<span class="n">_operators</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Operator</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;in&quot;</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="p">:</span> <span class="n">lhs</span> <span class="ow">in</span> <span class="n">rhs</span><span class="p">,</span>
+    <span class="s2">&quot;not in&quot;</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="p">:</span> <span class="n">lhs</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">rhs</span><span class="p">,</span>
+    <span class="s2">&quot;&lt;&quot;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">lt</span><span class="p">,</span>
+    <span class="s2">&quot;&lt;=&quot;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">le</span><span class="p">,</span>
+    <span class="s2">&quot;==&quot;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">eq</span><span class="p">,</span>
+    <span class="s2">&quot;!=&quot;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">ne</span><span class="p">,</span>
+    <span class="s2">&quot;&gt;=&quot;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">ge</span><span class="p">,</span>
+    <span class="s2">&quot;&gt;&quot;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">gt</span><span class="p">,</span>
+<span class="p">}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_eval_op</span><span class="p">(</span><span class="n">lhs</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">op</span><span class="p">:</span> <span class="n">Op</span><span class="p">,</span> <span class="n">rhs</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">AbstractSet</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">rhs</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">spec</span> <span class="o">=</span> <span class="n">Specifier</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">op</span><span class="o">.</span><span class="n">serialize</span><span class="p">(),</span> <span class="n">rhs</span><span class="p">]))</span>
+        <span class="k">except</span> <span class="n">InvalidSpecifier</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">spec</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">lhs</span><span class="p">,</span> <span class="n">prereleases</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">oper</span><span class="p">:</span> <span class="n">Operator</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">_operators</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">op</span><span class="o">.</span><span class="n">serialize</span><span class="p">())</span>
+    <span class="k">if</span> <span class="n">oper</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">UndefinedComparison</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Undefined </span><span class="si">{</span><span class="n">op</span><span class="si">!r}</span><span class="s2"> on </span><span class="si">{</span><span class="n">lhs</span><span class="si">!r}</span><span class="s2"> and </span><span class="si">{</span><span class="n">rhs</span><span class="si">!r}</span><span class="s2">.&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">oper</span><span class="p">(</span><span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_normalize</span><span class="p">(</span>
+    <span class="n">lhs</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">rhs</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">AbstractSet</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">AbstractSet</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+    <span class="c1"># PEP 685 – Comparison of extra names for optional distribution dependencies</span>
+    <span class="c1"># https://peps.python.org/pep-0685/</span>
+    <span class="c1"># &gt; When comparing extra names, tools MUST normalize the names being</span>
+    <span class="c1"># &gt; compared using the semantics outlined in PEP 503 for names</span>
+    <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s2">&quot;extra&quot;</span><span class="p">:</span>
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">rhs</span><span class="p">,</span> <span class="nb">str</span><span class="p">),</span> <span class="s2">&quot;extra value must be a string&quot;</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">canonicalize_name</span><span class="p">(</span><span class="n">lhs</span><span class="p">),</span> <span class="n">canonicalize_name</span><span class="p">(</span><span class="n">rhs</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">MARKERS_ALLOWING_SET</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">rhs</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>  <span class="c1"># pragma: no cover</span>
+            <span class="k">return</span> <span class="p">(</span><span class="n">canonicalize_name</span><span class="p">(</span><span class="n">lhs</span><span class="p">),</span> <span class="n">canonicalize_name</span><span class="p">(</span><span class="n">rhs</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">(</span><span class="n">canonicalize_name</span><span class="p">(</span><span class="n">lhs</span><span class="p">),</span> <span class="p">{</span><span class="n">canonicalize_name</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">rhs</span><span class="p">})</span>
+
+    <span class="c1"># other environment markers don&#39;t have such standards</span>
+    <span class="k">return</span> <span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_evaluate_markers</span><span class="p">(</span>
+    <span class="n">markers</span><span class="p">:</span> <span class="n">MarkerList</span><span class="p">,</span> <span class="n">environment</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">AbstractSet</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+    <span class="n">groups</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">bool</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[[]]</span>
+
+    <span class="k">for</span> <span class="n">marker</span> <span class="ow">in</span> <span class="n">markers</span><span class="p">:</span>
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">marker</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">,</span> <span class="nb">str</span><span class="p">))</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">marker</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="n">groups</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_evaluate_markers</span><span class="p">(</span><span class="n">marker</span><span class="p">,</span> <span class="n">environment</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">marker</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+            <span class="n">lhs</span><span class="p">,</span> <span class="n">op</span><span class="p">,</span> <span class="n">rhs</span> <span class="o">=</span> <span class="n">marker</span>
+
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">lhs</span><span class="p">,</span> <span class="n">Variable</span><span class="p">):</span>
+                <span class="n">environment_key</span> <span class="o">=</span> <span class="n">lhs</span><span class="o">.</span><span class="n">value</span>
+                <span class="n">lhs_value</span> <span class="o">=</span> <span class="n">environment</span><span class="p">[</span><span class="n">environment_key</span><span class="p">]</span>
+                <span class="n">rhs_value</span> <span class="o">=</span> <span class="n">rhs</span><span class="o">.</span><span class="n">value</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">lhs_value</span> <span class="o">=</span> <span class="n">lhs</span><span class="o">.</span><span class="n">value</span>
+                <span class="n">environment_key</span> <span class="o">=</span> <span class="n">rhs</span><span class="o">.</span><span class="n">value</span>
+                <span class="n">rhs_value</span> <span class="o">=</span> <span class="n">environment</span><span class="p">[</span><span class="n">environment_key</span><span class="p">]</span>
+            <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">lhs_value</span><span class="p">,</span> <span class="nb">str</span><span class="p">),</span> <span class="s2">&quot;lhs must be a string&quot;</span>
+            <span class="n">lhs_value</span><span class="p">,</span> <span class="n">rhs_value</span> <span class="o">=</span> <span class="n">_normalize</span><span class="p">(</span><span class="n">lhs_value</span><span class="p">,</span> <span class="n">rhs_value</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">environment_key</span><span class="p">)</span>
+            <span class="n">groups</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_eval_op</span><span class="p">(</span><span class="n">lhs_value</span><span class="p">,</span> <span class="n">op</span><span class="p">,</span> <span class="n">rhs_value</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="n">marker</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;and&quot;</span><span class="p">,</span> <span class="s2">&quot;or&quot;</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">marker</span> <span class="o">==</span> <span class="s2">&quot;or&quot;</span><span class="p">:</span>
+                <span class="n">groups</span><span class="o">.</span><span class="n">append</span><span class="p">([])</span>
+
+    <span class="k">return</span> <span class="nb">any</span><span class="p">(</span><span class="nb">all</span><span class="p">(</span><span class="n">item</span><span class="p">)</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">groups</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">format_full_version</span><span class="p">(</span><span class="n">info</span><span class="p">:</span> <span class="n">sys</span><span class="o">.</span><span class="n">_version_info</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="n">version</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">info</span><span class="o">.</span><span class="n">major</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">info</span><span class="o">.</span><span class="n">minor</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">info</span><span class="o">.</span><span class="n">micro</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="n">kind</span> <span class="o">=</span> <span class="n">info</span><span class="o">.</span><span class="n">releaselevel</span>
+    <span class="k">if</span> <span class="n">kind</span> <span class="o">!=</span> <span class="s2">&quot;final&quot;</span><span class="p">:</span>
+        <span class="n">version</span> <span class="o">+=</span> <span class="n">kind</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">info</span><span class="o">.</span><span class="n">serial</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">version</span>
+
+
+<div class="viewcode-block" id="default_environment">
+<a class="viewcode-back" href="../../autoapi/packaging/markers/index.html#packaging.markers.default_environment">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">default_environment</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">Environment</span><span class="p">:</span>
+    <span class="n">iver</span> <span class="o">=</span> <span class="n">format_full_version</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">implementation</span><span class="o">.</span><span class="n">version</span><span class="p">)</span>
+    <span class="n">implementation_name</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">implementation</span><span class="o">.</span><span class="n">name</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;implementation_name&quot;</span><span class="p">:</span> <span class="n">implementation_name</span><span class="p">,</span>
+        <span class="s2">&quot;implementation_version&quot;</span><span class="p">:</span> <span class="n">iver</span><span class="p">,</span>
+        <span class="s2">&quot;os_name&quot;</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+        <span class="s2">&quot;platform_machine&quot;</span><span class="p">:</span> <span class="n">platform</span><span class="o">.</span><span class="n">machine</span><span class="p">(),</span>
+        <span class="s2">&quot;platform_release&quot;</span><span class="p">:</span> <span class="n">platform</span><span class="o">.</span><span class="n">release</span><span class="p">(),</span>
+        <span class="s2">&quot;platform_system&quot;</span><span class="p">:</span> <span class="n">platform</span><span class="o">.</span><span class="n">system</span><span class="p">(),</span>
+        <span class="s2">&quot;platform_version&quot;</span><span class="p">:</span> <span class="n">platform</span><span class="o">.</span><span class="n">version</span><span class="p">(),</span>
+        <span class="s2">&quot;python_full_version&quot;</span><span class="p">:</span> <span class="n">platform</span><span class="o">.</span><span class="n">python_version</span><span class="p">(),</span>
+        <span class="s2">&quot;platform_python_implementation&quot;</span><span class="p">:</span> <span class="n">platform</span><span class="o">.</span><span class="n">python_implementation</span><span class="p">(),</span>
+        <span class="s2">&quot;python_version&quot;</span><span class="p">:</span> <span class="s2">&quot;.&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">platform</span><span class="o">.</span><span class="n">python_version_tuple</span><span class="p">()[:</span><span class="mi">2</span><span class="p">]),</span>
+        <span class="s2">&quot;sys_platform&quot;</span><span class="p">:</span> <span class="n">sys</span><span class="o">.</span><span class="n">platform</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+
+
+<div class="viewcode-block" id="Marker">
+<a class="viewcode-back" href="../../autoapi/packaging/markers/index.html#packaging.markers.Marker">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Marker</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">marker</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># Note: We create a Marker object without calling this constructor in</span>
+        <span class="c1">#       packaging.requirements.Requirement. If any additional logic is</span>
+        <span class="c1">#       added here, make sure to mirror/adapt Requirement.</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_markers</span> <span class="o">=</span> <span class="n">_normalize_extra_values</span><span class="p">(</span><span class="n">_parse_marker</span><span class="p">(</span><span class="n">marker</span><span class="p">))</span>
+            <span class="c1"># The attribute `_markers` can be described in terms of a recursive type:</span>
+            <span class="c1"># MarkerList = List[Union[Tuple[Node, ...], str, MarkerList]]</span>
+            <span class="c1">#</span>
+            <span class="c1"># For example, the following expression:</span>
+            <span class="c1"># python_version &gt; &quot;3.6&quot; or (python_version == &quot;3.6&quot; and os_name == &quot;unix&quot;)</span>
+            <span class="c1">#</span>
+            <span class="c1"># is parsed into:</span>
+            <span class="c1"># [</span>
+            <span class="c1">#     (&lt;Variable(&#39;python_version&#39;)&gt;, &lt;Op(&#39;&gt;&#39;)&gt;, &lt;Value(&#39;3.6&#39;)&gt;),</span>
+            <span class="c1">#     &#39;and&#39;,</span>
+            <span class="c1">#     [</span>
+            <span class="c1">#         (&lt;Variable(&#39;python_version&#39;)&gt;, &lt;Op(&#39;==&#39;)&gt;, &lt;Value(&#39;3.6&#39;)&gt;),</span>
+            <span class="c1">#         &#39;or&#39;,</span>
+            <span class="c1">#         (&lt;Variable(&#39;os_name&#39;)&gt;, &lt;Op(&#39;==&#39;)&gt;, &lt;Value(&#39;unix&#39;)&gt;)</span>
+            <span class="c1">#     ]</span>
+            <span class="c1"># ]</span>
+        <span class="k">except</span> <span class="n">ParserSyntaxError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">InvalidMarker</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">))</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_format_marker</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_markers</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;&lt;Marker(&#39;</span><span class="si">{</span><span class="bp">self</span><span class="si">}</span><span class="s2">&#39;)&gt;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">hash</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="p">)))</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">Marker</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">NotImplemented</span>
+
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">==</span> <span class="nb">str</span><span class="p">(</span><span class="n">other</span><span class="p">)</span>
+
+<div class="viewcode-block" id="Marker.evaluate">
+<a class="viewcode-back" href="../../autoapi/packaging/markers/index.html#packaging.markers.Marker.evaluate">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">evaluate</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">environment</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">context</span><span class="p">:</span> <span class="n">EvaluateContext</span> <span class="o">=</span> <span class="s2">&quot;metadata&quot;</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Evaluate a marker.</span>
+
+<span class="sd">        Return the boolean from evaluating the given marker against the</span>
+<span class="sd">        environment. environment is an optional argument to override all or</span>
+<span class="sd">        part of the determined environment. The *context* parameter specifies what</span>
+<span class="sd">        context the markers are being evaluated for, which influences what markers</span>
+<span class="sd">        are considered valid. Acceptable values are &quot;metadata&quot; (for core metadata;</span>
+<span class="sd">        default), &quot;lock_file&quot;, and &quot;requirement&quot; (i.e. all other situations).</span>
+
+<span class="sd">        The environment is determined from the current Python process.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">current_environment</span> <span class="o">=</span> <span class="n">cast</span><span class="p">(</span>
+            <span class="s2">&quot;dict[str, str | AbstractSet[str]]&quot;</span><span class="p">,</span> <span class="n">default_environment</span><span class="p">()</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">context</span> <span class="o">==</span> <span class="s2">&quot;lock_file&quot;</span><span class="p">:</span>
+            <span class="n">current_environment</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+                <span class="n">extras</span><span class="o">=</span><span class="nb">frozenset</span><span class="p">(),</span> <span class="n">dependency_groups</span><span class="o">=</span><span class="nb">frozenset</span><span class="p">()</span>
+            <span class="p">)</span>
+        <span class="k">elif</span> <span class="n">context</span> <span class="o">==</span> <span class="s2">&quot;metadata&quot;</span><span class="p">:</span>
+            <span class="n">current_environment</span><span class="p">[</span><span class="s2">&quot;extra&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">environment</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">current_environment</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">environment</span><span class="p">)</span>
+            <span class="c1"># The API used to allow setting extra to None. We need to handle this</span>
+            <span class="c1"># case for backwards compatibility.</span>
+            <span class="k">if</span> <span class="s2">&quot;extra&quot;</span> <span class="ow">in</span> <span class="n">current_environment</span> <span class="ow">and</span> <span class="n">current_environment</span><span class="p">[</span><span class="s2">&quot;extra&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">current_environment</span><span class="p">[</span><span class="s2">&quot;extra&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+
+        <span class="k">return</span> <span class="n">_evaluate_markers</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_markers</span><span class="p">,</span> <span class="n">_repair_python_full_version</span><span class="p">(</span><span class="n">current_environment</span><span class="p">)</span>
+        <span class="p">)</span></div>
+</div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_repair_python_full_version</span><span class="p">(</span>
+    <span class="n">env</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">AbstractSet</span><span class="p">[</span><span class="nb">str</span><span class="p">]],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">AbstractSet</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Work around platform.python_version() returning something that is not PEP 440</span>
+<span class="sd">    compliant for non-tagged Python builds.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">python_full_version</span> <span class="o">=</span> <span class="n">cast</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">env</span><span class="p">[</span><span class="s2">&quot;python_full_version&quot;</span><span class="p">])</span>
+    <span class="k">if</span> <span class="n">python_full_version</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;+&quot;</span><span class="p">):</span>
+        <span class="n">env</span><span class="p">[</span><span class="s2">&quot;python_full_version&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">python_full_version</span><span class="si">}</span><span class="s2">local&quot;</span>
+    <span class="k">return</span> <span class="n">env</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

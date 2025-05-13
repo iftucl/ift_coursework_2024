@@ -1,0 +1,420 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.core.servers.basehttp &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../django.html">django</a></li>
+      <li class="breadcrumb-item active">django.core.servers.basehttp</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.core.servers.basehttp</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">HTTP server that implements the Python WSGI protocol (PEP 333, rev 1.21).</span>
+
+<span class="sd">Based on wsgiref.simple_server which is part of the standard library since 2.5.</span>
+
+<span class="sd">This is a simple server for use in testing or debugging Django apps. It hasn&#39;t</span>
+<span class="sd">been reviewed for security issues. DON&#39;T USE IT FOR PRODUCTION USE!</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">socket</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">socketserver</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">deque</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">wsgiref</span><span class="w"> </span><span class="kn">import</span> <span class="n">simple_server</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImproperlyConfigured</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.handlers.wsgi</span><span class="w"> </span><span class="kn">import</span> <span class="n">LimitedStream</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.wsgi</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_wsgi_application</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">connections</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.module_loading</span><span class="w"> </span><span class="kn">import</span> <span class="n">import_string</span>
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;WSGIServer&quot;</span><span class="p">,</span> <span class="s2">&quot;WSGIRequestHandler&quot;</span><span class="p">)</span>
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;django.server&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">get_internal_wsgi_application</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Load and return the WSGI application as configured by the user in</span>
+<span class="sd">    ``settings.WSGI_APPLICATION``. With the default ``startproject`` layout,</span>
+<span class="sd">    this will be the ``application`` object in ``projectname/wsgi.py``.</span>
+
+<span class="sd">    This function, and the ``WSGI_APPLICATION`` setting itself, are only useful</span>
+<span class="sd">    for Django&#39;s internal server (runserver); external WSGI servers should just</span>
+<span class="sd">    be configured to point to the correct application object directly.</span>
+
+<span class="sd">    If settings.WSGI_APPLICATION is not set (is ``None``), return</span>
+<span class="sd">    whatever ``django.core.wsgi.get_wsgi_application`` returns.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+
+    <span class="n">app_path</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">settings</span><span class="p">,</span> <span class="s2">&quot;WSGI_APPLICATION&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">app_path</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">get_wsgi_application</span><span class="p">()</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">import_string</span><span class="p">(</span><span class="n">app_path</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ImportError</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+            <span class="s2">&quot;WSGI application &#39;</span><span class="si">%s</span><span class="s2">&#39; could not be loaded; &quot;</span>
+            <span class="s2">&quot;Error importing module.&quot;</span> <span class="o">%</span> <span class="n">app_path</span>
+        <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">err</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">is_broken_pipe_error</span><span class="p">():</span>
+    <span class="n">exc_type</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">exc_info</span><span class="p">()</span>
+    <span class="k">return</span> <span class="nb">issubclass</span><span class="p">(</span>
+        <span class="n">exc_type</span><span class="p">,</span>
+        <span class="p">(</span>
+            <span class="ne">BrokenPipeError</span><span class="p">,</span>
+            <span class="ne">ConnectionAbortedError</span><span class="p">,</span>
+            <span class="ne">ConnectionResetError</span><span class="p">,</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+
+
+<div class="viewcode-block" id="WSGIServer">
+<a class="viewcode-back" href="../../../../autoapi/django/core/servers/basehttp/index.html#django.core.servers.basehttp.WSGIServer">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">WSGIServer</span><span class="p">(</span><span class="n">simple_server</span><span class="o">.</span><span class="n">WSGIServer</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;BaseHTTPServer that implements the Python WSGI protocol&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="WSGIServer.request_queue_size">
+<a class="viewcode-back" href="../../../../autoapi/django/core/servers/basehttp/index.html#django.core.servers.basehttp.WSGIServer.request_queue_size">[docs]</a>
+    <span class="n">request_queue_size</span> <span class="o">=</span> <span class="mi">10</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="n">ipv6</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">allow_reuse_address</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">ipv6</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">address_family</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">AF_INET6</span>
+<div class="viewcode-block" id="WSGIServer.allow_reuse_address">
+<a class="viewcode-back" href="../../../../autoapi/django/core/servers/basehttp/index.html#django.core.servers.basehttp.WSGIServer.allow_reuse_address">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">allow_reuse_address</span> <span class="o">=</span> <span class="n">allow_reuse_address</span></div>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="WSGIServer.handle_error">
+<a class="viewcode-back" href="../../../../autoapi/django/core/servers/basehttp/index.html#django.core.servers.basehttp.WSGIServer.handle_error">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle_error</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">client_address</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">is_broken_pipe_error</span><span class="p">():</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;- Broken pipe from </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">client_address</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">handle_error</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">client_address</span><span class="p">)</span></div>
+</div>
+
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">ThreadedWSGIServer</span><span class="p">(</span><span class="n">socketserver</span><span class="o">.</span><span class="n">ThreadingMixIn</span><span class="p">,</span> <span class="n">WSGIServer</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A threaded version of the WSGIServer&quot;&quot;&quot;</span>
+
+    <span class="n">daemon_threads</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="n">connections_override</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">connections_override</span> <span class="o">=</span> <span class="n">connections_override</span>
+
+    <span class="c1"># socketserver.ThreadingMixIn.process_request() passes this method as</span>
+    <span class="c1"># the target to a new Thread object.</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">process_request_thread</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">client_address</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connections_override</span><span class="p">:</span>
+            <span class="c1"># Override this thread&#39;s database connections with the ones</span>
+            <span class="c1"># provided by the parent thread.</span>
+            <span class="k">for</span> <span class="n">alias</span><span class="p">,</span> <span class="n">conn</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">connections_override</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="n">connections</span><span class="p">[</span><span class="n">alias</span><span class="p">]</span> <span class="o">=</span> <span class="n">conn</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">process_request_thread</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">client_address</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_close_connections</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Used for mocking in tests.</span>
+        <span class="n">connections</span><span class="o">.</span><span class="n">close_all</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">close_request</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_close_connections</span><span class="p">()</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">close_request</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">ServerHandler</span><span class="p">(</span><span class="n">simple_server</span><span class="o">.</span><span class="n">ServerHandler</span><span class="p">):</span>
+    <span class="n">http_version</span> <span class="o">=</span> <span class="s2">&quot;1.1&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stdin</span><span class="p">,</span> <span class="n">stdout</span><span class="p">,</span> <span class="n">stderr</span><span class="p">,</span> <span class="n">environ</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Use a LimitedStream so that unread request data will be ignored at</span>
+<span class="sd">        the end of the request. WSGIRequest uses a LimitedStream but it</span>
+<span class="sd">        shouldn&#39;t discard the data since the upstream servers usually do this.</span>
+<span class="sd">        This fix applies only for testserver/runserver.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">content_length</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;CONTENT_LENGTH&quot;</span><span class="p">))</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
+            <span class="n">content_length</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="n">LimitedStream</span><span class="p">(</span><span class="n">stdin</span><span class="p">,</span> <span class="n">content_length</span><span class="p">),</span> <span class="n">stdout</span><span class="p">,</span> <span class="n">stderr</span><span class="p">,</span> <span class="n">environ</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">cleanup_headers</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">cleanup_headers</span><span class="p">()</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;REQUEST_METHOD&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;HEAD&quot;</span>
+            <span class="ow">and</span> <span class="s2">&quot;Content-Length&quot;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">headers</span>
+        <span class="p">):</span>
+            <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">headers</span><span class="p">[</span><span class="s2">&quot;Content-Length&quot;</span><span class="p">]</span>
+        <span class="c1"># HTTP/1.1 requires support for persistent connections. Send &#39;close&#39; if</span>
+        <span class="c1"># the content length is unknown to prevent clients from reusing the</span>
+        <span class="c1"># connection.</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;REQUEST_METHOD&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;HEAD&quot;</span>
+            <span class="ow">and</span> <span class="s2">&quot;Content-Length&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">headers</span>
+        <span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">headers</span><span class="p">[</span><span class="s2">&quot;Connection&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;close&quot;</span>
+        <span class="c1"># Persistent connections require threading server.</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">request_handler</span><span class="o">.</span><span class="n">server</span><span class="p">,</span> <span class="n">socketserver</span><span class="o">.</span><span class="n">ThreadingMixIn</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">headers</span><span class="p">[</span><span class="s2">&quot;Connection&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;close&quot;</span>
+        <span class="c1"># Mark the connection for closing if it&#39;s set as such above or if the</span>
+        <span class="c1"># application sent the header.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">headers</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;Connection&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;close&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">request_handler</span><span class="o">.</span><span class="n">close_connection</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">get_stdin</span><span class="p">()</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">finish_response</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;REQUEST_METHOD&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;HEAD&quot;</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">deque</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">result</span><span class="p">,</span> <span class="n">maxlen</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>  <span class="c1"># Consume iterator.</span>
+                <span class="c1"># Don&#39;t call self.finish_content() as, if the headers have not</span>
+                <span class="c1"># been sent and Content-Length isn&#39;t set, it&#39;ll default to &quot;0&quot;</span>
+                <span class="c1"># which will prevent omission of the Content-Length header with</span>
+                <span class="c1"># HEAD requests as permitted by RFC 9110 Section 9.3.2.</span>
+                <span class="c1"># Instead, send the headers, if not sent yet.</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">headers_sent</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">send_headers</span><span class="p">()</span>
+            <span class="k">finally</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">finish_response</span><span class="p">()</span>
+
+
+<div class="viewcode-block" id="WSGIRequestHandler">
+<a class="viewcode-back" href="../../../../autoapi/django/core/servers/basehttp/index.html#django.core.servers.basehttp.WSGIRequestHandler">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">WSGIRequestHandler</span><span class="p">(</span><span class="n">simple_server</span><span class="o">.</span><span class="n">WSGIRequestHandler</span><span class="p">):</span>
+<div class="viewcode-block" id="WSGIRequestHandler.protocol_version">
+<a class="viewcode-back" href="../../../../autoapi/django/core/servers/basehttp/index.html#django.core.servers.basehttp.WSGIRequestHandler.protocol_version">[docs]</a>
+    <span class="n">protocol_version</span> <span class="o">=</span> <span class="s2">&quot;HTTP/1.1&quot;</span></div>
+
+
+<div class="viewcode-block" id="WSGIRequestHandler.address_string">
+<a class="viewcode-back" href="../../../../autoapi/django/core/servers/basehttp/index.html#django.core.servers.basehttp.WSGIRequestHandler.address_string">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">address_string</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Short-circuit parent method to not call socket.getfqdn</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">client_address</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="WSGIRequestHandler.log_message">
+<a class="viewcode-back" href="../../../../autoapi/django/core/servers/basehttp/index.html#django.core.servers.basehttp.WSGIRequestHandler.log_message">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">log_message</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">format</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">):</span>
+        <span class="n">extra</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;request&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">request</span><span class="p">,</span>
+            <span class="s2">&quot;server_time&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_date_time_string</span><span class="p">(),</span>
+        <span class="p">}</span>
+        <span class="k">if</span> <span class="n">args</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;4&quot;</span><span class="p">:</span>
+            <span class="c1"># 0x16 = Handshake, 0x03 = SSL 3.0 or TLS 1.x</span>
+            <span class="k">if</span> <span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\x16\x03</span><span class="s2">&quot;</span><span class="p">):</span>
+                <span class="n">extra</span><span class="p">[</span><span class="s2">&quot;status_code&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">500</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
+                    <span class="s2">&quot;You&#39;re accessing the development server over HTTPS, but &quot;</span>
+                    <span class="s2">&quot;it only supports HTTP.&quot;</span><span class="p">,</span>
+                    <span class="n">extra</span><span class="o">=</span><span class="n">extra</span><span class="p">,</span>
+                <span class="p">)</span>
+                <span class="k">return</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">isdigit</span><span class="p">()</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">args</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="n">status_code</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">args</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+            <span class="n">extra</span><span class="p">[</span><span class="s2">&quot;status_code&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">status_code</span>
+
+            <span class="k">if</span> <span class="n">status_code</span> <span class="o">&gt;=</span> <span class="mi">500</span><span class="p">:</span>
+                <span class="n">level</span> <span class="o">=</span> <span class="n">logger</span><span class="o">.</span><span class="n">error</span>
+            <span class="k">elif</span> <span class="n">status_code</span> <span class="o">&gt;=</span> <span class="mi">400</span><span class="p">:</span>
+                <span class="n">level</span> <span class="o">=</span> <span class="n">logger</span><span class="o">.</span><span class="n">warning</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">level</span> <span class="o">=</span> <span class="n">logger</span><span class="o">.</span><span class="n">info</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">level</span> <span class="o">=</span> <span class="n">logger</span><span class="o">.</span><span class="n">info</span>
+
+        <span class="n">level</span><span class="p">(</span><span class="nb">format</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="n">extra</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="WSGIRequestHandler.get_environ">
+<a class="viewcode-back" href="../../../../autoapi/django/core/servers/basehttp/index.html#django.core.servers.basehttp.WSGIRequestHandler.get_environ">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_environ</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Strip all headers with underscores in the name before constructing</span>
+        <span class="c1"># the WSGI environ. This prevents header-spoofing based on ambiguity</span>
+        <span class="c1"># between underscores and dashes both normalized to underscores in WSGI</span>
+        <span class="c1"># env vars. Nginx and Apache 2.4+ both do this as well.</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">headers</span><span class="p">:</span>
+            <span class="k">if</span> <span class="s2">&quot;_&quot;</span> <span class="ow">in</span> <span class="n">k</span><span class="p">:</span>
+                <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">headers</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">get_environ</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="WSGIRequestHandler.handle">
+<a class="viewcode-back" href="../../../../autoapi/django/core/servers/basehttp/index.html#django.core.servers.basehttp.WSGIRequestHandler.handle">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">close_connection</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">handle_one_request</span><span class="p">()</span>
+        <span class="k">while</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">close_connection</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">handle_one_request</span><span class="p">()</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">shutdown</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">SHUT_WR</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">AttributeError</span><span class="p">,</span> <span class="ne">OSError</span><span class="p">):</span>
+            <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="WSGIRequestHandler.handle_one_request">
+<a class="viewcode-back" href="../../../../autoapi/django/core/servers/basehttp/index.html#django.core.servers.basehttp.WSGIRequestHandler.handle_one_request">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle_one_request</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Copy of WSGIRequestHandler.handle() but with different ServerHandler&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">raw_requestline</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rfile</span><span class="o">.</span><span class="n">readline</span><span class="p">(</span><span class="mi">65537</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raw_requestline</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">65536</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">requestline</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">request_version</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">command</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">send_error</span><span class="p">(</span><span class="mi">414</span><span class="p">)</span>
+            <span class="k">return</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_request</span><span class="p">():</span>  <span class="c1"># An error code has been sent, just exit</span>
+            <span class="k">return</span>
+
+        <span class="n">handler</span> <span class="o">=</span> <span class="n">ServerHandler</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">rfile</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">wfile</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_stderr</span><span class="p">(),</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_environ</span><span class="p">()</span>
+        <span class="p">)</span>
+        <span class="n">handler</span><span class="o">.</span><span class="n">request_handler</span> <span class="o">=</span> <span class="bp">self</span>  <span class="c1"># backpointer for logging &amp; connection closing</span>
+        <span class="n">handler</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="o">.</span><span class="n">get_app</span><span class="p">())</span></div>
+</div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span>
+    <span class="n">addr</span><span class="p">,</span>
+    <span class="n">port</span><span class="p">,</span>
+    <span class="n">wsgi_handler</span><span class="p">,</span>
+    <span class="n">ipv6</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="n">threading</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="n">on_bind</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">server_cls</span><span class="o">=</span><span class="n">WSGIServer</span><span class="p">,</span>
+<span class="p">):</span>
+    <span class="n">server_address</span> <span class="o">=</span> <span class="p">(</span><span class="n">addr</span><span class="p">,</span> <span class="n">port</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">threading</span><span class="p">:</span>
+        <span class="n">httpd_cls</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="s2">&quot;WSGIServer&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">socketserver</span><span class="o">.</span><span class="n">ThreadingMixIn</span><span class="p">,</span> <span class="n">server_cls</span><span class="p">),</span> <span class="p">{})</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">httpd_cls</span> <span class="o">=</span> <span class="n">server_cls</span>
+    <span class="n">httpd</span> <span class="o">=</span> <span class="n">httpd_cls</span><span class="p">(</span><span class="n">server_address</span><span class="p">,</span> <span class="n">WSGIRequestHandler</span><span class="p">,</span> <span class="n">ipv6</span><span class="o">=</span><span class="n">ipv6</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">on_bind</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">on_bind</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">httpd</span><span class="p">,</span> <span class="s2">&quot;server_port&quot;</span><span class="p">,</span> <span class="n">port</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">threading</span><span class="p">:</span>
+        <span class="c1"># ThreadingMixIn.daemon_threads indicates how threads will behave on an</span>
+        <span class="c1"># abrupt shutdown; like quitting the server by the user or restarting</span>
+        <span class="c1"># by the auto-reloader. True means the server will not wait for thread</span>
+        <span class="c1"># termination before it quits. This will make auto-reloader faster</span>
+        <span class="c1"># and will prevent the need to kill the server manually if a thread</span>
+        <span class="c1"># isn&#39;t terminating correctly.</span>
+        <span class="n">httpd</span><span class="o">.</span><span class="n">daemon_threads</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">httpd</span><span class="o">.</span><span class="n">set_app</span><span class="p">(</span><span class="n">wsgi_handler</span><span class="p">)</span>
+    <span class="n">httpd</span><span class="o">.</span><span class="n">serve_forever</span><span class="p">()</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

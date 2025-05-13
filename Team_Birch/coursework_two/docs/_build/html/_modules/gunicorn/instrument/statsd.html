@@ -1,0 +1,307 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gunicorn.instrument.statsd &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../gunicorn.html">gunicorn</a></li>
+      <li class="breadcrumb-item active">gunicorn.instrument.statsd</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gunicorn.instrument.statsd</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -</span>
+<span class="c1">#</span>
+<span class="c1"># This file is part of gunicorn released under the MIT license.</span>
+<span class="c1"># See the NOTICE for more information.</span>
+
+<span class="s2">&quot;Bare-bones implementation of statsD&#39;s protocol, client-side&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">socket</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">re</span><span class="w"> </span><span class="kn">import</span> <span class="n">sub</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">gunicorn.glogging</span><span class="w"> </span><span class="kn">import</span> <span class="n">Logger</span>
+
+<span class="c1"># Instrumentation constants</span>
+<div class="viewcode-block" id="METRIC_VAR">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/instrument/statsd/index.html#gunicorn.instrument.statsd.METRIC_VAR">[docs]</a>
+<span class="n">METRIC_VAR</span> <span class="o">=</span> <span class="s2">&quot;metric&quot;</span></div>
+
+<div class="viewcode-block" id="VALUE_VAR">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/instrument/statsd/index.html#gunicorn.instrument.statsd.VALUE_VAR">[docs]</a>
+<span class="n">VALUE_VAR</span> <span class="o">=</span> <span class="s2">&quot;value&quot;</span></div>
+
+<div class="viewcode-block" id="MTYPE_VAR">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/instrument/statsd/index.html#gunicorn.instrument.statsd.MTYPE_VAR">[docs]</a>
+<span class="n">MTYPE_VAR</span> <span class="o">=</span> <span class="s2">&quot;mtype&quot;</span></div>
+
+<div class="viewcode-block" id="GAUGE_TYPE">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/instrument/statsd/index.html#gunicorn.instrument.statsd.GAUGE_TYPE">[docs]</a>
+<span class="n">GAUGE_TYPE</span> <span class="o">=</span> <span class="s2">&quot;gauge&quot;</span></div>
+
+<div class="viewcode-block" id="COUNTER_TYPE">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/instrument/statsd/index.html#gunicorn.instrument.statsd.COUNTER_TYPE">[docs]</a>
+<span class="n">COUNTER_TYPE</span> <span class="o">=</span> <span class="s2">&quot;counter&quot;</span></div>
+
+<div class="viewcode-block" id="HISTOGRAM_TYPE">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/instrument/statsd/index.html#gunicorn.instrument.statsd.HISTOGRAM_TYPE">[docs]</a>
+<span class="n">HISTOGRAM_TYPE</span> <span class="o">=</span> <span class="s2">&quot;histogram&quot;</span></div>
+
+
+
+<div class="viewcode-block" id="Statsd">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/instrument/statsd/index.html#gunicorn.instrument.statsd.Statsd">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Statsd</span><span class="p">(</span><span class="n">Logger</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;statsD-based instrumentation, that passes as a logger&quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cfg</span><span class="p">):</span>
+        <span class="n">Logger</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cfg</span><span class="p">)</span>
+<div class="viewcode-block" id="Statsd.prefix">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/instrument/statsd/index.html#gunicorn.instrument.statsd.Statsd.prefix">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">prefix</span> <span class="o">=</span> <span class="n">sub</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;^(.+[^.]+)\.*$&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="se">\\</span><span class="s2">g&lt;1&gt;.&quot;</span><span class="p">,</span> <span class="n">cfg</span><span class="o">.</span><span class="n">statsd_prefix</span><span class="p">)</span></div>
+
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">statsd_host</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">address_family</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">AF_UNIX</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">address_family</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sock</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">address_family</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_DGRAM</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">statsd_host</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sock</span> <span class="o">=</span> <span class="kc">None</span>
+
+<div class="viewcode-block" id="Statsd.dogstatsd_tags">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/instrument/statsd/index.html#gunicorn.instrument.statsd.Statsd.dogstatsd_tags">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dogstatsd_tags</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">dogstatsd_tags</span></div>
+
+
+    <span class="c1"># Log errors and warnings</span>
+<div class="viewcode-block" id="Statsd.critical">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/instrument/statsd/index.html#gunicorn.instrument.statsd.Statsd.critical">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">critical</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">Logger</span><span class="o">.</span><span class="n">critical</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">increment</span><span class="p">(</span><span class="s2">&quot;gunicorn.log.critical&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Statsd.error">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/instrument/statsd/index.html#gunicorn.instrument.statsd.Statsd.error">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">error</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">Logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">increment</span><span class="p">(</span><span class="s2">&quot;gunicorn.log.error&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Statsd.warning">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/instrument/statsd/index.html#gunicorn.instrument.statsd.Statsd.warning">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">warning</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">Logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">increment</span><span class="p">(</span><span class="s2">&quot;gunicorn.log.warning&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Statsd.exception">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/instrument/statsd/index.html#gunicorn.instrument.statsd.Statsd.exception">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">exception</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">Logger</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">increment</span><span class="p">(</span><span class="s2">&quot;gunicorn.log.exception&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span></div>
+
+
+    <span class="c1"># Special treatment for info, the most common log level</span>
+<div class="viewcode-block" id="Statsd.info">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/instrument/statsd/index.html#gunicorn.instrument.statsd.Statsd.info">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">info</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">,</span> <span class="n">msg</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+    <span class="c1"># skip the run-of-the-mill logs</span>
+<div class="viewcode-block" id="Statsd.debug">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/instrument/statsd/index.html#gunicorn.instrument.statsd.Statsd.debug">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">debug</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">,</span> <span class="n">msg</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Statsd.log">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/instrument/statsd/index.html#gunicorn.instrument.statsd.Statsd.log">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">log</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lvl</span><span class="p">,</span> <span class="n">msg</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Log a given statistic if metric, value and type are present&quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">extra</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;extra&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">extra</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">metric</span> <span class="o">=</span> <span class="n">extra</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">METRIC_VAR</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="n">extra</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">VALUE_VAR</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                <span class="n">typ</span> <span class="o">=</span> <span class="n">extra</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">MTYPE_VAR</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">metric</span> <span class="ow">and</span> <span class="n">value</span> <span class="ow">and</span> <span class="n">typ</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">typ</span> <span class="o">==</span> <span class="n">GAUGE_TYPE</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">gauge</span><span class="p">(</span><span class="n">metric</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+                    <span class="k">elif</span> <span class="n">typ</span> <span class="o">==</span> <span class="n">COUNTER_TYPE</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">increment</span><span class="p">(</span><span class="n">metric</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+                    <span class="k">elif</span> <span class="n">typ</span> <span class="o">==</span> <span class="n">HISTOGRAM_TYPE</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">histogram</span><span class="p">(</span><span class="n">metric</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="k">pass</span>
+
+            <span class="c1"># Log to parent logger only if there is something to say</span>
+            <span class="k">if</span> <span class="n">msg</span><span class="p">:</span>
+                <span class="n">Logger</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lvl</span><span class="p">,</span> <span class="n">msg</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="n">Logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;Failed to log to statsd&quot;</span><span class="p">,</span> <span class="n">exc_info</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
+
+
+    <span class="c1"># access logging</span>
+<div class="viewcode-block" id="Statsd.access">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/instrument/statsd/index.html#gunicorn.instrument.statsd.Statsd.access">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">access</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">resp</span><span class="p">,</span> <span class="n">req</span><span class="p">,</span> <span class="n">environ</span><span class="p">,</span> <span class="n">request_time</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Measure request duration</span>
+<span class="sd">        request_time is a datetime.timedelta</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">Logger</span><span class="o">.</span><span class="n">access</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">resp</span><span class="p">,</span> <span class="n">req</span><span class="p">,</span> <span class="n">environ</span><span class="p">,</span> <span class="n">request_time</span><span class="p">)</span>
+        <span class="n">duration_in_ms</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">request_time</span><span class="o">.</span><span class="n">seconds</span> <span class="o">*</span> <span class="mi">1000</span> <span class="o">+</span> <span class="nb">float</span><span class="p">(</span><span class="n">request_time</span><span class="o">.</span><span class="n">microseconds</span><span class="p">)</span> <span class="o">/</span> <span class="mi">10</span><span class="o">**</span><span class="mi">3</span>
+        <span class="p">)</span>
+        <span class="n">status</span> <span class="o">=</span> <span class="n">resp</span><span class="o">.</span><span class="n">status</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">status</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">status</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">status</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">histogram</span><span class="p">(</span><span class="s2">&quot;gunicorn.request.duration&quot;</span><span class="p">,</span> <span class="n">duration_in_ms</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">increment</span><span class="p">(</span><span class="s2">&quot;gunicorn.requests&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">increment</span><span class="p">(</span><span class="s2">&quot;gunicorn.request.status.</span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">status</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span></div>
+
+
+    <span class="c1"># statsD methods</span>
+    <span class="c1"># you can use those directly if you want</span>
+<div class="viewcode-block" id="Statsd.gauge">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/instrument/statsd/index.html#gunicorn.instrument.statsd.Statsd.gauge">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">gauge</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_sock_send</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">{0}{1}</span><span class="s2">:</span><span class="si">{2}</span><span class="s2">|g&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">prefix</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="Statsd.increment">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/instrument/statsd/index.html#gunicorn.instrument.statsd.Statsd.increment">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">increment</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">sampling_rate</span><span class="o">=</span><span class="mf">1.0</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_sock_send</span><span class="p">(</span>
+            <span class="s2">&quot;</span><span class="si">{0}{1}</span><span class="s2">:</span><span class="si">{2}</span><span class="s2">|c|@</span><span class="si">{3}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">prefix</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">sampling_rate</span><span class="p">)</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Statsd.decrement">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/instrument/statsd/index.html#gunicorn.instrument.statsd.Statsd.decrement">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">decrement</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">sampling_rate</span><span class="o">=</span><span class="mf">1.0</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_sock_send</span><span class="p">(</span>
+            <span class="s2">&quot;</span><span class="si">{0}{1}</span><span class="s2">:-</span><span class="si">{2}</span><span class="s2">|c|@</span><span class="si">{3}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">prefix</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">sampling_rate</span><span class="p">)</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Statsd.histogram">
+<a class="viewcode-back" href="../../../autoapi/gunicorn/instrument/statsd/index.html#gunicorn.instrument.statsd.Statsd.histogram">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">histogram</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_sock_send</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">{0}{1}</span><span class="s2">:</span><span class="si">{2}</span><span class="s2">|ms&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">prefix</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">))</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_sock_send</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;ascii&quot;</span><span class="p">)</span>
+
+            <span class="c1"># http://docs.datadoghq.com/guides/dogstatsd/#datagram-format</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dogstatsd_tags</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="n">msg</span> <span class="o">+</span> <span class="sa">b</span><span class="s2">&quot;|#&quot;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">dogstatsd_tags</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;ascii&quot;</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="n">Logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;Error sending message to statsd&quot;</span><span class="p">,</span> <span class="n">exc_info</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

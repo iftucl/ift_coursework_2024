@@ -1,0 +1,670 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.contrib.gis.db.backends.postgis.operations &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../../../django.html">django</a></li>
+      <li class="breadcrumb-item active">django.contrib.gis.db.backends.postgis.operations</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.contrib.gis.db.backends.postgis.operations</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.db.backends.base.operations</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseSpatialOperations</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.db.backends.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">SpatialOperator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.db.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">GeometryField</span><span class="p">,</span> <span class="n">RasterField</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.gdal</span><span class="w"> </span><span class="kn">import</span> <span class="n">GDALRaster</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.geos.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">GEOSGeometryBase</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.geos.prototypes.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">wkb_r</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.contrib.gis.measure</span><span class="w"> </span><span class="kn">import</span> <span class="n">Distance</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImproperlyConfigured</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">NotSupportedError</span><span class="p">,</span> <span class="n">ProgrammingError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.postgresql.operations</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseOperations</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.postgresql.psycopg_any</span><span class="w"> </span><span class="kn">import</span> <span class="n">is_psycopg3</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">Func</span><span class="p">,</span> <span class="n">Value</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">cached_property</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.version</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_version_tuple</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.adapter</span><span class="w"> </span><span class="kn">import</span> <span class="n">PostGISAdapter</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">PostGISGeometryColumns</span><span class="p">,</span> <span class="n">PostGISSpatialRefSys</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.pgraster</span><span class="w"> </span><span class="kn">import</span> <span class="n">from_pgraster</span>
+
+<span class="c1"># Identifier to mark raster lookups as bilateral.</span>
+<div class="viewcode-block" id="BILATERAL">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.BILATERAL">[docs]</a>
+<span class="n">BILATERAL</span> <span class="o">=</span> <span class="s2">&quot;bilateral&quot;</span></div>
+
+
+
+<div class="viewcode-block" id="PostGISOperator">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">PostGISOperator</span><span class="p">(</span><span class="n">SpatialOperator</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">geography</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">raster</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="c1"># Only a subset of the operators and functions are available for the</span>
+        <span class="c1"># geography type. Lookups that don&#39;t support geography will be cast to</span>
+        <span class="c1"># geometry.</span>
+<div class="viewcode-block" id="PostGISOperator.geography">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperator.geography">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">geography</span> <span class="o">=</span> <span class="n">geography</span></div>
+
+        <span class="c1"># Only a subset of the operators and functions are available for the</span>
+        <span class="c1"># raster type. Lookups that don&#39;t support raster will be converted to</span>
+        <span class="c1"># polygons. If the raster argument is set to BILATERAL, then the</span>
+        <span class="c1"># operator cannot handle mixed geom-raster lookups.</span>
+<div class="viewcode-block" id="PostGISOperator.raster">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperator.raster">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">raster</span> <span class="o">=</span> <span class="n">raster</span></div>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="PostGISOperator.as_sql">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperator.as_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">as_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">connection</span><span class="p">,</span> <span class="n">lookup</span><span class="p">,</span> <span class="n">template_params</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">):</span>
+        <span class="n">template_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">check_raster</span><span class="p">(</span><span class="n">lookup</span><span class="p">,</span> <span class="n">template_params</span><span class="p">)</span>
+        <span class="n">template_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">check_geography</span><span class="p">(</span><span class="n">lookup</span><span class="p">,</span> <span class="n">template_params</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">as_sql</span><span class="p">(</span><span class="n">connection</span><span class="p">,</span> <span class="n">lookup</span><span class="p">,</span> <span class="n">template_params</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PostGISOperator.check_raster">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperator.check_raster">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_raster</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup</span><span class="p">,</span> <span class="n">template_params</span><span class="p">):</span>
+        <span class="n">spheroid</span> <span class="o">=</span> <span class="n">lookup</span><span class="o">.</span><span class="n">rhs_params</span> <span class="ow">and</span> <span class="n">lookup</span><span class="o">.</span><span class="n">rhs_params</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;spheroid&quot;</span>
+
+        <span class="c1"># Check which input is a raster.</span>
+        <span class="n">lhs_is_raster</span> <span class="o">=</span> <span class="n">lookup</span><span class="o">.</span><span class="n">lhs</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">geom_type</span> <span class="o">==</span> <span class="s2">&quot;RASTER&quot;</span>
+        <span class="n">rhs_is_raster</span> <span class="o">=</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">lookup</span><span class="o">.</span><span class="n">rhs</span><span class="p">,</span> <span class="n">GDALRaster</span><span class="p">)</span>
+
+        <span class="c1"># Look for band indices and inject them if provided.</span>
+        <span class="k">if</span> <span class="n">lookup</span><span class="o">.</span><span class="n">band_lhs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">lhs_is_raster</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">func</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">&quot;Band indices are not allowed for this operator, it works on bbox &quot;</span>
+                    <span class="s2">&quot;only.&quot;</span>
+                <span class="p">)</span>
+            <span class="n">template_params</span><span class="p">[</span><span class="s2">&quot;lhs&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">, </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span>
+                <span class="n">template_params</span><span class="p">[</span><span class="s2">&quot;lhs&quot;</span><span class="p">],</span>
+                <span class="n">lookup</span><span class="o">.</span><span class="n">band_lhs</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">lookup</span><span class="o">.</span><span class="n">band_rhs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">rhs_is_raster</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">func</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">&quot;Band indices are not allowed for this operator, it works on bbox &quot;</span>
+                    <span class="s2">&quot;only.&quot;</span>
+                <span class="p">)</span>
+            <span class="n">template_params</span><span class="p">[</span><span class="s2">&quot;rhs&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">, </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span>
+                <span class="n">template_params</span><span class="p">[</span><span class="s2">&quot;rhs&quot;</span><span class="p">],</span>
+                <span class="n">lookup</span><span class="o">.</span><span class="n">band_rhs</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="c1"># Convert rasters to polygons if necessary.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster</span> <span class="ow">or</span> <span class="n">spheroid</span><span class="p">:</span>
+            <span class="c1"># Operators without raster support.</span>
+            <span class="k">if</span> <span class="n">lhs_is_raster</span><span class="p">:</span>
+                <span class="n">template_params</span><span class="p">[</span><span class="s2">&quot;lhs&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;ST_Polygon(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="n">template_params</span><span class="p">[</span><span class="s2">&quot;lhs&quot;</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">rhs_is_raster</span><span class="p">:</span>
+                <span class="n">template_params</span><span class="p">[</span><span class="s2">&quot;rhs&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;ST_Polygon(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="n">template_params</span><span class="p">[</span><span class="s2">&quot;rhs&quot;</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster</span> <span class="o">==</span> <span class="n">BILATERAL</span><span class="p">:</span>
+            <span class="c1"># Operators with raster support but don&#39;t support mixed (rast-geom)</span>
+            <span class="c1"># lookups.</span>
+            <span class="k">if</span> <span class="n">lhs_is_raster</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">rhs_is_raster</span><span class="p">:</span>
+                <span class="n">template_params</span><span class="p">[</span><span class="s2">&quot;lhs&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;ST_Polygon(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="n">template_params</span><span class="p">[</span><span class="s2">&quot;lhs&quot;</span><span class="p">]</span>
+            <span class="k">elif</span> <span class="n">rhs_is_raster</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">lhs_is_raster</span><span class="p">:</span>
+                <span class="n">template_params</span><span class="p">[</span><span class="s2">&quot;rhs&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;ST_Polygon(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="n">template_params</span><span class="p">[</span><span class="s2">&quot;rhs&quot;</span><span class="p">]</span>
+
+        <span class="k">return</span> <span class="n">template_params</span></div>
+
+
+<div class="viewcode-block" id="PostGISOperator.check_geography">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperator.check_geography">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_geography</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup</span><span class="p">,</span> <span class="n">template_params</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert geography fields to geometry types, if necessary.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">lookup</span><span class="o">.</span><span class="n">lhs</span><span class="o">.</span><span class="n">output_field</span><span class="o">.</span><span class="n">geography</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">geography</span><span class="p">:</span>
+            <span class="n">template_params</span><span class="p">[</span><span class="s2">&quot;lhs&quot;</span><span class="p">]</span> <span class="o">+=</span> <span class="s2">&quot;::geometry&quot;</span>
+        <span class="k">return</span> <span class="n">template_params</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="ST_Polygon">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.ST_Polygon">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ST_Polygon</span><span class="p">(</span><span class="n">Func</span><span class="p">):</span>
+<div class="viewcode-block" id="ST_Polygon.function">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.ST_Polygon.function">[docs]</a>
+    <span class="n">function</span> <span class="o">=</span> <span class="s2">&quot;ST_Polygon&quot;</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expr</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">expr</span><span class="p">)</span>
+        <span class="n">expr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">source_expressions</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expr</span><span class="p">,</span> <span class="n">Value</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">expr</span><span class="o">.</span><span class="n">_output_field_or_none</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">source_expressions</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">Value</span><span class="p">(</span>
+                <span class="n">expr</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="n">output_field</span><span class="o">=</span><span class="n">RasterField</span><span class="p">(</span><span class="n">srid</span><span class="o">=</span><span class="n">expr</span><span class="o">.</span><span class="n">value</span><span class="o">.</span><span class="n">srid</span><span class="p">)</span>
+            <span class="p">)</span>
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="ST_Polygon.output_field">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.ST_Polygon.output_field">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">output_field</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">GeometryField</span><span class="p">(</span><span class="n">srid</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">source_expressions</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">srid</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="PostGISOperations">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">PostGISOperations</span><span class="p">(</span><span class="n">BaseSpatialOperations</span><span class="p">,</span> <span class="n">DatabaseOperations</span><span class="p">):</span>
+<div class="viewcode-block" id="PostGISOperations.name">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.name">[docs]</a>
+    <span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;postgis&quot;</span></div>
+
+<div class="viewcode-block" id="PostGISOperations.postgis">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.postgis">[docs]</a>
+    <span class="n">postgis</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+<div class="viewcode-block" id="PostGISOperations.geom_func_prefix">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.geom_func_prefix">[docs]</a>
+    <span class="n">geom_func_prefix</span> <span class="o">=</span> <span class="s2">&quot;ST_&quot;</span></div>
+
+
+<div class="viewcode-block" id="PostGISOperations.Adapter">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.Adapter">[docs]</a>
+    <span class="n">Adapter</span> <span class="o">=</span> <span class="n">PostGISAdapter</span></div>
+
+
+<div class="viewcode-block" id="PostGISOperations.collect">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.collect">[docs]</a>
+    <span class="n">collect</span> <span class="o">=</span> <span class="n">geom_func_prefix</span> <span class="o">+</span> <span class="s2">&quot;Collect&quot;</span></div>
+
+<div class="viewcode-block" id="PostGISOperations.extent">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.extent">[docs]</a>
+    <span class="n">extent</span> <span class="o">=</span> <span class="n">geom_func_prefix</span> <span class="o">+</span> <span class="s2">&quot;Extent&quot;</span></div>
+
+<div class="viewcode-block" id="PostGISOperations.extent3d">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.extent3d">[docs]</a>
+    <span class="n">extent3d</span> <span class="o">=</span> <span class="n">geom_func_prefix</span> <span class="o">+</span> <span class="s2">&quot;3DExtent&quot;</span></div>
+
+<div class="viewcode-block" id="PostGISOperations.length3d">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.length3d">[docs]</a>
+    <span class="n">length3d</span> <span class="o">=</span> <span class="n">geom_func_prefix</span> <span class="o">+</span> <span class="s2">&quot;3DLength&quot;</span></div>
+
+<div class="viewcode-block" id="PostGISOperations.makeline">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.makeline">[docs]</a>
+    <span class="n">makeline</span> <span class="o">=</span> <span class="n">geom_func_prefix</span> <span class="o">+</span> <span class="s2">&quot;MakeLine&quot;</span></div>
+
+<div class="viewcode-block" id="PostGISOperations.perimeter3d">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.perimeter3d">[docs]</a>
+    <span class="n">perimeter3d</span> <span class="o">=</span> <span class="n">geom_func_prefix</span> <span class="o">+</span> <span class="s2">&quot;3DPerimeter&quot;</span></div>
+
+<div class="viewcode-block" id="PostGISOperations.unionagg">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.unionagg">[docs]</a>
+    <span class="n">unionagg</span> <span class="o">=</span> <span class="n">geom_func_prefix</span> <span class="o">+</span> <span class="s2">&quot;Union&quot;</span></div>
+
+
+<div class="viewcode-block" id="PostGISOperations.gis_operators">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.gis_operators">[docs]</a>
+    <span class="n">gis_operators</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;bbcontains&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span><span class="n">op</span><span class="o">=</span><span class="s2">&quot;~&quot;</span><span class="p">,</span> <span class="n">raster</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span>
+        <span class="s2">&quot;bboverlaps&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span><span class="n">op</span><span class="o">=</span><span class="s2">&quot;&amp;&amp;&quot;</span><span class="p">,</span> <span class="n">geography</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">raster</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span>
+        <span class="s2">&quot;contained&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span><span class="n">op</span><span class="o">=</span><span class="s2">&quot;@&quot;</span><span class="p">,</span> <span class="n">raster</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span>
+        <span class="s2">&quot;overlaps_left&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span><span class="n">op</span><span class="o">=</span><span class="s2">&quot;&amp;&lt;&quot;</span><span class="p">,</span> <span class="n">raster</span><span class="o">=</span><span class="n">BILATERAL</span><span class="p">),</span>
+        <span class="s2">&quot;overlaps_right&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span><span class="n">op</span><span class="o">=</span><span class="s2">&quot;&amp;&gt;&quot;</span><span class="p">,</span> <span class="n">raster</span><span class="o">=</span><span class="n">BILATERAL</span><span class="p">),</span>
+        <span class="s2">&quot;overlaps_below&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span><span class="n">op</span><span class="o">=</span><span class="s2">&quot;&amp;&lt;|&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;overlaps_above&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span><span class="n">op</span><span class="o">=</span><span class="s2">&quot;|&amp;&gt;&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;left&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span><span class="n">op</span><span class="o">=</span><span class="s2">&quot;&lt;&lt;&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;right&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span><span class="n">op</span><span class="o">=</span><span class="s2">&quot;&gt;&gt;&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;strictly_below&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span><span class="n">op</span><span class="o">=</span><span class="s2">&quot;&lt;&lt;|&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;strictly_above&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span><span class="n">op</span><span class="o">=</span><span class="s2">&quot;|&gt;&gt;&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;same_as&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span><span class="n">op</span><span class="o">=</span><span class="s2">&quot;~=&quot;</span><span class="p">,</span> <span class="n">raster</span><span class="o">=</span><span class="n">BILATERAL</span><span class="p">),</span>
+        <span class="s2">&quot;exact&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span><span class="n">op</span><span class="o">=</span><span class="s2">&quot;~=&quot;</span><span class="p">,</span> <span class="n">raster</span><span class="o">=</span><span class="n">BILATERAL</span><span class="p">),</span>  <span class="c1"># alias of same_as</span>
+        <span class="s2">&quot;contains&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="s2">&quot;ST_Contains&quot;</span><span class="p">,</span> <span class="n">raster</span><span class="o">=</span><span class="n">BILATERAL</span><span class="p">),</span>
+        <span class="s2">&quot;contains_properly&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span>
+            <span class="n">func</span><span class="o">=</span><span class="s2">&quot;ST_ContainsProperly&quot;</span><span class="p">,</span> <span class="n">raster</span><span class="o">=</span><span class="n">BILATERAL</span>
+        <span class="p">),</span>
+        <span class="s2">&quot;coveredby&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span>
+            <span class="n">func</span><span class="o">=</span><span class="s2">&quot;ST_CoveredBy&quot;</span><span class="p">,</span> <span class="n">geography</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">raster</span><span class="o">=</span><span class="n">BILATERAL</span>
+        <span class="p">),</span>
+        <span class="s2">&quot;covers&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="s2">&quot;ST_Covers&quot;</span><span class="p">,</span> <span class="n">geography</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">raster</span><span class="o">=</span><span class="n">BILATERAL</span><span class="p">),</span>
+        <span class="s2">&quot;crosses&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="s2">&quot;ST_Crosses&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;disjoint&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="s2">&quot;ST_Disjoint&quot;</span><span class="p">,</span> <span class="n">raster</span><span class="o">=</span><span class="n">BILATERAL</span><span class="p">),</span>
+        <span class="s2">&quot;equals&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="s2">&quot;ST_Equals&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;intersects&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span>
+            <span class="n">func</span><span class="o">=</span><span class="s2">&quot;ST_Intersects&quot;</span><span class="p">,</span> <span class="n">geography</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">raster</span><span class="o">=</span><span class="n">BILATERAL</span>
+        <span class="p">),</span>
+        <span class="s2">&quot;overlaps&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="s2">&quot;ST_Overlaps&quot;</span><span class="p">,</span> <span class="n">raster</span><span class="o">=</span><span class="n">BILATERAL</span><span class="p">),</span>
+        <span class="s2">&quot;relate&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="s2">&quot;ST_Relate&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;touches&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="s2">&quot;ST_Touches&quot;</span><span class="p">,</span> <span class="n">raster</span><span class="o">=</span><span class="n">BILATERAL</span><span class="p">),</span>
+        <span class="s2">&quot;within&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="s2">&quot;ST_Within&quot;</span><span class="p">,</span> <span class="n">raster</span><span class="o">=</span><span class="n">BILATERAL</span><span class="p">),</span>
+        <span class="s2">&quot;dwithin&quot;</span><span class="p">:</span> <span class="n">PostGISOperator</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="s2">&quot;ST_DWithin&quot;</span><span class="p">,</span> <span class="n">geography</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">raster</span><span class="o">=</span><span class="n">BILATERAL</span><span class="p">),</span>
+    <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="PostGISOperations.unsupported_functions">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.unsupported_functions">[docs]</a>
+    <span class="n">unsupported_functions</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="PostGISOperations.select">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.select">[docs]</a>
+    <span class="n">select</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="k">if</span> <span class="n">is_psycopg3</span> <span class="k">else</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">::bytea&quot;</span></div>
+
+
+<div class="viewcode-block" id="PostGISOperations.select_extent">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.select_extent">[docs]</a>
+    <span class="n">select_extent</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="PostGISOperations.function_names">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.function_names">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">function_names</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">function_names</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;AsWKB&quot;</span><span class="p">:</span> <span class="s2">&quot;ST_AsBinary&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;AsWKT&quot;</span><span class="p">:</span> <span class="s2">&quot;ST_AsText&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;BoundingCircle&quot;</span><span class="p">:</span> <span class="s2">&quot;ST_MinimumBoundingCircle&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;FromWKB&quot;</span><span class="p">:</span> <span class="s2">&quot;ST_GeomFromWKB&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;FromWKT&quot;</span><span class="p">:</span> <span class="s2">&quot;ST_GeomFromText&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;NumPoints&quot;</span><span class="p">:</span> <span class="s2">&quot;ST_NPoints&quot;</span><span class="p">,</span>
+        <span class="p">}</span>
+        <span class="k">return</span> <span class="n">function_names</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="PostGISOperations.spatial_version">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.spatial_version">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">spatial_version</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Determine the version of the PostGIS library.&quot;&quot;&quot;</span>
+        <span class="c1"># Trying to get the PostGIS version because the function</span>
+        <span class="c1"># signatures will depend on the version used.  The cost</span>
+        <span class="c1"># here is a database query to determine the version, which</span>
+        <span class="c1"># can be mitigated by setting `POSTGIS_VERSION` with a 3-tuple</span>
+        <span class="c1"># comprising user-supplied values for the major, minor, and</span>
+        <span class="c1"># subminor revision of PostGIS.</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">settings</span><span class="p">,</span> <span class="s2">&quot;POSTGIS_VERSION&quot;</span><span class="p">):</span>
+            <span class="n">version</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">POSTGIS_VERSION</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Run a basic query to check the status of the connection so we&#39;re</span>
+            <span class="c1"># sure we only raise the error below if the problem comes from</span>
+            <span class="c1"># PostGIS and not from PostgreSQL itself (see #24862).</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_get_postgis_func</span><span class="p">(</span><span class="s2">&quot;version&quot;</span><span class="p">)</span>
+
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">vtup</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">postgis_version_tuple</span><span class="p">()</span>
+            <span class="k">except</span> <span class="n">ProgrammingError</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+                    <span class="s1">&#39;Cannot determine PostGIS version for database &quot;</span><span class="si">%s</span><span class="s1">&quot; &#39;</span>
+                    <span class="s1">&#39;using command &quot;SELECT postgis_lib_version()&quot;. &#39;</span>
+                    <span class="s2">&quot;GeoDjango requires at least PostGIS version 2.5. &quot;</span>
+                    <span class="s2">&quot;Was the database created from a spatial database &quot;</span>
+                    <span class="s2">&quot;template?&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;NAME&quot;</span><span class="p">]</span>
+                <span class="p">)</span>
+            <span class="n">version</span> <span class="o">=</span> <span class="n">vtup</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+        <span class="k">return</span> <span class="n">version</span></div>
+
+
+<div class="viewcode-block" id="PostGISOperations.convert_extent">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.convert_extent">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">convert_extent</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">box</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a 4-tuple extent for the `Extent` aggregate by converting</span>
+<span class="sd">        the bounding box text returned by PostGIS (`box` argument), for</span>
+<span class="sd">        example: &quot;BOX(-90.0 30.0, -85.0 40.0)&quot;.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">box</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="n">ll</span><span class="p">,</span> <span class="n">ur</span> <span class="o">=</span> <span class="n">box</span><span class="p">[</span><span class="mi">4</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">)</span>
+        <span class="n">xmin</span><span class="p">,</span> <span class="n">ymin</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="nb">float</span><span class="p">,</span> <span class="n">ll</span><span class="o">.</span><span class="n">split</span><span class="p">())</span>
+        <span class="n">xmax</span><span class="p">,</span> <span class="n">ymax</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="nb">float</span><span class="p">,</span> <span class="n">ur</span><span class="o">.</span><span class="n">split</span><span class="p">())</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">xmin</span><span class="p">,</span> <span class="n">ymin</span><span class="p">,</span> <span class="n">xmax</span><span class="p">,</span> <span class="n">ymax</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PostGISOperations.convert_extent3d">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.convert_extent3d">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">convert_extent3d</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">box3d</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a 6-tuple extent for the `Extent3D` aggregate by converting</span>
+<span class="sd">        the 3d bounding-box text returned by PostGIS (`box3d` argument), for</span>
+<span class="sd">        example: &quot;BOX3D(-90.0 30.0 1, -85.0 40.0 2)&quot;.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">box3d</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="n">ll</span><span class="p">,</span> <span class="n">ur</span> <span class="o">=</span> <span class="n">box3d</span><span class="p">[</span><span class="mi">6</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">)</span>
+        <span class="n">xmin</span><span class="p">,</span> <span class="n">ymin</span><span class="p">,</span> <span class="n">zmin</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="nb">float</span><span class="p">,</span> <span class="n">ll</span><span class="o">.</span><span class="n">split</span><span class="p">())</span>
+        <span class="n">xmax</span><span class="p">,</span> <span class="n">ymax</span><span class="p">,</span> <span class="n">zmax</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="nb">float</span><span class="p">,</span> <span class="n">ur</span><span class="o">.</span><span class="n">split</span><span class="p">())</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">xmin</span><span class="p">,</span> <span class="n">ymin</span><span class="p">,</span> <span class="n">zmin</span><span class="p">,</span> <span class="n">xmax</span><span class="p">,</span> <span class="n">ymax</span><span class="p">,</span> <span class="n">zmax</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PostGISOperations.geo_db_type">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.geo_db_type">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">geo_db_type</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the database field type for the given spatial field.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">geom_type</span> <span class="o">==</span> <span class="s2">&quot;RASTER&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;raster&quot;</span>
+
+        <span class="c1"># Type-based geometries.</span>
+        <span class="c1"># TODO: Support &#39;M&#39; extension.</span>
+        <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="n">geom_type</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">geom_type</span> <span class="o">+</span> <span class="s2">&quot;Z&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">geom_type</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">geom_type</span>
+        <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">geography</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">srid</span> <span class="o">!=</span> <span class="mi">4326</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">NotSupportedError</span><span class="p">(</span>
+                    <span class="s2">&quot;PostGIS only supports geography columns with an SRID of 4326.&quot;</span>
+                <span class="p">)</span>
+
+            <span class="k">return</span> <span class="s2">&quot;geography(</span><span class="si">%s</span><span class="s2">,</span><span class="si">%d</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">geom_type</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">srid</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;geometry(</span><span class="si">%s</span><span class="s2">,</span><span class="si">%d</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">geom_type</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">srid</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PostGISOperations.get_distance">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.get_distance">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_distance</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">dist_val</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Retrieve the distance parameters for the given geometry field,</span>
+<span class="sd">        distance lookup value, and the distance lookup type.</span>
+
+<span class="sd">        This is the most complex implementation of the spatial backends due to</span>
+<span class="sd">        what is supported on geodetic geometry columns vs. what&#39;s available on</span>
+<span class="sd">        projected geometry columns.  In addition, it has to take into account</span>
+<span class="sd">        the geography column type.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Getting the distance parameter</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="n">dist_val</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="c1"># Shorthand boolean flags.</span>
+        <span class="n">geodetic</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">geodetic</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="p">)</span>
+        <span class="n">geography</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">geography</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">Distance</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">geography</span><span class="p">:</span>
+                <span class="n">dist_param</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">m</span>
+            <span class="k">elif</span> <span class="n">geodetic</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">lookup_type</span> <span class="o">==</span> <span class="s2">&quot;dwithin&quot;</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                        <span class="s2">&quot;Only numeric values of degree units are &quot;</span>
+                        <span class="s2">&quot;allowed on geographic DWithin queries.&quot;</span>
+                    <span class="p">)</span>
+                <span class="n">dist_param</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">m</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">dist_param</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span>
+                    <span class="n">value</span><span class="p">,</span> <span class="n">Distance</span><span class="o">.</span><span class="n">unit_attname</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">units_name</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="p">))</span>
+                <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Assuming the distance is in the units of the field.</span>
+            <span class="n">dist_param</span> <span class="o">=</span> <span class="n">value</span>
+
+        <span class="k">return</span> <span class="p">[</span><span class="n">dist_param</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="PostGISOperations.get_geom_placeholder">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.get_geom_placeholder">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_geom_placeholder</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">compiler</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Provide a proper substitution value for Geometries or rasters that are</span>
+<span class="sd">        not in the SRID of the field. Specifically, this routine will</span>
+<span class="sd">        substitute in the ST_Transform() function call.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">transform_func</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">spatial_function_name</span><span class="p">(</span><span class="s2">&quot;Transform&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;as_sql&quot;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">value</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">srid</span> <span class="o">==</span> <span class="n">f</span><span class="o">.</span><span class="n">srid</span><span class="p">:</span>
+                <span class="n">placeholder</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">&quot;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">placeholder</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">(</span><span class="si">%%</span><span class="s2">s, </span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">transform_func</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">srid</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">placeholder</span>
+
+        <span class="c1"># Get the srid for this object</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">value_srid</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">value_srid</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">srid</span>
+
+        <span class="c1"># Adding Transform() to the SQL placeholder if the value srid</span>
+        <span class="c1"># is not equal to the field srid.</span>
+        <span class="k">if</span> <span class="n">value_srid</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">value_srid</span> <span class="o">==</span> <span class="n">f</span><span class="o">.</span><span class="n">srid</span><span class="p">:</span>
+            <span class="n">placeholder</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">placeholder</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">(</span><span class="si">%%</span><span class="s2">s, </span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">transform_func</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">srid</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">placeholder</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_postgis_func</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">func</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Helper routine for calling PostGIS functions and returning their result.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Close out the connection.  See #9437.</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">temporary_connection</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;SELECT </span><span class="si">%s</span><span class="s2">()&quot;</span> <span class="o">%</span> <span class="n">func</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+
+<div class="viewcode-block" id="PostGISOperations.postgis_geos_version">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.postgis_geos_version">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">postgis_geos_version</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s2">&quot;Return the version of the GEOS library used with PostGIS.&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_postgis_func</span><span class="p">(</span><span class="s2">&quot;postgis_geos_version&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PostGISOperations.postgis_lib_version">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.postgis_lib_version">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">postgis_lib_version</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s2">&quot;Return the version number of the PostGIS library used with PostgreSQL.&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_postgis_func</span><span class="p">(</span><span class="s2">&quot;postgis_lib_version&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PostGISOperations.postgis_proj_version">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.postgis_proj_version">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">postgis_proj_version</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the version of the PROJ library used with PostGIS.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_postgis_func</span><span class="p">(</span><span class="s2">&quot;postgis_proj_version&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PostGISOperations.postgis_version">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.postgis_version">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">postgis_version</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s2">&quot;Return PostGIS version number and compile-time options.&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_postgis_func</span><span class="p">(</span><span class="s2">&quot;postgis_version&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PostGISOperations.postgis_full_version">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.postgis_full_version">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">postgis_full_version</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s2">&quot;Return PostGIS version number and compile-time options.&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_postgis_func</span><span class="p">(</span><span class="s2">&quot;postgis_full_version&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PostGISOperations.postgis_version_tuple">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.postgis_version_tuple">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">postgis_version_tuple</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the PostGIS version as a tuple (version string, major,</span>
+<span class="sd">        minor, subminor).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">version</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">postgis_lib_version</span><span class="p">()</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">version</span><span class="p">,)</span> <span class="o">+</span> <span class="n">get_version_tuple</span><span class="p">(</span><span class="n">version</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PostGISOperations.proj_version_tuple">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.proj_version_tuple">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">proj_version_tuple</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the version of PROJ used by PostGIS as a tuple of the</span>
+<span class="sd">        major, minor, and subminor release numbers.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">proj_regex</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;(\d+)\.(\d+)\.(\d+)&quot;</span><span class="p">)</span>
+        <span class="n">proj_ver_str</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">postgis_proj_version</span><span class="p">()</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="n">proj_regex</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">proj_ver_str</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">m</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="n">m</span><span class="o">.</span><span class="n">groups</span><span class="p">()))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s2">&quot;Could not determine PROJ version from PostGIS.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PostGISOperations.spatial_aggregate_name">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.spatial_aggregate_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">spatial_aggregate_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">agg_name</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">agg_name</span> <span class="o">==</span> <span class="s2">&quot;Extent3D&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">extent3d</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">geom_func_prefix</span> <span class="o">+</span> <span class="n">agg_name</span></div>
+
+
+    <span class="c1"># Routines for getting the OGC-compliant models.</span>
+<div class="viewcode-block" id="PostGISOperations.geometry_columns">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.geometry_columns">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">geometry_columns</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">PostGISGeometryColumns</span></div>
+
+
+<div class="viewcode-block" id="PostGISOperations.spatial_ref_sys">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.spatial_ref_sys">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">spatial_ref_sys</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">PostGISSpatialRefSys</span></div>
+
+
+<div class="viewcode-block" id="PostGISOperations.parse_raster">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.parse_raster">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">parse_raster</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert a PostGIS HEX String into a dict readable by GDALRaster.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">from_pgraster</span><span class="p">(</span><span class="n">value</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PostGISOperations.distance_expr_for_lookup">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.distance_expr_for_lookup">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">distance_expr_for_lookup</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">distance_expr_for_lookup</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_normalize_distance_lookup_arg</span><span class="p">(</span><span class="n">lhs</span><span class="p">),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_normalize_distance_lookup_arg</span><span class="p">(</span><span class="n">rhs</span><span class="p">),</span>
+            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_normalize_distance_lookup_arg</span><span class="p">(</span><span class="n">arg</span><span class="p">):</span>
+        <span class="n">is_raster</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">arg</span><span class="o">.</span><span class="n">field</span><span class="o">.</span><span class="n">geom_type</span> <span class="o">==</span> <span class="s2">&quot;RASTER&quot;</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="s2">&quot;field&quot;</span><span class="p">)</span>
+            <span class="k">else</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="n">GDALRaster</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">ST_Polygon</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span> <span class="k">if</span> <span class="n">is_raster</span> <span class="k">else</span> <span class="n">arg</span>
+
+<div class="viewcode-block" id="PostGISOperations.get_geometry_converter">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.get_geometry_converter">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_geometry_converter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expression</span><span class="p">):</span>
+        <span class="n">read</span> <span class="o">=</span> <span class="n">wkb_r</span><span class="p">()</span><span class="o">.</span><span class="n">read</span>
+        <span class="n">geom_class</span> <span class="o">=</span> <span class="n">expression</span><span class="o">.</span><span class="n">output_field</span><span class="o">.</span><span class="n">geom_class</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">converter</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>  <span class="c1"># Coming from hex strings.</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;ascii&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="kc">None</span> <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">GEOSGeometryBase</span><span class="p">(</span><span class="n">read</span><span class="p">(</span><span class="n">value</span><span class="p">),</span> <span class="n">geom_class</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">converter</span></div>
+
+
+<div class="viewcode-block" id="PostGISOperations.get_area_att_for_field">
+<a class="viewcode-back" href="../../../../../../../autoapi/django/contrib/gis/db/backends/postgis/operations/index.html#django.contrib.gis.db.backends.postgis.operations.PostGISOperations.get_area_att_for_field">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_area_att_for_field</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;sq_m&quot;</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

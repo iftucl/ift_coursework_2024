@@ -1,0 +1,605 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.core.management.commands.loaddata &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../../management.html">django.core.management</a></li>
+      <li class="breadcrumb-item active">django.core.management.commands.loaddata</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.core.management.commands.loaddata</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">functools</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">glob</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">gzip</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">zipfile</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">itertools</span><span class="w"> </span><span class="kn">import</span> <span class="n">product</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.apps</span><span class="w"> </span><span class="kn">import</span> <span class="n">apps</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">serializers</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImproperlyConfigured</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.management.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseCommand</span><span class="p">,</span> <span class="n">CommandError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.management.color</span><span class="w"> </span><span class="kn">import</span> <span class="n">no_style</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.management.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">parse_apps_and_model_labels</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">DEFAULT_DB_ALIAS</span><span class="p">,</span>
+    <span class="n">DatabaseError</span><span class="p">,</span>
+    <span class="n">IntegrityError</span><span class="p">,</span>
+    <span class="n">connections</span><span class="p">,</span>
+    <span class="n">router</span><span class="p">,</span>
+    <span class="n">transaction</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">cached_property</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">bz2</span>
+
+<div class="viewcode-block" id="has_bz2">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/loaddata/index.html#django.core.management.commands.loaddata.has_bz2">[docs]</a>
+    <span class="n">has_bz2</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="n">has_bz2</span> <span class="o">=</span> <span class="kc">False</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">lzma</span>
+
+<div class="viewcode-block" id="has_lzma">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/loaddata/index.html#django.core.management.commands.loaddata.has_lzma">[docs]</a>
+    <span class="n">has_lzma</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="n">has_lzma</span> <span class="o">=</span> <span class="kc">False</span>
+
+<div class="viewcode-block" id="READ_STDIN">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/loaddata/index.html#django.core.management.commands.loaddata.READ_STDIN">[docs]</a>
+<span class="n">READ_STDIN</span> <span class="o">=</span> <span class="s2">&quot;-&quot;</span></div>
+
+
+
+<div class="viewcode-block" id="Command">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/loaddata/index.html#django.core.management.commands.loaddata.Command">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Command</span><span class="p">(</span><span class="n">BaseCommand</span><span class="p">):</span>
+<div class="viewcode-block" id="Command.help">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/loaddata/index.html#django.core.management.commands.loaddata.Command.help">[docs]</a>
+    <span class="n">help</span> <span class="o">=</span> <span class="s2">&quot;Installs the named fixture(s) in the database.&quot;</span></div>
+
+<div class="viewcode-block" id="Command.missing_args_message">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/loaddata/index.html#django.core.management.commands.loaddata.Command.missing_args_message">[docs]</a>
+    <span class="n">missing_args_message</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="s2">&quot;No database fixture specified. Please provide the path of at least &quot;</span>
+        <span class="s2">&quot;one fixture in the command line.&quot;</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Command.add_arguments">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/loaddata/index.html#django.core.management.commands.loaddata.Command.add_arguments">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add_arguments</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parser</span><span class="p">):</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;args&quot;</span><span class="p">,</span> <span class="n">metavar</span><span class="o">=</span><span class="s2">&quot;fixture&quot;</span><span class="p">,</span> <span class="n">nargs</span><span class="o">=</span><span class="s2">&quot;+&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Fixture labels.&quot;</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;--database&quot;</span><span class="p">,</span>
+            <span class="n">default</span><span class="o">=</span><span class="n">DEFAULT_DB_ALIAS</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+                <span class="s2">&quot;Nominates a specific database to load fixtures into. Defaults to the &quot;</span>
+                <span class="s1">&#39;&quot;default&quot; database.&#39;</span>
+            <span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;--app&quot;</span><span class="p">,</span>
+            <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;app_label&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Only look for fixtures in the specified app.&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;--ignorenonexistent&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;-i&quot;</span><span class="p">,</span>
+            <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+            <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;ignore&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Ignores entries in the serialized data for fields that do not &quot;</span>
+            <span class="s2">&quot;currently exist on the model.&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;-e&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;--exclude&quot;</span><span class="p">,</span>
+            <span class="n">action</span><span class="o">=</span><span class="s2">&quot;append&quot;</span><span class="p">,</span>
+            <span class="n">default</span><span class="o">=</span><span class="p">[],</span>
+            <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+                <span class="s2">&quot;An app_label or app_label.ModelName to exclude. Can be used multiple &quot;</span>
+                <span class="s2">&quot;times.&quot;</span>
+            <span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+            <span class="s2">&quot;--format&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Format of serialized data when reading from stdin.&quot;</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Command.handle">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/loaddata/index.html#django.core.management.commands.loaddata.Command.handle">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">fixture_labels</span><span class="p">,</span> <span class="o">**</span><span class="n">options</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ignore</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;ignore&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">using</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;database&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">app_label</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;app_label&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;verbosity&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">excluded_models</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">excluded_apps</span> <span class="o">=</span> <span class="n">parse_apps_and_model_labels</span><span class="p">(</span>
+            <span class="n">options</span><span class="p">[</span><span class="s2">&quot;exclude&quot;</span><span class="p">]</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">format</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;format&quot;</span><span class="p">]</span>
+
+        <span class="k">with</span> <span class="n">transaction</span><span class="o">.</span><span class="n">atomic</span><span class="p">(</span><span class="n">using</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">using</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">loaddata</span><span class="p">(</span><span class="n">fixture_labels</span><span class="p">)</span>
+
+        <span class="c1"># Close the DB connection -- unless we&#39;re still in a transaction. This</span>
+        <span class="c1"># is required as a workaround for an edge case in MySQL: if the same</span>
+        <span class="c1"># connection is used to create tables, load data, and query, the query</span>
+        <span class="c1"># can return incorrect results. See Django #7572, MySQL #37735.</span>
+        <span class="k">if</span> <span class="n">transaction</span><span class="o">.</span><span class="n">get_autocommit</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">using</span><span class="p">):</span>
+            <span class="n">connections</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">using</span><span class="p">]</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="Command.compression_formats">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/loaddata/index.html#django.core.management.commands.loaddata.Command.compression_formats">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">compression_formats</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;A dict mapping format names to (open function, mode arg) tuples.&quot;&quot;&quot;</span>
+        <span class="c1"># Forcing binary mode may be revisited after dropping Python 2 support</span>
+        <span class="c1"># (see #22399).</span>
+        <span class="n">compression_formats</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="kc">None</span><span class="p">:</span> <span class="p">(</span><span class="nb">open</span><span class="p">,</span> <span class="s2">&quot;rb&quot;</span><span class="p">),</span>
+            <span class="s2">&quot;gz&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">gzip</span><span class="o">.</span><span class="n">GzipFile</span><span class="p">,</span> <span class="s2">&quot;rb&quot;</span><span class="p">),</span>
+            <span class="s2">&quot;zip&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">SingleZipReader</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">),</span>
+            <span class="s2">&quot;stdin&quot;</span><span class="p">:</span> <span class="p">(</span><span class="k">lambda</span> <span class="o">*</span><span class="n">args</span><span class="p">:</span> <span class="n">sys</span><span class="o">.</span><span class="n">stdin</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+        <span class="p">}</span>
+        <span class="k">if</span> <span class="n">has_bz2</span><span class="p">:</span>
+            <span class="n">compression_formats</span><span class="p">[</span><span class="s2">&quot;bz2&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">bz2</span><span class="o">.</span><span class="n">BZ2File</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">has_lzma</span><span class="p">:</span>
+            <span class="n">compression_formats</span><span class="p">[</span><span class="s2">&quot;lzma&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">lzma</span><span class="o">.</span><span class="n">LZMAFile</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span>
+            <span class="n">compression_formats</span><span class="p">[</span><span class="s2">&quot;xz&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">lzma</span><span class="o">.</span><span class="n">LZMAFile</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">compression_formats</span></div>
+
+
+<div class="viewcode-block" id="Command.reset_sequences">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/loaddata/index.html#django.core.management.commands.loaddata.Command.reset_sequences">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">reset_sequences</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">connection</span><span class="p">,</span> <span class="n">models</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Reset database sequences for the given connection and models.&quot;&quot;&quot;</span>
+        <span class="n">sequence_sql</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">sequence_reset_sql</span><span class="p">(</span><span class="n">no_style</span><span class="p">(),</span> <span class="n">models</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">sequence_sql</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;Resetting sequences&quot;</span><span class="p">)</span>
+            <span class="k">with</span> <span class="n">connection</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">sequence_sql</span><span class="p">:</span>
+                    <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">line</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Command.loaddata">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/loaddata/index.html#django.core.management.commands.loaddata.Command.loaddata">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">loaddata</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fixture_labels</span><span class="p">):</span>
+        <span class="n">connection</span> <span class="o">=</span> <span class="n">connections</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">using</span><span class="p">]</span>
+
+        <span class="c1"># Keep a count of the installed objects and fixtures</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fixture_count</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">loaded_object_count</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fixture_object_count</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">models</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">serialization_formats</span> <span class="o">=</span> <span class="n">serializers</span><span class="o">.</span><span class="n">get_public_serializer_formats</span><span class="p">()</span>
+
+        <span class="c1"># Django&#39;s test suite repeatedly tries to load initial_data fixtures</span>
+        <span class="c1"># from apps that don&#39;t have any fixtures. Because disabling constraint</span>
+        <span class="c1"># checks can be expensive on some database (especially MSSQL), bail</span>
+        <span class="c1"># out early if no fixtures are found.</span>
+        <span class="k">for</span> <span class="n">fixture_label</span> <span class="ow">in</span> <span class="n">fixture_labels</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">find_fixtures</span><span class="p">(</span><span class="n">fixture_label</span><span class="p">):</span>
+                <span class="k">break</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">objs_with_deferred_fields</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">with</span> <span class="n">connection</span><span class="o">.</span><span class="n">constraint_checks_disabled</span><span class="p">():</span>
+            <span class="k">for</span> <span class="n">fixture_label</span> <span class="ow">in</span> <span class="n">fixture_labels</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">load_label</span><span class="p">(</span><span class="n">fixture_label</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">obj</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">objs_with_deferred_fields</span><span class="p">:</span>
+                <span class="n">obj</span><span class="o">.</span><span class="n">save_deferred_fields</span><span class="p">(</span><span class="n">using</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">using</span><span class="p">)</span>
+
+        <span class="c1"># Since we disabled constraint checks, we must manually check for</span>
+        <span class="c1"># any invalid keys that might have been added</span>
+        <span class="n">table_names</span> <span class="o">=</span> <span class="p">[</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span> <span class="k">for</span> <span class="n">model</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">models</span><span class="p">]</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">connection</span><span class="o">.</span><span class="n">check_constraints</span><span class="p">(</span><span class="n">table_names</span><span class="o">=</span><span class="n">table_names</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">e</span><span class="o">.</span><span class="n">args</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;Problem installing fixtures: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">e</span><span class="p">,)</span>
+            <span class="k">raise</span>
+
+        <span class="c1"># If we found even one object in a fixture, we need to reset the</span>
+        <span class="c1"># database sequences.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">loaded_object_count</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">reset_sequences</span><span class="p">(</span><span class="n">connection</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">models</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">fixture_object_count</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">loaded_object_count</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                    <span class="s2">&quot;Installed </span><span class="si">%d</span><span class="s2"> object(s) from </span><span class="si">%d</span><span class="s2"> fixture(s)&quot;</span>
+                    <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">loaded_object_count</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">fixture_count</span><span class="p">)</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                    <span class="s2">&quot;Installed </span><span class="si">%d</span><span class="s2"> object(s) (of </span><span class="si">%d</span><span class="s2">) from </span><span class="si">%d</span><span class="s2"> fixture(s)&quot;</span>
+                    <span class="o">%</span> <span class="p">(</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">loaded_object_count</span><span class="p">,</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">fixture_object_count</span><span class="p">,</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">fixture_count</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Command.save_obj">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/loaddata/index.html#django.core.management.commands.loaddata.Command.save_obj">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">save_obj</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Save an object if permitted.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="n">obj</span><span class="o">.</span><span class="n">object</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">app_config</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">excluded_apps</span>
+            <span class="ow">or</span> <span class="nb">type</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">object</span><span class="p">)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">excluded_models</span>
+        <span class="p">):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">saved</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="n">router</span><span class="o">.</span><span class="n">allow_migrate_model</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">using</span><span class="p">,</span> <span class="n">obj</span><span class="o">.</span><span class="n">object</span><span class="o">.</span><span class="vm">__class__</span><span class="p">):</span>
+            <span class="n">saved</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">object</span><span class="o">.</span><span class="vm">__class__</span><span class="p">)</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">obj</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">using</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">using</span><span class="p">)</span>
+            <span class="c1"># psycopg raises ValueError if data contains NUL chars.</span>
+            <span class="k">except</span> <span class="p">(</span><span class="n">DatabaseError</span><span class="p">,</span> <span class="n">IntegrityError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="n">e</span><span class="o">.</span><span class="n">args</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="s2">&quot;Could not load </span><span class="si">%(object_label)s</span><span class="s2">(pk=</span><span class="si">%(pk)s</span><span class="s2">): </span><span class="si">%(error_msg)s</span><span class="s2">&quot;</span>
+                    <span class="o">%</span> <span class="p">{</span>
+                        <span class="s2">&quot;object_label&quot;</span><span class="p">:</span> <span class="n">obj</span><span class="o">.</span><span class="n">object</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">label</span><span class="p">,</span>
+                        <span class="s2">&quot;pk&quot;</span><span class="p">:</span> <span class="n">obj</span><span class="o">.</span><span class="n">object</span><span class="o">.</span><span class="n">pk</span><span class="p">,</span>
+                        <span class="s2">&quot;error_msg&quot;</span><span class="p">:</span> <span class="n">e</span><span class="p">,</span>
+                    <span class="p">},</span>
+                <span class="p">)</span>
+                <span class="k">raise</span>
+        <span class="k">if</span> <span class="n">obj</span><span class="o">.</span><span class="n">deferred_fields</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">objs_with_deferred_fields</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">saved</span></div>
+
+
+<div class="viewcode-block" id="Command.load_label">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/loaddata/index.html#django.core.management.commands.loaddata.Command.load_label">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load_label</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fixture_label</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Load fixtures files for a given label.&quot;&quot;&quot;</span>
+        <span class="n">show_progress</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">&gt;=</span> <span class="mi">3</span>
+        <span class="k">for</span> <span class="n">fixture_file</span><span class="p">,</span> <span class="n">fixture_dir</span><span class="p">,</span> <span class="n">fixture_name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">find_fixtures</span><span class="p">(</span>
+            <span class="n">fixture_label</span>
+        <span class="p">):</span>
+            <span class="n">_</span><span class="p">,</span> <span class="n">ser_fmt</span><span class="p">,</span> <span class="n">cmp_fmt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_name</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">fixture_file</span><span class="p">))</span>
+            <span class="n">open_method</span><span class="p">,</span> <span class="n">mode</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">compression_formats</span><span class="p">[</span><span class="n">cmp_fmt</span><span class="p">]</span>
+            <span class="n">fixture</span> <span class="o">=</span> <span class="n">open_method</span><span class="p">(</span><span class="n">fixture_file</span><span class="p">,</span> <span class="n">mode</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">fixture_count</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">objects_in_fixture</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">loaded_objects_in_fixture</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                    <span class="s2">&quot;Installing </span><span class="si">%s</span><span class="s2"> fixture &#39;</span><span class="si">%s</span><span class="s2">&#39; from </span><span class="si">%s</span><span class="s2">.&quot;</span>
+                    <span class="o">%</span> <span class="p">(</span><span class="n">ser_fmt</span><span class="p">,</span> <span class="n">fixture_name</span><span class="p">,</span> <span class="n">humanize</span><span class="p">(</span><span class="n">fixture_dir</span><span class="p">))</span>
+                <span class="p">)</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">objects</span> <span class="o">=</span> <span class="n">serializers</span><span class="o">.</span><span class="n">deserialize</span><span class="p">(</span>
+                    <span class="n">ser_fmt</span><span class="p">,</span>
+                    <span class="n">fixture</span><span class="p">,</span>
+                    <span class="n">using</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">using</span><span class="p">,</span>
+                    <span class="n">ignorenonexistent</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">ignore</span><span class="p">,</span>
+                    <span class="n">handle_forward_references</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="p">)</span>
+
+                <span class="k">for</span> <span class="n">obj</span> <span class="ow">in</span> <span class="n">objects</span><span class="p">:</span>
+                    <span class="n">objects_in_fixture</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">save_obj</span><span class="p">(</span><span class="n">obj</span><span class="p">):</span>
+                        <span class="n">loaded_objects_in_fixture</span> <span class="o">+=</span> <span class="mi">1</span>
+                        <span class="k">if</span> <span class="n">show_progress</span><span class="p">:</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                                <span class="s2">&quot;</span><span class="se">\r</span><span class="s2">Processed </span><span class="si">%i</span><span class="s2"> object(s).&quot;</span> <span class="o">%</span> <span class="n">loaded_objects_in_fixture</span><span class="p">,</span>
+                                <span class="n">ending</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+                            <span class="p">)</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">CommandError</span><span class="p">):</span>
+                    <span class="n">e</span><span class="o">.</span><span class="n">args</span> <span class="o">=</span> <span class="p">(</span>
+                        <span class="s2">&quot;Problem installing fixture &#39;</span><span class="si">%s</span><span class="s2">&#39;: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">fixture_file</span><span class="p">,</span> <span class="n">e</span><span class="p">),</span>
+                    <span class="p">)</span>
+                <span class="k">raise</span>
+            <span class="k">finally</span><span class="p">:</span>
+                <span class="n">fixture</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+            <span class="k">if</span> <span class="n">objects_in_fixture</span> <span class="ow">and</span> <span class="n">show_progress</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">()</span>  <span class="c1"># Add a newline after progress indicator.</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">loaded_object_count</span> <span class="o">+=</span> <span class="n">loaded_objects_in_fixture</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">fixture_object_count</span> <span class="o">+=</span> <span class="n">objects_in_fixture</span>
+            <span class="c1"># Warn if the fixture we loaded contains 0 objects.</span>
+            <span class="k">if</span> <span class="n">objects_in_fixture</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+                    <span class="s2">&quot;No fixture data found for &#39;</span><span class="si">%s</span><span class="s2">&#39;. (File format may be &quot;</span>
+                    <span class="s2">&quot;invalid.)&quot;</span> <span class="o">%</span> <span class="n">fixture_name</span><span class="p">,</span>
+                    <span class="ne">RuntimeWarning</span><span class="p">,</span>
+                <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Command.get_fixture_name_and_dirs">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/loaddata/index.html#django.core.management.commands.loaddata.Command.get_fixture_name_and_dirs">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_fixture_name_and_dirs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fixture_name</span><span class="p">):</span>
+        <span class="n">dirname</span><span class="p">,</span> <span class="n">basename</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">fixture_name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isabs</span><span class="p">(</span><span class="n">fixture_name</span><span class="p">):</span>
+            <span class="n">fixture_dirs</span> <span class="o">=</span> <span class="p">[</span><span class="n">dirname</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">fixture_dirs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fixture_dirs</span>
+            <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">sep</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span><span class="n">fixture_name</span><span class="p">):</span>
+                <span class="n">fixture_dirs</span> <span class="o">=</span> <span class="p">[</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">dir_</span><span class="p">,</span> <span class="n">dirname</span><span class="p">)</span> <span class="k">for</span> <span class="n">dir_</span> <span class="ow">in</span> <span class="n">fixture_dirs</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">basename</span><span class="p">,</span> <span class="n">fixture_dirs</span></div>
+
+
+<div class="viewcode-block" id="Command.get_targets">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/loaddata/index.html#django.core.management.commands.loaddata.Command.get_targets">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_targets</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fixture_name</span><span class="p">,</span> <span class="n">ser_fmt</span><span class="p">,</span> <span class="n">cmp_fmt</span><span class="p">):</span>
+        <span class="n">databases</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">using</span><span class="p">,</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="n">cmp_fmts</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">compression_formats</span> <span class="k">if</span> <span class="n">cmp_fmt</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="p">[</span><span class="n">cmp_fmt</span><span class="p">]</span>
+        <span class="n">ser_fmts</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">serialization_formats</span> <span class="k">if</span> <span class="n">ser_fmt</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="p">[</span><span class="n">ser_fmt</span><span class="p">]</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2">&quot;</span>
+            <span class="o">%</span> <span class="p">(</span>
+                <span class="n">fixture_name</span><span class="p">,</span>
+                <span class="s2">&quot;.&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">ext</span> <span class="k">for</span> <span class="n">ext</span> <span class="ow">in</span> <span class="n">combo</span> <span class="k">if</span> <span class="n">ext</span><span class="p">]),</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">combo</span> <span class="ow">in</span> <span class="n">product</span><span class="p">(</span><span class="n">databases</span><span class="p">,</span> <span class="n">ser_fmts</span><span class="p">,</span> <span class="n">cmp_fmts</span><span class="p">)</span>
+        <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="Command.find_fixture_files_in_dir">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/loaddata/index.html#django.core.management.commands.loaddata.Command.find_fixture_files_in_dir">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">find_fixture_files_in_dir</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fixture_dir</span><span class="p">,</span> <span class="n">fixture_name</span><span class="p">,</span> <span class="n">targets</span><span class="p">):</span>
+        <span class="n">fixture_files_in_dir</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">fixture_dir</span><span class="p">,</span> <span class="n">fixture_name</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">candidate</span> <span class="ow">in</span> <span class="n">glob</span><span class="o">.</span><span class="n">iglob</span><span class="p">(</span><span class="n">glob</span><span class="o">.</span><span class="n">escape</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;*&quot;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">candidate</span><span class="p">)</span> <span class="ow">in</span> <span class="n">targets</span><span class="p">:</span>
+                <span class="c1"># Save the fixture_dir and fixture_name for future error</span>
+                <span class="c1"># messages.</span>
+                <span class="n">fixture_files_in_dir</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">candidate</span><span class="p">,</span> <span class="n">fixture_dir</span><span class="p">,</span> <span class="n">fixture_name</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">fixture_files_in_dir</span></div>
+
+
+    <span class="nd">@functools</span><span class="o">.</span><span class="n">lru_cache</span><span class="p">(</span><span class="n">maxsize</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+<div class="viewcode-block" id="Command.find_fixtures">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/loaddata/index.html#django.core.management.commands.loaddata.Command.find_fixtures">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">find_fixtures</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fixture_label</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Find fixture files for a given label.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">fixture_label</span> <span class="o">==</span> <span class="n">READ_STDIN</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[(</span><span class="n">READ_STDIN</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="n">READ_STDIN</span><span class="p">)]</span>
+
+        <span class="n">fixture_name</span><span class="p">,</span> <span class="n">ser_fmt</span><span class="p">,</span> <span class="n">cmp_fmt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_name</span><span class="p">(</span><span class="n">fixture_label</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;Loading &#39;</span><span class="si">%s</span><span class="s2">&#39; fixtures...&quot;</span> <span class="o">%</span> <span class="n">fixture_name</span><span class="p">)</span>
+
+        <span class="n">fixture_name</span><span class="p">,</span> <span class="n">fixture_dirs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_fixture_name_and_dirs</span><span class="p">(</span><span class="n">fixture_name</span><span class="p">)</span>
+        <span class="n">targets</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_targets</span><span class="p">(</span><span class="n">fixture_name</span><span class="p">,</span> <span class="n">ser_fmt</span><span class="p">,</span> <span class="n">cmp_fmt</span><span class="p">)</span>
+        <span class="n">fixture_files</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">fixture_dir</span> <span class="ow">in</span> <span class="n">fixture_dirs</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;Checking </span><span class="si">%s</span><span class="s2"> for fixtures...&quot;</span> <span class="o">%</span> <span class="n">humanize</span><span class="p">(</span><span class="n">fixture_dir</span><span class="p">))</span>
+            <span class="n">fixture_files_in_dir</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">find_fixture_files_in_dir</span><span class="p">(</span>
+                <span class="n">fixture_dir</span><span class="p">,</span>
+                <span class="n">fixture_name</span><span class="p">,</span>
+                <span class="n">targets</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbosity</span> <span class="o">&gt;=</span> <span class="mi">2</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">fixture_files_in_dir</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                    <span class="s2">&quot;No fixture &#39;</span><span class="si">%s</span><span class="s2">&#39; in </span><span class="si">%s</span><span class="s2">.&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">fixture_name</span><span class="p">,</span> <span class="n">humanize</span><span class="p">(</span><span class="n">fixture_dir</span><span class="p">))</span>
+                <span class="p">)</span>
+
+            <span class="c1"># Check kept for backwards-compatibility; it isn&#39;t clear why</span>
+            <span class="c1"># duplicates are only allowed in different directories.</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">fixture_files_in_dir</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">CommandError</span><span class="p">(</span>
+                    <span class="s2">&quot;Multiple fixtures named &#39;</span><span class="si">%s</span><span class="s2">&#39; in </span><span class="si">%s</span><span class="s2">. Aborting.&quot;</span>
+                    <span class="o">%</span> <span class="p">(</span><span class="n">fixture_name</span><span class="p">,</span> <span class="n">humanize</span><span class="p">(</span><span class="n">fixture_dir</span><span class="p">))</span>
+                <span class="p">)</span>
+            <span class="n">fixture_files</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">fixture_files_in_dir</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">fixture_files</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">CommandError</span><span class="p">(</span><span class="s2">&quot;No fixture named &#39;</span><span class="si">%s</span><span class="s2">&#39; found.&quot;</span> <span class="o">%</span> <span class="n">fixture_name</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">fixture_files</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="Command.fixture_dirs">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/loaddata/index.html#django.core.management.commands.loaddata.Command.fixture_dirs">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">fixture_dirs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a list of fixture directories.</span>
+
+<span class="sd">        The list contains the &#39;fixtures&#39; subdirectory of each installed</span>
+<span class="sd">        application, if it exists, the directories in FIXTURE_DIRS, and the</span>
+<span class="sd">        current directory.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">dirs</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">fixture_dirs</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">FIXTURE_DIRS</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">fixture_dirs</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">fixture_dirs</span><span class="p">)):</span>
+            <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span><span class="s2">&quot;settings.FIXTURE_DIRS contains duplicates.&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">app_config</span> <span class="ow">in</span> <span class="n">apps</span><span class="o">.</span><span class="n">get_app_configs</span><span class="p">():</span>
+            <span class="n">app_label</span> <span class="o">=</span> <span class="n">app_config</span><span class="o">.</span><span class="n">label</span>
+            <span class="n">app_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">app_config</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="s2">&quot;fixtures&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">app_dir</span> <span class="ow">in</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">d</span><span class="p">)</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">fixture_dirs</span><span class="p">]:</span>
+                <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+                    <span class="s2">&quot;&#39;</span><span class="si">%s</span><span class="s2">&#39; is a default fixture directory for the &#39;</span><span class="si">%s</span><span class="s2">&#39; app &quot;</span>
+                    <span class="s2">&quot;and cannot be listed in settings.FIXTURE_DIRS.&quot;</span>
+                    <span class="o">%</span> <span class="p">(</span><span class="n">app_dir</span><span class="p">,</span> <span class="n">app_label</span><span class="p">)</span>
+                <span class="p">)</span>
+
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">app_label</span> <span class="ow">and</span> <span class="n">app_label</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">app_label</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">app_dir</span><span class="p">):</span>
+                <span class="n">dirs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">app_dir</span><span class="p">)</span>
+        <span class="n">dirs</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">fixture_dirs</span><span class="p">)</span>
+        <span class="n">dirs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">realpath</span><span class="p">(</span><span class="n">d</span><span class="p">)</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">dirs</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="Command.parse_name">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/loaddata/index.html#django.core.management.commands.loaddata.Command.parse_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">parse_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fixture_name</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Split fixture name in name, serialization format, compression format.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">fixture_name</span> <span class="o">==</span> <span class="n">READ_STDIN</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">format</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">CommandError</span><span class="p">(</span>
+                    <span class="s2">&quot;--format must be specified when reading from stdin.&quot;</span>
+                <span class="p">)</span>
+            <span class="k">return</span> <span class="n">READ_STDIN</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">format</span><span class="p">,</span> <span class="s2">&quot;stdin&quot;</span>
+
+        <span class="n">parts</span> <span class="o">=</span> <span class="n">fixture_name</span><span class="o">.</span><span class="n">rsplit</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">parts</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">compression_formats</span><span class="p">:</span>
+            <span class="n">cmp_fmt</span> <span class="o">=</span> <span class="n">parts</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">parts</span> <span class="o">=</span> <span class="n">parts</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">cmp_fmt</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">parts</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">serialization_formats</span><span class="p">:</span>
+                <span class="n">ser_fmt</span> <span class="o">=</span> <span class="n">parts</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+                <span class="n">parts</span> <span class="o">=</span> <span class="n">parts</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">CommandError</span><span class="p">(</span>
+                    <span class="s2">&quot;Problem installing fixture &#39;</span><span class="si">%s</span><span class="s2">&#39;: </span><span class="si">%s</span><span class="s2"> is not a known &quot;</span>
+                    <span class="s2">&quot;serialization format.&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">parts</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]),</span> <span class="n">parts</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+                <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">ser_fmt</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;.&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">name</span><span class="p">,</span> <span class="n">ser_fmt</span><span class="p">,</span> <span class="n">cmp_fmt</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="SingleZipReader">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/loaddata/index.html#django.core.management.commands.loaddata.SingleZipReader">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SingleZipReader</span><span class="p">(</span><span class="n">zipfile</span><span class="o">.</span><span class="n">ZipFile</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">namelist</span><span class="p">())</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Zip-compressed fixtures must contain one file.&quot;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="SingleZipReader.read">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/loaddata/index.html#django.core.management.commands.loaddata.SingleZipReader.read">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">read</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">zipfile</span><span class="o">.</span><span class="n">ZipFile</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">namelist</span><span class="p">()[</span><span class="mi">0</span><span class="p">])</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="humanize">
+<a class="viewcode-back" href="../../../../../autoapi/django/core/management/commands/loaddata/index.html#django.core.management.commands.loaddata.humanize">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">humanize</span><span class="p">(</span><span class="n">dirname</span><span class="p">):</span>
+    <span class="k">return</span> <span class="s2">&quot;&#39;</span><span class="si">%s</span><span class="s2">&#39;&quot;</span> <span class="o">%</span> <span class="n">dirname</span> <span class="k">if</span> <span class="n">dirname</span> <span class="k">else</span> <span class="s2">&quot;absolute path&quot;</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

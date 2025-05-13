@@ -1,0 +1,521 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.db.backends.mysql.introspection &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../../../db.html">django.db</a></li>
+      <li class="breadcrumb-item active">django.db.backends.mysql.introspection</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.db.backends.mysql.introspection</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">namedtuple</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">sqlparse</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.base.introspection</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseDatabaseIntrospection</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.base.introspection</span><span class="w"> </span><span class="kn">import</span> <span class="n">FieldInfo</span> <span class="k">as</span> <span class="n">BaseFieldInfo</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.base.introspection</span><span class="w"> </span><span class="kn">import</span> <span class="n">TableInfo</span> <span class="k">as</span> <span class="n">BaseTableInfo</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">Index</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.datastructures</span><span class="w"> </span><span class="kn">import</span> <span class="n">OrderedSet</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">MySQLdb.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">FIELD_TYPE</span>
+
+<div class="viewcode-block" id="FieldInfo">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/introspection/index.html#django.db.backends.mysql.introspection.FieldInfo">[docs]</a>
+<span class="n">FieldInfo</span> <span class="o">=</span> <span class="n">namedtuple</span><span class="p">(</span>
+    <span class="s2">&quot;FieldInfo&quot;</span><span class="p">,</span>
+    <span class="n">BaseFieldInfo</span><span class="o">.</span><span class="n">_fields</span> <span class="o">+</span> <span class="p">(</span><span class="s2">&quot;extra&quot;</span><span class="p">,</span> <span class="s2">&quot;is_unsigned&quot;</span><span class="p">,</span> <span class="s2">&quot;has_json_constraint&quot;</span><span class="p">,</span> <span class="s2">&quot;comment&quot;</span><span class="p">),</span>
+<span class="p">)</span></div>
+
+<div class="viewcode-block" id="InfoLine.comment">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/introspection/index.html#django.db.backends.mysql.introspection.InfoLine.comment">[docs]</a>
+<div class="viewcode-block" id="InfoLine.is_unsigned">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/introspection/index.html#django.db.backends.mysql.introspection.InfoLine.is_unsigned">[docs]</a>
+<div class="viewcode-block" id="InfoLine.collation">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/introspection/index.html#django.db.backends.mysql.introspection.InfoLine.collation">[docs]</a>
+<div class="viewcode-block" id="InfoLine.column_default">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/introspection/index.html#django.db.backends.mysql.introspection.InfoLine.column_default">[docs]</a>
+<div class="viewcode-block" id="InfoLine.extra">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/introspection/index.html#django.db.backends.mysql.introspection.InfoLine.extra">[docs]</a>
+<div class="viewcode-block" id="InfoLine.num_scale">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/introspection/index.html#django.db.backends.mysql.introspection.InfoLine.num_scale">[docs]</a>
+<div class="viewcode-block" id="InfoLine.num_prec">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/introspection/index.html#django.db.backends.mysql.introspection.InfoLine.num_prec">[docs]</a>
+<div class="viewcode-block" id="InfoLine.max_len">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/introspection/index.html#django.db.backends.mysql.introspection.InfoLine.max_len">[docs]</a>
+<div class="viewcode-block" id="InfoLine.data_type">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/introspection/index.html#django.db.backends.mysql.introspection.InfoLine.data_type">[docs]</a>
+<div class="viewcode-block" id="InfoLine.col_name">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/introspection/index.html#django.db.backends.mysql.introspection.InfoLine.col_name">[docs]</a>
+<div class="viewcode-block" id="InfoLine">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/introspection/index.html#django.db.backends.mysql.introspection.InfoLine">[docs]</a>
+<span class="n">InfoLine</span> <span class="o">=</span> <span class="n">namedtuple</span><span class="p">(</span>
+    <span class="s2">&quot;InfoLine&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;col_name data_type max_len num_prec num_scale extra column_default &quot;</span>
+    <span class="s2">&quot;collation is_unsigned comment&quot;</span><span class="p">,</span>
+<span class="p">)</span></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="viewcode-block" id="TableInfo">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/introspection/index.html#django.db.backends.mysql.introspection.TableInfo">[docs]</a>
+<span class="n">TableInfo</span> <span class="o">=</span> <span class="n">namedtuple</span><span class="p">(</span><span class="s2">&quot;TableInfo&quot;</span><span class="p">,</span> <span class="n">BaseTableInfo</span><span class="o">.</span><span class="n">_fields</span> <span class="o">+</span> <span class="p">(</span><span class="s2">&quot;comment&quot;</span><span class="p">,))</span></div>
+
+
+
+<div class="viewcode-block" id="DatabaseIntrospection">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/introspection/index.html#django.db.backends.mysql.introspection.DatabaseIntrospection">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DatabaseIntrospection</span><span class="p">(</span><span class="n">BaseDatabaseIntrospection</span><span class="p">):</span>
+<div class="viewcode-block" id="DatabaseIntrospection.data_types_reverse">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/introspection/index.html#django.db.backends.mysql.introspection.DatabaseIntrospection.data_types_reverse">[docs]</a>
+    <span class="n">data_types_reverse</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">FIELD_TYPE</span><span class="o">.</span><span class="n">BLOB</span><span class="p">:</span> <span class="s2">&quot;TextField&quot;</span><span class="p">,</span>
+        <span class="n">FIELD_TYPE</span><span class="o">.</span><span class="n">CHAR</span><span class="p">:</span> <span class="s2">&quot;CharField&quot;</span><span class="p">,</span>
+        <span class="n">FIELD_TYPE</span><span class="o">.</span><span class="n">DECIMAL</span><span class="p">:</span> <span class="s2">&quot;DecimalField&quot;</span><span class="p">,</span>
+        <span class="n">FIELD_TYPE</span><span class="o">.</span><span class="n">NEWDECIMAL</span><span class="p">:</span> <span class="s2">&quot;DecimalField&quot;</span><span class="p">,</span>
+        <span class="n">FIELD_TYPE</span><span class="o">.</span><span class="n">DATE</span><span class="p">:</span> <span class="s2">&quot;DateField&quot;</span><span class="p">,</span>
+        <span class="n">FIELD_TYPE</span><span class="o">.</span><span class="n">DATETIME</span><span class="p">:</span> <span class="s2">&quot;DateTimeField&quot;</span><span class="p">,</span>
+        <span class="n">FIELD_TYPE</span><span class="o">.</span><span class="n">DOUBLE</span><span class="p">:</span> <span class="s2">&quot;FloatField&quot;</span><span class="p">,</span>
+        <span class="n">FIELD_TYPE</span><span class="o">.</span><span class="n">FLOAT</span><span class="p">:</span> <span class="s2">&quot;FloatField&quot;</span><span class="p">,</span>
+        <span class="n">FIELD_TYPE</span><span class="o">.</span><span class="n">INT24</span><span class="p">:</span> <span class="s2">&quot;IntegerField&quot;</span><span class="p">,</span>
+        <span class="n">FIELD_TYPE</span><span class="o">.</span><span class="n">JSON</span><span class="p">:</span> <span class="s2">&quot;JSONField&quot;</span><span class="p">,</span>
+        <span class="n">FIELD_TYPE</span><span class="o">.</span><span class="n">LONG</span><span class="p">:</span> <span class="s2">&quot;IntegerField&quot;</span><span class="p">,</span>
+        <span class="n">FIELD_TYPE</span><span class="o">.</span><span class="n">LONGLONG</span><span class="p">:</span> <span class="s2">&quot;BigIntegerField&quot;</span><span class="p">,</span>
+        <span class="n">FIELD_TYPE</span><span class="o">.</span><span class="n">SHORT</span><span class="p">:</span> <span class="s2">&quot;SmallIntegerField&quot;</span><span class="p">,</span>
+        <span class="n">FIELD_TYPE</span><span class="o">.</span><span class="n">STRING</span><span class="p">:</span> <span class="s2">&quot;CharField&quot;</span><span class="p">,</span>
+        <span class="n">FIELD_TYPE</span><span class="o">.</span><span class="n">TIME</span><span class="p">:</span> <span class="s2">&quot;TimeField&quot;</span><span class="p">,</span>
+        <span class="n">FIELD_TYPE</span><span class="o">.</span><span class="n">TIMESTAMP</span><span class="p">:</span> <span class="s2">&quot;DateTimeField&quot;</span><span class="p">,</span>
+        <span class="n">FIELD_TYPE</span><span class="o">.</span><span class="n">TINY</span><span class="p">:</span> <span class="s2">&quot;IntegerField&quot;</span><span class="p">,</span>
+        <span class="n">FIELD_TYPE</span><span class="o">.</span><span class="n">TINY_BLOB</span><span class="p">:</span> <span class="s2">&quot;TextField&quot;</span><span class="p">,</span>
+        <span class="n">FIELD_TYPE</span><span class="o">.</span><span class="n">MEDIUM_BLOB</span><span class="p">:</span> <span class="s2">&quot;TextField&quot;</span><span class="p">,</span>
+        <span class="n">FIELD_TYPE</span><span class="o">.</span><span class="n">LONG_BLOB</span><span class="p">:</span> <span class="s2">&quot;TextField&quot;</span><span class="p">,</span>
+        <span class="n">FIELD_TYPE</span><span class="o">.</span><span class="n">VAR_STRING</span><span class="p">:</span> <span class="s2">&quot;CharField&quot;</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="DatabaseIntrospection.get_field_type">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/introspection/index.html#django.db.backends.mysql.introspection.DatabaseIntrospection.get_field_type">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_field_type</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data_type</span><span class="p">,</span> <span class="n">description</span><span class="p">):</span>
+        <span class="n">field_type</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">get_field_type</span><span class="p">(</span><span class="n">data_type</span><span class="p">,</span> <span class="n">description</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s2">&quot;auto_increment&quot;</span> <span class="ow">in</span> <span class="n">description</span><span class="o">.</span><span class="n">extra</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">field_type</span> <span class="o">==</span> <span class="s2">&quot;IntegerField&quot;</span><span class="p">:</span>
+                <span class="k">return</span> <span class="s2">&quot;AutoField&quot;</span>
+            <span class="k">elif</span> <span class="n">field_type</span> <span class="o">==</span> <span class="s2">&quot;BigIntegerField&quot;</span><span class="p">:</span>
+                <span class="k">return</span> <span class="s2">&quot;BigAutoField&quot;</span>
+            <span class="k">elif</span> <span class="n">field_type</span> <span class="o">==</span> <span class="s2">&quot;SmallIntegerField&quot;</span><span class="p">:</span>
+                <span class="k">return</span> <span class="s2">&quot;SmallAutoField&quot;</span>
+        <span class="k">if</span> <span class="n">description</span><span class="o">.</span><span class="n">is_unsigned</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">field_type</span> <span class="o">==</span> <span class="s2">&quot;BigIntegerField&quot;</span><span class="p">:</span>
+                <span class="k">return</span> <span class="s2">&quot;PositiveBigIntegerField&quot;</span>
+            <span class="k">elif</span> <span class="n">field_type</span> <span class="o">==</span> <span class="s2">&quot;IntegerField&quot;</span><span class="p">:</span>
+                <span class="k">return</span> <span class="s2">&quot;PositiveIntegerField&quot;</span>
+            <span class="k">elif</span> <span class="n">field_type</span> <span class="o">==</span> <span class="s2">&quot;SmallIntegerField&quot;</span><span class="p">:</span>
+                <span class="k">return</span> <span class="s2">&quot;PositiveSmallIntegerField&quot;</span>
+        <span class="c1"># JSON data type is an alias for LONGTEXT in MariaDB, use check</span>
+        <span class="c1"># constraints clauses to introspect JSONField.</span>
+        <span class="k">if</span> <span class="n">description</span><span class="o">.</span><span class="n">has_json_constraint</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;JSONField&quot;</span>
+        <span class="k">return</span> <span class="n">field_type</span></div>
+
+
+<div class="viewcode-block" id="DatabaseIntrospection.get_table_list">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/introspection/index.html#django.db.backends.mysql.introspection.DatabaseIntrospection.get_table_list">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_table_list</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a list of table and view names in the current database.&quot;&quot;&quot;</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            SELECT</span>
+<span class="sd">                table_name,</span>
+<span class="sd">                table_type,</span>
+<span class="sd">                table_comment</span>
+<span class="sd">            FROM information_schema.tables</span>
+<span class="sd">            WHERE table_schema = DATABASE()</span>
+<span class="sd">            &quot;&quot;&quot;</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span>
+            <span class="n">TableInfo</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="p">{</span><span class="s2">&quot;BASE TABLE&quot;</span><span class="p">:</span> <span class="s2">&quot;t&quot;</span><span class="p">,</span> <span class="s2">&quot;VIEW&quot;</span><span class="p">:</span> <span class="s2">&quot;v&quot;</span><span class="p">}</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span> <span class="n">row</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+            <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+        <span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="DatabaseIntrospection.get_table_description">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/introspection/index.html#django.db.backends.mysql.introspection.DatabaseIntrospection.get_table_description">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_table_description</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a description of the table with the DB-API cursor.description</span>
+<span class="sd">        interface.&quot;</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">json_constraints</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">mysql_is_mariadb</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">can_introspect_json_field</span>
+        <span class="p">):</span>
+            <span class="c1"># JSON data type is an alias for LONGTEXT in MariaDB, select</span>
+            <span class="c1"># JSON_VALID() constraints to introspect JSONField.</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">                </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">                SELECT c.constraint_name AS column_name</span>
+<span class="sd">                FROM information_schema.check_constraints AS c</span>
+<span class="sd">                WHERE</span>
+<span class="sd">                    c.table_name = %s AND</span>
+<span class="sd">                    LOWER(c.check_clause) =</span>
+<span class="sd">                        &#39;json_valid(`&#39; + LOWER(c.constraint_name) + &#39;`)&#39; AND</span>
+<span class="sd">                    c.constraint_schema = DATABASE()</span>
+<span class="sd">                &quot;&quot;&quot;</span><span class="p">,</span>
+                <span class="p">[</span><span class="n">table_name</span><span class="p">],</span>
+            <span class="p">)</span>
+            <span class="n">json_constraints</span> <span class="o">=</span> <span class="p">{</span><span class="n">row</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()}</span>
+        <span class="c1"># A default collation for the given table.</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            SELECT  table_collation</span>
+<span class="sd">            FROM    information_schema.tables</span>
+<span class="sd">            WHERE   table_schema = DATABASE()</span>
+<span class="sd">            AND     table_name = %s</span>
+<span class="sd">            &quot;&quot;&quot;</span><span class="p">,</span>
+            <span class="p">[</span><span class="n">table_name</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="n">row</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+        <span class="n">default_column_collation</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="n">row</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+        <span class="c1"># information_schema database gives more accurate results for some figures:</span>
+        <span class="c1"># - varchar length returned by cursor.description is an internal length,</span>
+        <span class="c1">#   not visible length (#5725)</span>
+        <span class="c1"># - precision and scale (for decimal fields) (#5014)</span>
+        <span class="c1"># - auto_increment is not available in cursor.description</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            SELECT</span>
+<span class="sd">                column_name, data_type, character_maximum_length,</span>
+<span class="sd">                numeric_precision, numeric_scale, extra, column_default,</span>
+<span class="sd">                CASE</span>
+<span class="sd">                    WHEN collation_name = %s THEN NULL</span>
+<span class="sd">                    ELSE collation_name</span>
+<span class="sd">                END AS collation_name,</span>
+<span class="sd">                CASE</span>
+<span class="sd">                    WHEN column_type LIKE &#39;%% unsigned&#39; THEN 1</span>
+<span class="sd">                    ELSE 0</span>
+<span class="sd">                END AS is_unsigned,</span>
+<span class="sd">                column_comment</span>
+<span class="sd">            FROM information_schema.columns</span>
+<span class="sd">            WHERE table_name = %s AND table_schema = DATABASE()</span>
+<span class="sd">            &quot;&quot;&quot;</span><span class="p">,</span>
+            <span class="p">[</span><span class="n">default_column_collation</span><span class="p">,</span> <span class="n">table_name</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="n">field_info</span> <span class="o">=</span> <span class="p">{</span><span class="n">line</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span> <span class="n">InfoLine</span><span class="p">(</span><span class="o">*</span><span class="n">line</span><span class="p">)</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()}</span>
+
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT * FROM </span><span class="si">%s</span><span class="s2"> LIMIT 1&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">table_name</span><span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">to_int</span><span class="p">(</span><span class="n">i</span><span class="p">):</span>
+            <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">if</span> <span class="n">i</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">i</span>
+
+        <span class="n">fields</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">cursor</span><span class="o">.</span><span class="n">description</span><span class="p">:</span>
+            <span class="n">info</span> <span class="o">=</span> <span class="n">field_info</span><span class="p">[</span><span class="n">line</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span>
+            <span class="n">fields</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="n">FieldInfo</span><span class="p">(</span>
+                    <span class="o">*</span><span class="n">line</span><span class="p">[:</span><span class="mi">2</span><span class="p">],</span>
+                    <span class="n">to_int</span><span class="p">(</span><span class="n">info</span><span class="o">.</span><span class="n">max_len</span><span class="p">)</span> <span class="ow">or</span> <span class="n">line</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span>
+                    <span class="n">to_int</span><span class="p">(</span><span class="n">info</span><span class="o">.</span><span class="n">max_len</span><span class="p">)</span> <span class="ow">or</span> <span class="n">line</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span>
+                    <span class="n">to_int</span><span class="p">(</span><span class="n">info</span><span class="o">.</span><span class="n">num_prec</span><span class="p">)</span> <span class="ow">or</span> <span class="n">line</span><span class="p">[</span><span class="mi">4</span><span class="p">],</span>
+                    <span class="n">to_int</span><span class="p">(</span><span class="n">info</span><span class="o">.</span><span class="n">num_scale</span><span class="p">)</span> <span class="ow">or</span> <span class="n">line</span><span class="p">[</span><span class="mi">5</span><span class="p">],</span>
+                    <span class="n">line</span><span class="p">[</span><span class="mi">6</span><span class="p">],</span>
+                    <span class="n">info</span><span class="o">.</span><span class="n">column_default</span><span class="p">,</span>
+                    <span class="n">info</span><span class="o">.</span><span class="n">collation</span><span class="p">,</span>
+                    <span class="n">info</span><span class="o">.</span><span class="n">extra</span><span class="p">,</span>
+                    <span class="n">info</span><span class="o">.</span><span class="n">is_unsigned</span><span class="p">,</span>
+                    <span class="n">line</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">in</span> <span class="n">json_constraints</span><span class="p">,</span>
+                    <span class="n">info</span><span class="o">.</span><span class="n">comment</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">fields</span></div>
+
+
+<div class="viewcode-block" id="DatabaseIntrospection.get_sequences">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/introspection/index.html#django.db.backends.mysql.introspection.DatabaseIntrospection.get_sequences">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_sequences</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">,</span> <span class="n">table_fields</span><span class="o">=</span><span class="p">()):</span>
+        <span class="k">for</span> <span class="n">field_info</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_table_description</span><span class="p">(</span><span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">):</span>
+            <span class="k">if</span> <span class="s2">&quot;auto_increment&quot;</span> <span class="ow">in</span> <span class="n">field_info</span><span class="o">.</span><span class="n">extra</span><span class="p">:</span>
+                <span class="c1"># MySQL allows only one auto-increment column per table.</span>
+                <span class="k">return</span> <span class="p">[{</span><span class="s2">&quot;table&quot;</span><span class="p">:</span> <span class="n">table_name</span><span class="p">,</span> <span class="s2">&quot;column&quot;</span><span class="p">:</span> <span class="n">field_info</span><span class="o">.</span><span class="n">name</span><span class="p">}]</span>
+        <span class="k">return</span> <span class="p">[]</span></div>
+
+
+<div class="viewcode-block" id="DatabaseIntrospection.get_relations">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/introspection/index.html#django.db.backends.mysql.introspection.DatabaseIntrospection.get_relations">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_relations</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a dictionary of {field_name: (field_name_other_table, other_table)}</span>
+<span class="sd">        representing all foreign keys in the given table.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            SELECT column_name, referenced_column_name, referenced_table_name</span>
+<span class="sd">            FROM information_schema.key_column_usage</span>
+<span class="sd">            WHERE table_name = %s</span>
+<span class="sd">                AND table_schema = DATABASE()</span>
+<span class="sd">                AND referenced_table_name IS NOT NULL</span>
+<span class="sd">                AND referenced_column_name IS NOT NULL</span>
+<span class="sd">            &quot;&quot;&quot;</span><span class="p">,</span>
+            <span class="p">[</span><span class="n">table_name</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="n">field_name</span><span class="p">:</span> <span class="p">(</span><span class="n">other_field</span><span class="p">,</span> <span class="n">other_table</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">other_field</span><span class="p">,</span> <span class="n">other_table</span> <span class="ow">in</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+        <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="DatabaseIntrospection.get_storage_engine">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/introspection/index.html#django.db.backends.mysql.introspection.DatabaseIntrospection.get_storage_engine">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_storage_engine</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Retrieve the storage engine for a given table. Return the default</span>
+<span class="sd">        storage engine if the table doesn&#39;t exist.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            SELECT engine</span>
+<span class="sd">            FROM information_schema.tables</span>
+<span class="sd">            WHERE</span>
+<span class="sd">                table_name = %s AND</span>
+<span class="sd">                table_schema = DATABASE()</span>
+<span class="sd">            &quot;&quot;&quot;</span><span class="p">,</span>
+            <span class="p">[</span><span class="n">table_name</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">result</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">_mysql_storage_engine</span>
+        <span class="k">return</span> <span class="n">result</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_parse_constraint_columns</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">check_clause</span><span class="p">,</span> <span class="n">columns</span><span class="p">):</span>
+        <span class="n">check_columns</span> <span class="o">=</span> <span class="n">OrderedSet</span><span class="p">()</span>
+        <span class="n">statement</span> <span class="o">=</span> <span class="n">sqlparse</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">check_clause</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">tokens</span> <span class="o">=</span> <span class="p">(</span><span class="n">token</span> <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">statement</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">token</span><span class="o">.</span><span class="n">is_whitespace</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">tokens</span><span class="p">:</span>
+            <span class="k">if</span> <span class="p">(</span>
+                <span class="n">token</span><span class="o">.</span><span class="n">ttype</span> <span class="o">==</span> <span class="n">sqlparse</span><span class="o">.</span><span class="n">tokens</span><span class="o">.</span><span class="n">Name</span>
+                <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">token</span><span class="o">.</span><span class="n">value</span><span class="p">)</span> <span class="o">==</span> <span class="n">token</span><span class="o">.</span><span class="n">value</span>
+                <span class="ow">and</span> <span class="n">token</span><span class="o">.</span><span class="n">value</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="ow">in</span> <span class="n">columns</span>
+            <span class="p">):</span>
+                <span class="n">check_columns</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">token</span><span class="o">.</span><span class="n">value</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">check_columns</span>
+
+<div class="viewcode-block" id="DatabaseIntrospection.get_constraints">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/introspection/index.html#django.db.backends.mysql.introspection.DatabaseIntrospection.get_constraints">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_constraints</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Retrieve any constraints or keys (unique, pk, fk, check, index) across</span>
+<span class="sd">        one or more columns.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">constraints</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="c1"># Get the actual constraint names and columns</span>
+        <span class="n">name_query</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">            SELECT kc.`constraint_name`, kc.`column_name`,</span>
+<span class="s2">                kc.`referenced_table_name`, kc.`referenced_column_name`,</span>
+<span class="s2">                c.`constraint_type`</span>
+<span class="s2">            FROM</span>
+<span class="s2">                information_schema.key_column_usage AS kc,</span>
+<span class="s2">                information_schema.table_constraints AS c</span>
+<span class="s2">            WHERE</span>
+<span class="s2">                kc.table_schema = DATABASE() AND</span>
+<span class="s2">                c.table_schema = kc.table_schema AND</span>
+<span class="s2">                c.constraint_name = kc.constraint_name AND</span>
+<span class="s2">                c.constraint_type != &#39;CHECK&#39; AND</span>
+<span class="s2">                kc.table_name = </span><span class="si">%s</span>
+<span class="s2">            ORDER BY kc.`ordinal_position`</span>
+<span class="s2">        &quot;&quot;&quot;</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">name_query</span><span class="p">,</span> <span class="p">[</span><span class="n">table_name</span><span class="p">])</span>
+        <span class="k">for</span> <span class="n">constraint</span><span class="p">,</span> <span class="n">column</span><span class="p">,</span> <span class="n">ref_table</span><span class="p">,</span> <span class="n">ref_column</span><span class="p">,</span> <span class="n">kind</span> <span class="ow">in</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">constraint</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">constraints</span><span class="p">:</span>
+                <span class="n">constraints</span><span class="p">[</span><span class="n">constraint</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                    <span class="s2">&quot;columns&quot;</span><span class="p">:</span> <span class="n">OrderedSet</span><span class="p">(),</span>
+                    <span class="s2">&quot;primary_key&quot;</span><span class="p">:</span> <span class="n">kind</span> <span class="o">==</span> <span class="s2">&quot;PRIMARY KEY&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;unique&quot;</span><span class="p">:</span> <span class="n">kind</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;PRIMARY KEY&quot;</span><span class="p">,</span> <span class="s2">&quot;UNIQUE&quot;</span><span class="p">},</span>
+                    <span class="s2">&quot;index&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                    <span class="s2">&quot;check&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                    <span class="s2">&quot;foreign_key&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">ref_table</span><span class="p">,</span> <span class="n">ref_column</span><span class="p">)</span> <span class="k">if</span> <span class="n">ref_column</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="p">}</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">supports_index_column_ordering</span><span class="p">:</span>
+                    <span class="n">constraints</span><span class="p">[</span><span class="n">constraint</span><span class="p">][</span><span class="s2">&quot;orders&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">constraints</span><span class="p">[</span><span class="n">constraint</span><span class="p">][</span><span class="s2">&quot;columns&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">column</span><span class="p">)</span>
+        <span class="c1"># Add check constraints.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">can_introspect_check_constraints</span><span class="p">:</span>
+            <span class="n">unnamed_constraints_index</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">columns</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="n">info</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">info</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_table_description</span><span class="p">(</span><span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">)</span>
+            <span class="p">}</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">mysql_is_mariadb</span><span class="p">:</span>
+                <span class="n">type_query</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                    SELECT c.constraint_name, c.check_clause</span>
+<span class="s2">                    FROM information_schema.check_constraints AS c</span>
+<span class="s2">                    WHERE</span>
+<span class="s2">                        c.constraint_schema = DATABASE() AND</span>
+<span class="s2">                        c.table_name = </span><span class="si">%s</span>
+<span class="s2">                &quot;&quot;&quot;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">type_query</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                    SELECT cc.constraint_name, cc.check_clause</span>
+<span class="s2">                    FROM</span>
+<span class="s2">                        information_schema.check_constraints AS cc,</span>
+<span class="s2">                        information_schema.table_constraints AS tc</span>
+<span class="s2">                    WHERE</span>
+<span class="s2">                        cc.constraint_schema = DATABASE() AND</span>
+<span class="s2">                        tc.table_schema = cc.constraint_schema AND</span>
+<span class="s2">                        cc.constraint_name = tc.constraint_name AND</span>
+<span class="s2">                        tc.constraint_type = &#39;CHECK&#39; AND</span>
+<span class="s2">                        tc.table_name = </span><span class="si">%s</span>
+<span class="s2">                &quot;&quot;&quot;</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">type_query</span><span class="p">,</span> <span class="p">[</span><span class="n">table_name</span><span class="p">])</span>
+            <span class="k">for</span> <span class="n">constraint</span><span class="p">,</span> <span class="n">check_clause</span> <span class="ow">in</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">():</span>
+                <span class="n">constraint_columns</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parse_constraint_columns</span><span class="p">(</span>
+                    <span class="n">check_clause</span><span class="p">,</span> <span class="n">columns</span>
+                <span class="p">)</span>
+                <span class="c1"># Ensure uniqueness of unnamed constraints. Unnamed unique</span>
+                <span class="c1"># and check columns constraints have the same name as</span>
+                <span class="c1"># a column.</span>
+                <span class="k">if</span> <span class="nb">set</span><span class="p">(</span><span class="n">constraint_columns</span><span class="p">)</span> <span class="o">==</span> <span class="p">{</span><span class="n">constraint</span><span class="p">}:</span>
+                    <span class="n">unnamed_constraints_index</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="n">constraint</span> <span class="o">=</span> <span class="s2">&quot;__unnamed_constraint_</span><span class="si">%s</span><span class="s2">__&quot;</span> <span class="o">%</span> <span class="n">unnamed_constraints_index</span>
+                <span class="n">constraints</span><span class="p">[</span><span class="n">constraint</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                    <span class="s2">&quot;columns&quot;</span><span class="p">:</span> <span class="n">constraint_columns</span><span class="p">,</span>
+                    <span class="s2">&quot;primary_key&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                    <span class="s2">&quot;unique&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                    <span class="s2">&quot;index&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                    <span class="s2">&quot;check&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                    <span class="s2">&quot;foreign_key&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="p">}</span>
+        <span class="c1"># Now add in the indexes</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;SHOW INDEX FROM </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">table_name</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">table</span><span class="p">,</span> <span class="n">non_unique</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">colseq</span><span class="p">,</span> <span class="n">column</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">type_</span> <span class="ow">in</span> <span class="p">[</span>
+            <span class="n">x</span><span class="p">[:</span><span class="mi">6</span><span class="p">]</span> <span class="o">+</span> <span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="mi">10</span><span class="p">],)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+        <span class="p">]:</span>
+            <span class="k">if</span> <span class="n">index</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">constraints</span><span class="p">:</span>
+                <span class="n">constraints</span><span class="p">[</span><span class="n">index</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                    <span class="s2">&quot;columns&quot;</span><span class="p">:</span> <span class="n">OrderedSet</span><span class="p">(),</span>
+                    <span class="s2">&quot;primary_key&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                    <span class="s2">&quot;unique&quot;</span><span class="p">:</span> <span class="ow">not</span> <span class="n">non_unique</span><span class="p">,</span>
+                    <span class="s2">&quot;check&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                    <span class="s2">&quot;foreign_key&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="p">}</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">supports_index_column_ordering</span><span class="p">:</span>
+                    <span class="n">constraints</span><span class="p">[</span><span class="n">index</span><span class="p">][</span><span class="s2">&quot;orders&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">constraints</span><span class="p">[</span><span class="n">index</span><span class="p">][</span><span class="s2">&quot;index&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="n">constraints</span><span class="p">[</span><span class="n">index</span><span class="p">][</span><span class="s2">&quot;type&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">Index</span><span class="o">.</span><span class="n">suffix</span> <span class="k">if</span> <span class="n">type_</span> <span class="o">==</span> <span class="s2">&quot;BTREE&quot;</span> <span class="k">else</span> <span class="n">type_</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+            <span class="p">)</span>
+            <span class="n">constraints</span><span class="p">[</span><span class="n">index</span><span class="p">][</span><span class="s2">&quot;columns&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">column</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">supports_index_column_ordering</span><span class="p">:</span>
+                <span class="n">constraints</span><span class="p">[</span><span class="n">index</span><span class="p">][</span><span class="s2">&quot;orders&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;DESC&quot;</span> <span class="k">if</span> <span class="n">order</span> <span class="o">==</span> <span class="s2">&quot;D&quot;</span> <span class="k">else</span> <span class="s2">&quot;ASC&quot;</span><span class="p">)</span>
+        <span class="c1"># Convert the sorted sets to lists</span>
+        <span class="k">for</span> <span class="n">constraint</span> <span class="ow">in</span> <span class="n">constraints</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+            <span class="n">constraint</span><span class="p">[</span><span class="s2">&quot;columns&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">constraint</span><span class="p">[</span><span class="s2">&quot;columns&quot;</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">constraints</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

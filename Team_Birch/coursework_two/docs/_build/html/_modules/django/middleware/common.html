@@ -1,0 +1,314 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.middleware.common &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../django.html">django</a></li>
+      <li class="breadcrumb-item active">django.middleware.common</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.middleware.common</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">urllib.parse</span><span class="w"> </span><span class="kn">import</span> <span class="n">urlparse</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">PermissionDenied</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.mail</span><span class="w"> </span><span class="kn">import</span> <span class="n">mail_managers</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.http</span><span class="w"> </span><span class="kn">import</span> <span class="n">HttpResponsePermanentRedirect</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.urls</span><span class="w"> </span><span class="kn">import</span> <span class="n">is_valid_path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.deprecation</span><span class="w"> </span><span class="kn">import</span> <span class="n">MiddlewareMixin</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.http</span><span class="w"> </span><span class="kn">import</span> <span class="n">escape_leading_slashes</span>
+
+
+<div class="viewcode-block" id="CommonMiddleware">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/common/index.html#django.middleware.common.CommonMiddleware">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">CommonMiddleware</span><span class="p">(</span><span class="n">MiddlewareMixin</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    &quot;Common&quot; middleware for taking care of some basic operations:</span>
+
+<span class="sd">        - Forbid access to User-Agents in settings.DISALLOWED_USER_AGENTS</span>
+
+<span class="sd">        - URL rewriting: Based on the APPEND_SLASH and PREPEND_WWW settings,</span>
+<span class="sd">          append missing slashes and/or prepends missing &quot;www.&quot;s.</span>
+
+<span class="sd">            - If APPEND_SLASH is set and the initial URL doesn&#39;t end with a</span>
+<span class="sd">              slash, and it is not found in urlpatterns, form a new URL by</span>
+<span class="sd">              appending a slash at the end. If this new URL is found in</span>
+<span class="sd">              urlpatterns, return an HTTP redirect to this new URL; otherwise</span>
+<span class="sd">              process the initial URL as usual.</span>
+
+<span class="sd">          This behavior can be customized by subclassing CommonMiddleware and</span>
+<span class="sd">          overriding the response_redirect_class attribute.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="CommonMiddleware.response_redirect_class">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/common/index.html#django.middleware.common.CommonMiddleware.response_redirect_class">[docs]</a>
+    <span class="n">response_redirect_class</span> <span class="o">=</span> <span class="n">HttpResponsePermanentRedirect</span></div>
+
+
+<div class="viewcode-block" id="CommonMiddleware.process_request">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/common/index.html#django.middleware.common.CommonMiddleware.process_request">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">process_request</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Check for denied User-Agents and rewrite the URL based on</span>
+<span class="sd">        settings.APPEND_SLASH and settings.PREPEND_WWW</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># Check for denied User-Agents</span>
+        <span class="n">user_agent</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">META</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;HTTP_USER_AGENT&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">user_agent</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">user_agent_regex</span> <span class="ow">in</span> <span class="n">settings</span><span class="o">.</span><span class="n">DISALLOWED_USER_AGENTS</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">user_agent_regex</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">user_agent</span><span class="p">):</span>
+                    <span class="k">raise</span> <span class="n">PermissionDenied</span><span class="p">(</span><span class="s2">&quot;Forbidden user agent&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Check for a redirect based on settings.PREPEND_WWW</span>
+        <span class="n">host</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">get_host</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">PREPEND_WWW</span> <span class="ow">and</span> <span class="n">host</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">host</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;www.&quot;</span><span class="p">):</span>
+            <span class="c1"># Check if we also need to append a slash so we can do it all</span>
+            <span class="c1"># with a single redirect. (This check may be somewhat expensive,</span>
+            <span class="c1"># so we only do it if we already know we&#39;re sending a redirect,</span>
+            <span class="c1"># or in process_response if we get a 404.)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">should_redirect_with_slash</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+                <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_full_path_with_slash</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">path</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">get_full_path</span><span class="p">()</span>
+
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">response_redirect_class</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">request</span><span class="o">.</span><span class="n">scheme</span><span class="si">}</span><span class="s2">://www.</span><span class="si">{</span><span class="n">host</span><span class="si">}{</span><span class="n">path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="CommonMiddleware.should_redirect_with_slash">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/common/index.html#django.middleware.common.CommonMiddleware.should_redirect_with_slash">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">should_redirect_with_slash</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return True if settings.APPEND_SLASH is True and appending a slash to</span>
+<span class="sd">        the request path turns an invalid path into a valid one.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">APPEND_SLASH</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">request</span><span class="o">.</span><span class="n">path_info</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">):</span>
+            <span class="n">urlconf</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="s2">&quot;urlconf&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">is_valid_path</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">path_info</span><span class="p">,</span> <span class="n">urlconf</span><span class="p">):</span>
+                <span class="n">match</span> <span class="o">=</span> <span class="n">is_valid_path</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">/&quot;</span> <span class="o">%</span> <span class="n">request</span><span class="o">.</span><span class="n">path_info</span><span class="p">,</span> <span class="n">urlconf</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">match</span><span class="p">:</span>
+                    <span class="n">view</span> <span class="o">=</span> <span class="n">match</span><span class="o">.</span><span class="n">func</span>
+                    <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">view</span><span class="p">,</span> <span class="s2">&quot;should_append_slash&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+
+
+<div class="viewcode-block" id="CommonMiddleware.get_full_path_with_slash">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/common/index.html#django.middleware.common.CommonMiddleware.get_full_path_with_slash">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_full_path_with_slash</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the full path of the request with a trailing slash appended.</span>
+
+<span class="sd">        Raise a RuntimeError if settings.DEBUG is True and request.method is</span>
+<span class="sd">        POST, PUT, or PATCH.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">new_path</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">get_full_path</span><span class="p">(</span><span class="n">force_append_slash</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="c1"># Prevent construction of scheme relative urls.</span>
+        <span class="n">new_path</span> <span class="o">=</span> <span class="n">escape_leading_slashes</span><span class="p">(</span><span class="n">new_path</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">DEBUG</span> <span class="ow">and</span> <span class="n">request</span><span class="o">.</span><span class="n">method</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;POST&quot;</span><span class="p">,</span> <span class="s2">&quot;PUT&quot;</span><span class="p">,</span> <span class="s2">&quot;PATCH&quot;</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+                <span class="s2">&quot;You called this URL via </span><span class="si">%(method)s</span><span class="s2">, but the URL doesn&#39;t end &quot;</span>
+                <span class="s2">&quot;in a slash and you have APPEND_SLASH set. Django can&#39;t &quot;</span>
+                <span class="s2">&quot;redirect to the slash URL while maintaining </span><span class="si">%(method)s</span><span class="s2"> data. &quot;</span>
+                <span class="s2">&quot;Change your form to point to </span><span class="si">%(url)s</span><span class="s2"> (note the trailing &quot;</span>
+                <span class="s2">&quot;slash), or set APPEND_SLASH=False in your Django settings.&quot;</span>
+                <span class="o">%</span> <span class="p">{</span>
+                    <span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="n">request</span><span class="o">.</span><span class="n">method</span><span class="p">,</span>
+                    <span class="s2">&quot;url&quot;</span><span class="p">:</span> <span class="n">request</span><span class="o">.</span><span class="n">get_host</span><span class="p">()</span> <span class="o">+</span> <span class="n">new_path</span><span class="p">,</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">new_path</span></div>
+
+
+<div class="viewcode-block" id="CommonMiddleware.process_response">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/common/index.html#django.middleware.common.CommonMiddleware.process_response">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">process_response</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">response</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        When the status code of the response is 404, it may redirect to a path</span>
+<span class="sd">        with an appended slash if should_redirect_with_slash() returns True.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># If the given URL is &quot;Not Found&quot;, then check if we should redirect to</span>
+        <span class="c1"># a path with a slash appended.</span>
+        <span class="k">if</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">404</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">should_redirect_with_slash</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">response_redirect_class</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_full_path_with_slash</span><span class="p">(</span><span class="n">request</span><span class="p">))</span>
+
+        <span class="c1"># Add the Content-Length header to non-streaming responses if not</span>
+        <span class="c1"># already set.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">response</span><span class="o">.</span><span class="n">streaming</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">response</span><span class="o">.</span><span class="n">has_header</span><span class="p">(</span><span class="s2">&quot;Content-Length&quot;</span><span class="p">):</span>
+            <span class="n">response</span><span class="o">.</span><span class="n">headers</span><span class="p">[</span><span class="s2">&quot;Content-Length&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">content</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="n">response</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="BrokenLinkEmailsMiddleware">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/common/index.html#django.middleware.common.BrokenLinkEmailsMiddleware">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BrokenLinkEmailsMiddleware</span><span class="p">(</span><span class="n">MiddlewareMixin</span><span class="p">):</span>
+<div class="viewcode-block" id="BrokenLinkEmailsMiddleware.process_response">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/common/index.html#django.middleware.common.BrokenLinkEmailsMiddleware.process_response">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">process_response</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">response</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Send broken link emails for relevant 404 NOT FOUND responses.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">404</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">settings</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">:</span>
+            <span class="n">domain</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">get_host</span><span class="p">()</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">get_full_path</span><span class="p">()</span>
+            <span class="n">referer</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">META</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;HTTP_REFERER&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_ignorable_request</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">domain</span><span class="p">,</span> <span class="n">referer</span><span class="p">):</span>
+                <span class="n">ua</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">META</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;HTTP_USER_AGENT&quot;</span><span class="p">,</span> <span class="s2">&quot;&lt;none&gt;&quot;</span><span class="p">)</span>
+                <span class="n">ip</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">META</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;REMOTE_ADDR&quot;</span><span class="p">,</span> <span class="s2">&quot;&lt;none&gt;&quot;</span><span class="p">)</span>
+                <span class="n">mail_managers</span><span class="p">(</span>
+                    <span class="s2">&quot;Broken </span><span class="si">%s</span><span class="s2">link on </span><span class="si">%s</span><span class="s2">&quot;</span>
+                    <span class="o">%</span> <span class="p">(</span>
+                        <span class="p">(</span>
+                            <span class="s2">&quot;INTERNAL &quot;</span>
+                            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_internal_request</span><span class="p">(</span><span class="n">domain</span><span class="p">,</span> <span class="n">referer</span><span class="p">)</span>
+                            <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+                        <span class="p">),</span>
+                        <span class="n">domain</span><span class="p">,</span>
+                    <span class="p">),</span>
+                    <span class="s2">&quot;Referrer: </span><span class="si">%s</span><span class="se">\n</span><span class="s2">Requested URL: </span><span class="si">%s</span><span class="se">\n</span><span class="s2">User agent: </span><span class="si">%s</span><span class="se">\n</span><span class="s2">&quot;</span>
+                    <span class="s2">&quot;IP address: </span><span class="si">%s</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">referer</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">ua</span><span class="p">,</span> <span class="n">ip</span><span class="p">),</span>
+                    <span class="n">fail_silently</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="p">)</span>
+        <span class="k">return</span> <span class="n">response</span></div>
+
+
+<div class="viewcode-block" id="BrokenLinkEmailsMiddleware.is_internal_request">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/common/index.html#django.middleware.common.BrokenLinkEmailsMiddleware.is_internal_request">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_internal_request</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">domain</span><span class="p">,</span> <span class="n">referer</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return True if the referring URL is the same domain as the current</span>
+<span class="sd">        request.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Different subdomains are treated as different domains.</span>
+        <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="s2">&quot;^https?://</span><span class="si">%s</span><span class="s2">/&quot;</span> <span class="o">%</span> <span class="n">re</span><span class="o">.</span><span class="n">escape</span><span class="p">(</span><span class="n">domain</span><span class="p">),</span> <span class="n">referer</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="BrokenLinkEmailsMiddleware.is_ignorable_request">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/common/index.html#django.middleware.common.BrokenLinkEmailsMiddleware.is_ignorable_request">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_ignorable_request</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">uri</span><span class="p">,</span> <span class="n">domain</span><span class="p">,</span> <span class="n">referer</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return True if the given request *shouldn&#39;t* notify the site managers</span>
+<span class="sd">        according to project settings or in situations outlined by the inline</span>
+<span class="sd">        comments.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># The referer is empty.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">referer</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+
+        <span class="c1"># APPEND_SLASH is enabled and the referer is equal to the current URL</span>
+        <span class="c1"># without a trailing slash indicating an internal redirect.</span>
+        <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">APPEND_SLASH</span> <span class="ow">and</span> <span class="n">uri</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">referer</span> <span class="o">==</span> <span class="n">uri</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+
+        <span class="c1"># A &#39;?&#39; in referer is identified as a search engine source.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_internal_request</span><span class="p">(</span><span class="n">domain</span><span class="p">,</span> <span class="n">referer</span><span class="p">)</span> <span class="ow">and</span> <span class="s2">&quot;?&quot;</span> <span class="ow">in</span> <span class="n">referer</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+
+        <span class="c1"># The referer is equal to the current URL, ignoring the scheme (assumed</span>
+        <span class="c1"># to be a poorly implemented bot).</span>
+        <span class="n">parsed_referer</span> <span class="o">=</span> <span class="n">urlparse</span><span class="p">(</span><span class="n">referer</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">parsed_referer</span><span class="o">.</span><span class="n">netloc</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">domain</span><span class="p">]</span> <span class="ow">and</span> <span class="n">parsed_referer</span><span class="o">.</span><span class="n">path</span> <span class="o">==</span> <span class="n">uri</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+
+        <span class="k">return</span> <span class="nb">any</span><span class="p">(</span><span class="n">pattern</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">uri</span><span class="p">)</span> <span class="k">for</span> <span class="n">pattern</span> <span class="ow">in</span> <span class="n">settings</span><span class="o">.</span><span class="n">IGNORABLE_404_URLS</span><span class="p">)</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

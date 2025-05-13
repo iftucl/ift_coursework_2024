@@ -1,0 +1,661 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.db.backends.sqlite3.operations &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../../../db.html">django.db</a></li>
+      <li class="breadcrumb-item active">django.db.backends.sqlite3.operations</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.db.backends.sqlite3.operations</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">decimal</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">uuid</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">lru_cache</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">itertools</span><span class="w"> </span><span class="kn">import</span> <span class="n">chain</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">FieldError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseError</span><span class="p">,</span> <span class="n">NotSupportedError</span><span class="p">,</span> <span class="n">models</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.base.operations</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseDatabaseOperations</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.models.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">OnConflict</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.models.expressions</span><span class="w"> </span><span class="kn">import</span> <span class="n">Col</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">timezone</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.dateparse</span><span class="w"> </span><span class="kn">import</span> <span class="n">parse_date</span><span class="p">,</span> <span class="n">parse_datetime</span><span class="p">,</span> <span class="n">parse_time</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">cached_property</span>
+
+
+<div class="viewcode-block" id="DatabaseOperations">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DatabaseOperations</span><span class="p">(</span><span class="n">BaseDatabaseOperations</span><span class="p">):</span>
+<div class="viewcode-block" id="DatabaseOperations.cast_char_field_without_max_length">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.cast_char_field_without_max_length">[docs]</a>
+    <span class="n">cast_char_field_without_max_length</span> <span class="o">=</span> <span class="s2">&quot;text&quot;</span></div>
+
+<div class="viewcode-block" id="DatabaseOperations.cast_data_types">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.cast_data_types">[docs]</a>
+    <span class="n">cast_data_types</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;DateField&quot;</span><span class="p">:</span> <span class="s2">&quot;TEXT&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;DateTimeField&quot;</span><span class="p">:</span> <span class="s2">&quot;TEXT&quot;</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+<div class="viewcode-block" id="DatabaseOperations.explain_prefix">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.explain_prefix">[docs]</a>
+    <span class="n">explain_prefix</span> <span class="o">=</span> <span class="s2">&quot;EXPLAIN QUERY PLAN&quot;</span></div>
+
+    <span class="c1"># List of datatypes to that cannot be extracted with JSON_EXTRACT() on</span>
+    <span class="c1"># SQLite. Use JSON_TYPE() instead.</span>
+<div class="viewcode-block" id="DatabaseOperations.jsonfield_datatype_values">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.jsonfield_datatype_values">[docs]</a>
+    <span class="n">jsonfield_datatype_values</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">([</span><span class="s2">&quot;null&quot;</span><span class="p">,</span> <span class="s2">&quot;false&quot;</span><span class="p">,</span> <span class="s2">&quot;true&quot;</span><span class="p">])</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.bulk_batch_size">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.bulk_batch_size">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">bulk_batch_size</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">objs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        SQLite has a compile-time default (SQLITE_LIMIT_VARIABLE_NUMBER) of</span>
+<span class="sd">        999 variables per query.</span>
+
+<span class="sd">        If there&#39;s only a single field to insert, the limit is 500</span>
+<span class="sd">        (SQLITE_MAX_COMPOUND_SELECT).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">fields</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="mi">500</span>
+        <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">fields</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">max_query_params</span> <span class="o">//</span> <span class="nb">len</span><span class="p">(</span><span class="n">fields</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">objs</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.check_expression_support">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.check_expression_support">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_expression_support</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expression</span><span class="p">):</span>
+        <span class="n">bad_fields</span> <span class="o">=</span> <span class="p">(</span><span class="n">models</span><span class="o">.</span><span class="n">DateField</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">DateTimeField</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">TimeField</span><span class="p">)</span>
+        <span class="n">bad_aggregates</span> <span class="o">=</span> <span class="p">(</span><span class="n">models</span><span class="o">.</span><span class="n">Sum</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">Avg</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">Variance</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">StdDev</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">bad_aggregates</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">expr</span> <span class="ow">in</span> <span class="n">expression</span><span class="o">.</span><span class="n">get_source_expressions</span><span class="p">():</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">output_field</span> <span class="o">=</span> <span class="n">expr</span><span class="o">.</span><span class="n">output_field</span>
+                <span class="k">except</span> <span class="p">(</span><span class="ne">AttributeError</span><span class="p">,</span> <span class="n">FieldError</span><span class="p">):</span>
+                    <span class="c1"># Not every subexpression has an output_field which is fine</span>
+                    <span class="c1"># to ignore.</span>
+                    <span class="k">pass</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">output_field</span><span class="p">,</span> <span class="n">bad_fields</span><span class="p">):</span>
+                        <span class="k">raise</span> <span class="n">NotSupportedError</span><span class="p">(</span>
+                            <span class="s2">&quot;You cannot use Sum, Avg, StdDev, and Variance &quot;</span>
+                            <span class="s2">&quot;aggregations on date/time fields in sqlite3 &quot;</span>
+                            <span class="s2">&quot;since date/time is saved as text.&quot;</span>
+                        <span class="p">)</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">Aggregate</span><span class="p">)</span>
+            <span class="ow">and</span> <span class="n">expression</span><span class="o">.</span><span class="n">distinct</span>
+            <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">expression</span><span class="o">.</span><span class="n">source_expressions</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span>
+        <span class="p">):</span>
+            <span class="k">raise</span> <span class="n">NotSupportedError</span><span class="p">(</span>
+                <span class="s2">&quot;SQLite doesn&#39;t support DISTINCT on aggregate functions &quot;</span>
+                <span class="s2">&quot;accepting multiple arguments.&quot;</span>
+            <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.date_extract_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.date_extract_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">date_extract_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Support EXTRACT with a user-defined function django_date_extract()</span>
+<span class="sd">        that&#39;s registered in connect(). Use single quotes because this is a</span>
+<span class="sd">        string and could otherwise cause a collision with a field name.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;django_date_extract(%s, </span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">lookup_type</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span> <span class="o">*</span><span class="n">params</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.fetch_returned_insert_rows">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.fetch_returned_insert_rows">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">fetch_returned_insert_rows</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Given a cursor object that has just performed an INSERT...RETURNING</span>
+<span class="sd">        statement into a table, return the list of returned data.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.format_for_duration_arithmetic">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.format_for_duration_arithmetic">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">format_for_duration_arithmetic</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sql</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Do nothing since formatting is handled in the custom function.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">sql</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.date_trunc_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.date_trunc_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">date_trunc_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;django_date_trunc(%s, </span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">, %s, %s)&quot;</span><span class="p">,</span> <span class="p">(</span>
+            <span class="n">lookup_type</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span>
+            <span class="o">*</span><span class="n">params</span><span class="p">,</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_convert_tznames_to_sql</span><span class="p">(</span><span class="n">tzname</span><span class="p">),</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.time_trunc_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.time_trunc_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">time_trunc_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;django_time_trunc(%s, </span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">, %s, %s)&quot;</span><span class="p">,</span> <span class="p">(</span>
+            <span class="n">lookup_type</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span>
+            <span class="o">*</span><span class="n">params</span><span class="p">,</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_convert_tznames_to_sql</span><span class="p">(</span><span class="n">tzname</span><span class="p">),</span>
+        <span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_convert_tznames_to_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tzname</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">tzname</span> <span class="ow">and</span> <span class="n">settings</span><span class="o">.</span><span class="n">USE_TZ</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">tzname</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">timezone_name</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+
+<div class="viewcode-block" id="DatabaseOperations.datetime_cast_date_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.datetime_cast_date_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">datetime_cast_date_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;django_datetime_cast_date(</span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">, %s, %s)&quot;</span><span class="p">,</span> <span class="p">(</span>
+            <span class="o">*</span><span class="n">params</span><span class="p">,</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_convert_tznames_to_sql</span><span class="p">(</span><span class="n">tzname</span><span class="p">),</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.datetime_cast_time_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.datetime_cast_time_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">datetime_cast_time_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;django_datetime_cast_time(</span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">, %s, %s)&quot;</span><span class="p">,</span> <span class="p">(</span>
+            <span class="o">*</span><span class="n">params</span><span class="p">,</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_convert_tznames_to_sql</span><span class="p">(</span><span class="n">tzname</span><span class="p">),</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.datetime_extract_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.datetime_extract_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">datetime_extract_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;django_datetime_extract(%s, </span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">, %s, %s)&quot;</span><span class="p">,</span> <span class="p">(</span>
+            <span class="n">lookup_type</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span>
+            <span class="o">*</span><span class="n">params</span><span class="p">,</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_convert_tznames_to_sql</span><span class="p">(</span><span class="n">tzname</span><span class="p">),</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.datetime_trunc_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.datetime_trunc_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">datetime_trunc_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">tzname</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;django_datetime_trunc(%s, </span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">, %s, %s)&quot;</span><span class="p">,</span> <span class="p">(</span>
+            <span class="n">lookup_type</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span>
+            <span class="o">*</span><span class="n">params</span><span class="p">,</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_convert_tznames_to_sql</span><span class="p">(</span><span class="n">tzname</span><span class="p">),</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.time_extract_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.time_extract_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">time_extract_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_type</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;django_time_extract(%s, </span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">lookup_type</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span> <span class="o">*</span><span class="n">params</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.pk_default_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.pk_default_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">pk_default_value</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;NULL&quot;</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_quote_params_for_last_executed_query</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Only for last_executed_query! Don&#39;t use this to execute SQL queries!</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># This function is limited both by SQLITE_LIMIT_VARIABLE_NUMBER (the</span>
+        <span class="c1"># number of parameters, default = 999) and SQLITE_MAX_COLUMN (the</span>
+        <span class="c1"># number of return values, default = 2000). Since Python&#39;s sqlite3</span>
+        <span class="c1"># module doesn&#39;t expose the get_limit() C API, assume the default</span>
+        <span class="c1"># limits are in effect and split the work in batches if needed.</span>
+        <span class="n">BATCH_SIZE</span> <span class="o">=</span> <span class="mi">999</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">params</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">BATCH_SIZE</span><span class="p">:</span>
+            <span class="n">results</span> <span class="o">=</span> <span class="p">()</span>
+            <span class="k">for</span> <span class="n">index</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">params</span><span class="p">),</span> <span class="n">BATCH_SIZE</span><span class="p">):</span>
+                <span class="n">chunk</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="n">index</span> <span class="p">:</span> <span class="n">index</span> <span class="o">+</span> <span class="n">BATCH_SIZE</span><span class="p">]</span>
+                <span class="n">results</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_quote_params_for_last_executed_query</span><span class="p">(</span><span class="n">chunk</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">results</span>
+
+        <span class="n">sql</span> <span class="o">=</span> <span class="s2">&quot;SELECT &quot;</span> <span class="o">+</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="s2">&quot;QUOTE(?)&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">params</span><span class="p">))</span>
+        <span class="c1"># Bypass Django&#39;s wrappers and use the underlying sqlite3 connection</span>
+        <span class="c1"># to avoid logging this query - it would trigger infinite recursion.</span>
+        <span class="n">cursor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span>
+        <span class="c1"># Native sqlite3 cursors cannot be used as context managers.</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+<div class="viewcode-block" id="DatabaseOperations.last_executed_query">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.last_executed_query">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">last_executed_query</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="c1"># Python substitutes parameters in Modules/_sqlite/cursor.c with:</span>
+        <span class="c1"># bind_parameters(state, self-&gt;statement, parameters);</span>
+        <span class="c1"># Unfortunately there is no way to reach self-&gt;statement from Python,</span>
+        <span class="c1"># so we quote and substitute parameters manually.</span>
+        <span class="k">if</span> <span class="n">params</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+                <span class="n">params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_quote_params_for_last_executed_query</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">values</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">params</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+                <span class="n">values</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_quote_params_for_last_executed_query</span><span class="p">(</span><span class="n">values</span><span class="p">)</span>
+                <span class="n">params</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">values</span><span class="p">))</span>
+            <span class="k">return</span> <span class="n">sql</span> <span class="o">%</span> <span class="n">params</span>
+        <span class="c1"># For consistency with SQLiteCursorWrapper.execute(), just return sql</span>
+        <span class="c1"># when there are no parameters. See #13648 and #17158.</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">sql</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.quote_name">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.quote_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">quote_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">&#39;&quot;&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">name</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">&#39;&quot;&#39;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">name</span>  <span class="c1"># Quoting once is enough.</span>
+        <span class="k">return</span> <span class="s1">&#39;&quot;</span><span class="si">%s</span><span class="s1">&quot;&#39;</span> <span class="o">%</span> <span class="n">name</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.no_limit_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.no_limit_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">no_limit_value</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="o">-</span><span class="mi">1</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">__references_graph</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table_name</span><span class="p">):</span>
+        <span class="n">query</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">        WITH tables AS (</span>
+<span class="s2">            SELECT </span><span class="si">%s</span><span class="s2"> name</span>
+<span class="s2">            UNION</span>
+<span class="s2">            SELECT sqlite_master.name</span>
+<span class="s2">            FROM sqlite_master</span>
+<span class="s2">            JOIN tables ON (sql REGEXP </span><span class="si">%s</span><span class="s2"> || tables.name || </span><span class="si">%s</span><span class="s2">)</span>
+<span class="s2">        ) SELECT name FROM tables;</span>
+<span class="s2">        &quot;&quot;&quot;</span>
+        <span class="n">params</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">table_name</span><span class="p">,</span>
+            <span class="sa">r</span><span class="s1">&#39;(?i)\s+references\s+(&quot;|</span><span class="se">\&#39;</span><span class="s1">)?&#39;</span><span class="p">,</span>
+            <span class="sa">r</span><span class="s1">&#39;(&quot;|</span><span class="se">\&#39;</span><span class="s1">)?\s*\(&#39;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="n">results</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">[</span><span class="n">row</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">results</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()]</span>
+
+    <span class="nd">@cached_property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_references_graph</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># 512 is large enough to fit the ~330 tables (as of this writing) in</span>
+        <span class="c1"># Django&#39;s test suite.</span>
+        <span class="k">return</span> <span class="n">lru_cache</span><span class="p">(</span><span class="n">maxsize</span><span class="o">=</span><span class="mi">512</span><span class="p">)(</span><span class="bp">self</span><span class="o">.</span><span class="n">__references_graph</span><span class="p">)</span>
+
+<div class="viewcode-block" id="DatabaseOperations.sql_flush">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.sql_flush">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">sql_flush</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">style</span><span class="p">,</span> <span class="n">tables</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">reset_sequences</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">allow_cascade</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">tables</span> <span class="ow">and</span> <span class="n">allow_cascade</span><span class="p">:</span>
+            <span class="c1"># Simulate TRUNCATE CASCADE by recursively collecting the tables</span>
+            <span class="c1"># referencing the tables to be flushed.</span>
+            <span class="n">tables</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span>
+                <span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_references_graph</span><span class="p">(</span><span class="n">table</span><span class="p">)</span> <span class="k">for</span> <span class="n">table</span> <span class="ow">in</span> <span class="n">tables</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="n">sql</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2">;&quot;</span>
+            <span class="o">%</span> <span class="p">(</span>
+                <span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;DELETE&quot;</span><span class="p">),</span>
+                <span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;FROM&quot;</span><span class="p">),</span>
+                <span class="n">style</span><span class="o">.</span><span class="n">SQL_FIELD</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">table</span><span class="p">)),</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">table</span> <span class="ow">in</span> <span class="n">tables</span>
+        <span class="p">]</span>
+        <span class="k">if</span> <span class="n">reset_sequences</span><span class="p">:</span>
+            <span class="n">sequences</span> <span class="o">=</span> <span class="p">[{</span><span class="s2">&quot;table&quot;</span><span class="p">:</span> <span class="n">table</span><span class="p">}</span> <span class="k">for</span> <span class="n">table</span> <span class="ow">in</span> <span class="n">tables</span><span class="p">]</span>
+            <span class="n">sql</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sequence_reset_by_name_sql</span><span class="p">(</span><span class="n">style</span><span class="p">,</span> <span class="n">sequences</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">sql</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.sequence_reset_by_name_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.sequence_reset_by_name_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">sequence_reset_by_name_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">style</span><span class="p">,</span> <span class="n">sequences</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">sequences</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">return</span> <span class="p">[</span>
+            <span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2"> = 0 </span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2"> (</span><span class="si">%s</span><span class="s2">);&quot;</span>
+            <span class="o">%</span> <span class="p">(</span>
+                <span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;UPDATE&quot;</span><span class="p">),</span>
+                <span class="n">style</span><span class="o">.</span><span class="n">SQL_TABLE</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;sqlite_sequence&quot;</span><span class="p">)),</span>
+                <span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;SET&quot;</span><span class="p">),</span>
+                <span class="n">style</span><span class="o">.</span><span class="n">SQL_FIELD</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;seq&quot;</span><span class="p">)),</span>
+                <span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;WHERE&quot;</span><span class="p">),</span>
+                <span class="n">style</span><span class="o">.</span><span class="n">SQL_FIELD</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">)),</span>
+                <span class="n">style</span><span class="o">.</span><span class="n">SQL_KEYWORD</span><span class="p">(</span><span class="s2">&quot;IN&quot;</span><span class="p">),</span>
+                <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+                    <span class="p">[</span><span class="s2">&quot;&#39;</span><span class="si">%s</span><span class="s2">&#39;&quot;</span> <span class="o">%</span> <span class="n">sequence_info</span><span class="p">[</span><span class="s2">&quot;table&quot;</span><span class="p">]</span> <span class="k">for</span> <span class="n">sequence_info</span> <span class="ow">in</span> <span class="n">sequences</span><span class="p">]</span>
+                <span class="p">),</span>
+            <span class="p">),</span>
+        <span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.adapt_datetimefield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.adapt_datetimefield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">adapt_datetimefield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="c1"># Expression values are adapted by the database.</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;resolve_expression&quot;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">value</span>
+
+        <span class="c1"># SQLite doesn&#39;t support tz-aware datetimes</span>
+        <span class="k">if</span> <span class="n">timezone</span><span class="o">.</span><span class="n">is_aware</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">USE_TZ</span><span class="p">:</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="n">timezone</span><span class="o">.</span><span class="n">make_naive</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">timezone</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">&quot;SQLite backend does not support timezone-aware datetimes when &quot;</span>
+                    <span class="s2">&quot;USE_TZ is False.&quot;</span>
+                <span class="p">)</span>
+
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.adapt_timefield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.adapt_timefield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">adapt_timefield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="c1"># Expression values are adapted by the database.</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;resolve_expression&quot;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">value</span>
+
+        <span class="c1"># SQLite doesn&#39;t support tz-aware datetimes</span>
+        <span class="k">if</span> <span class="n">timezone</span><span class="o">.</span><span class="n">is_aware</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;SQLite backend does not support timezone-aware times.&quot;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.get_db_converters">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.get_db_converters">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_db_converters</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expression</span><span class="p">):</span>
+        <span class="n">converters</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">get_db_converters</span><span class="p">(</span><span class="n">expression</span><span class="p">)</span>
+        <span class="n">internal_type</span> <span class="o">=</span> <span class="n">expression</span><span class="o">.</span><span class="n">output_field</span><span class="o">.</span><span class="n">get_internal_type</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">internal_type</span> <span class="o">==</span> <span class="s2">&quot;DateTimeField&quot;</span><span class="p">:</span>
+            <span class="n">converters</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">convert_datetimefield_value</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">internal_type</span> <span class="o">==</span> <span class="s2">&quot;DateField&quot;</span><span class="p">:</span>
+            <span class="n">converters</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">convert_datefield_value</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">internal_type</span> <span class="o">==</span> <span class="s2">&quot;TimeField&quot;</span><span class="p">:</span>
+            <span class="n">converters</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">convert_timefield_value</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">internal_type</span> <span class="o">==</span> <span class="s2">&quot;DecimalField&quot;</span><span class="p">:</span>
+            <span class="n">converters</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_decimalfield_converter</span><span class="p">(</span><span class="n">expression</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="n">internal_type</span> <span class="o">==</span> <span class="s2">&quot;UUIDField&quot;</span><span class="p">:</span>
+            <span class="n">converters</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">convert_uuidfield_value</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">internal_type</span> <span class="o">==</span> <span class="s2">&quot;BooleanField&quot;</span><span class="p">:</span>
+            <span class="n">converters</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">convert_booleanfield_value</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">converters</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.convert_datetimefield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.convert_datetimefield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">convert_datetimefield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="p">):</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="n">parse_datetime</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">USE_TZ</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">timezone</span><span class="o">.</span><span class="n">is_aware</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="n">timezone</span><span class="o">.</span><span class="n">make_aware</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">timezone</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.convert_datefield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.convert_datefield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">convert_datefield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">datetime</span><span class="o">.</span><span class="n">date</span><span class="p">):</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="n">parse_date</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.convert_timefield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.convert_timefield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">convert_timefield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">datetime</span><span class="o">.</span><span class="n">time</span><span class="p">):</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="n">parse_time</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.get_decimalfield_converter">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.get_decimalfield_converter">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_decimalfield_converter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expression</span><span class="p">):</span>
+        <span class="c1"># SQLite stores only 15 significant digits. Digits coming from</span>
+        <span class="c1"># float inaccuracy must be removed.</span>
+        <span class="n">create_decimal</span> <span class="o">=</span> <span class="n">decimal</span><span class="o">.</span><span class="n">Context</span><span class="p">(</span><span class="n">prec</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span><span class="o">.</span><span class="n">create_decimal_from_float</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="n">Col</span><span class="p">):</span>
+            <span class="n">quantize_value</span> <span class="o">=</span> <span class="n">decimal</span><span class="o">.</span><span class="n">Decimal</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">scaleb</span><span class="p">(</span>
+                <span class="o">-</span><span class="n">expression</span><span class="o">.</span><span class="n">output_field</span><span class="o">.</span><span class="n">decimal_places</span>
+            <span class="p">)</span>
+
+            <span class="k">def</span><span class="w"> </span><span class="nf">converter</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="n">create_decimal</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="o">.</span><span class="n">quantize</span><span class="p">(</span>
+                        <span class="n">quantize_value</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="n">expression</span><span class="o">.</span><span class="n">output_field</span><span class="o">.</span><span class="n">context</span>
+                    <span class="p">)</span>
+
+        <span class="k">else</span><span class="p">:</span>
+
+            <span class="k">def</span><span class="w"> </span><span class="nf">converter</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="n">create_decimal</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">converter</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.convert_uuidfield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.convert_uuidfield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">convert_uuidfield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">uuid</span><span class="o">.</span><span class="n">UUID</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.convert_booleanfield_value">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.convert_booleanfield_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">convert_booleanfield_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">expression</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="k">if</span> <span class="n">value</span> <span class="ow">in</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="k">else</span> <span class="n">value</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.bulk_insert_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.bulk_insert_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">bulk_insert_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">placeholder_rows</span><span class="p">):</span>
+        <span class="n">placeholder_rows_sql</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">row</span><span class="p">)</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">placeholder_rows</span><span class="p">)</span>
+        <span class="n">values_sql</span> <span class="o">=</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;(</span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2">)&quot;</span> <span class="k">for</span> <span class="n">sql</span> <span class="ow">in</span> <span class="n">placeholder_rows_sql</span><span class="p">)</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;VALUES </span><span class="si">{</span><span class="n">values_sql</span><span class="si">}</span><span class="s2">&quot;</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.combine_expression">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.combine_expression">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">combine_expression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">connector</span><span class="p">,</span> <span class="n">sub_expressions</span><span class="p">):</span>
+        <span class="c1"># SQLite doesn&#39;t have a ^ operator, so use the user-defined POWER</span>
+        <span class="c1"># function that&#39;s registered in connect().</span>
+        <span class="k">if</span> <span class="n">connector</span> <span class="o">==</span> <span class="s2">&quot;^&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;POWER(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="s2">&quot;,&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">sub_expressions</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">connector</span> <span class="o">==</span> <span class="s2">&quot;#&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;BITXOR(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="s2">&quot;,&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">sub_expressions</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">combine_expression</span><span class="p">(</span><span class="n">connector</span><span class="p">,</span> <span class="n">sub_expressions</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.combine_duration_expression">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.combine_duration_expression">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">combine_duration_expression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">connector</span><span class="p">,</span> <span class="n">sub_expressions</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">connector</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;+&quot;</span><span class="p">,</span> <span class="s2">&quot;-&quot;</span><span class="p">,</span> <span class="s2">&quot;*&quot;</span><span class="p">,</span> <span class="s2">&quot;/&quot;</span><span class="p">]:</span>
+            <span class="k">raise</span> <span class="n">DatabaseError</span><span class="p">(</span><span class="s2">&quot;Invalid connector for timedelta: </span><span class="si">%s</span><span class="s2">.&quot;</span> <span class="o">%</span> <span class="n">connector</span><span class="p">)</span>
+        <span class="n">fn_params</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;&#39;</span><span class="si">%s</span><span class="s2">&#39;&quot;</span> <span class="o">%</span> <span class="n">connector</span><span class="p">]</span> <span class="o">+</span> <span class="n">sub_expressions</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">fn_params</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Too many params for timedelta operations.&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="s2">&quot;django_format_dtdelta(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">fn_params</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.integer_field_range">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.integer_field_range">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">integer_field_range</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">internal_type</span><span class="p">):</span>
+        <span class="c1"># SQLite doesn&#39;t enforce any integer constraints</span>
+        <span class="k">return</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.subtract_temporals">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.subtract_temporals">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">subtract_temporals</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">internal_type</span><span class="p">,</span> <span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="p">):</span>
+        <span class="n">lhs_sql</span><span class="p">,</span> <span class="n">lhs_params</span> <span class="o">=</span> <span class="n">lhs</span>
+        <span class="n">rhs_sql</span><span class="p">,</span> <span class="n">rhs_params</span> <span class="o">=</span> <span class="n">rhs</span>
+        <span class="n">params</span> <span class="o">=</span> <span class="p">(</span><span class="o">*</span><span class="n">lhs_params</span><span class="p">,</span> <span class="o">*</span><span class="n">rhs_params</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">internal_type</span> <span class="o">==</span> <span class="s2">&quot;TimeField&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;django_time_diff(</span><span class="si">%s</span><span class="s2">, </span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">lhs_sql</span><span class="p">,</span> <span class="n">rhs_sql</span><span class="p">),</span> <span class="n">params</span>
+        <span class="k">return</span> <span class="s2">&quot;django_timestamp_diff(</span><span class="si">%s</span><span class="s2">, </span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">lhs_sql</span><span class="p">,</span> <span class="n">rhs_sql</span><span class="p">),</span> <span class="n">params</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.insert_statement">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.insert_statement">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">insert_statement</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">on_conflict</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">on_conflict</span> <span class="o">==</span> <span class="n">OnConflict</span><span class="o">.</span><span class="n">IGNORE</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;INSERT OR IGNORE INTO&quot;</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">insert_statement</span><span class="p">(</span><span class="n">on_conflict</span><span class="o">=</span><span class="n">on_conflict</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.return_insert_columns">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.return_insert_columns">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">return_insert_columns</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fields</span><span class="p">):</span>
+        <span class="c1"># SQLite &lt; 3.35 doesn&#39;t support an INSERT...RETURNING statement.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">fields</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="p">()</span>
+        <span class="n">columns</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2">&quot;</span>
+            <span class="o">%</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">field</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span><span class="p">),</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">field</span><span class="o">.</span><span class="n">column</span><span class="p">),</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">fields</span>
+        <span class="p">]</span>
+        <span class="k">return</span> <span class="s2">&quot;RETURNING </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">columns</span><span class="p">),</span> <span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="DatabaseOperations.on_conflict_suffix_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/sqlite3/operations/index.html#django.db.backends.sqlite3.operations.DatabaseOperations.on_conflict_suffix_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_conflict_suffix_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fields</span><span class="p">,</span> <span class="n">on_conflict</span><span class="p">,</span> <span class="n">update_fields</span><span class="p">,</span> <span class="n">unique_fields</span><span class="p">):</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="n">on_conflict</span> <span class="o">==</span> <span class="n">OnConflict</span><span class="o">.</span><span class="n">UPDATE</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">supports_update_conflicts_with_target</span>
+        <span class="p">):</span>
+            <span class="k">return</span> <span class="s2">&quot;ON CONFLICT(</span><span class="si">%s</span><span class="s2">) DO UPDATE SET </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span>
+                <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">,</span> <span class="n">unique_fields</span><span class="p">)),</span>
+                <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+                    <span class="p">[</span>
+                        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">field</span><span class="si">}</span><span class="s2"> = EXCLUDED.</span><span class="si">{</span><span class="n">field</span><span class="si">}</span><span class="s2">&quot;</span>
+                        <span class="k">for</span> <span class="n">field</span> <span class="ow">in</span> <span class="nb">map</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">quote_name</span><span class="p">,</span> <span class="n">update_fields</span><span class="p">)</span>
+                    <span class="p">]</span>
+                <span class="p">),</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">on_conflict_suffix_sql</span><span class="p">(</span>
+            <span class="n">fields</span><span class="p">,</span>
+            <span class="n">on_conflict</span><span class="p">,</span>
+            <span class="n">update_fields</span><span class="p">,</span>
+            <span class="n">unique_fields</span><span class="p">,</span>
+        <span class="p">)</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

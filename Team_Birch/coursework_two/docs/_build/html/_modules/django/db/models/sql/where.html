@@ -1,0 +1,594 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.db.models.sql.where &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../../../db.html">django.db</a></li>
+      <li class="breadcrumb-item active">django.db.models.sql.where</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.db.models.sql.where</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Code to manage the creation and SQL rendering of &#39;where&#39; constraints.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">operator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">reduce</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">EmptyResultSet</span><span class="p">,</span> <span class="n">FullResultSet</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.models.expressions</span><span class="w"> </span><span class="kn">import</span> <span class="n">Case</span><span class="p">,</span> <span class="n">When</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.models.lookups</span><span class="w"> </span><span class="kn">import</span> <span class="n">Exact</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">tree</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">cached_property</span>
+
+<span class="c1"># Connection types</span>
+<div class="viewcode-block" id="AND">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.AND">[docs]</a>
+<span class="n">AND</span> <span class="o">=</span> <span class="s2">&quot;AND&quot;</span></div>
+
+<div class="viewcode-block" id="OR">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.OR">[docs]</a>
+<span class="n">OR</span> <span class="o">=</span> <span class="s2">&quot;OR&quot;</span></div>
+
+<div class="viewcode-block" id="XOR">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.XOR">[docs]</a>
+<span class="n">XOR</span> <span class="o">=</span> <span class="s2">&quot;XOR&quot;</span></div>
+
+
+
+<div class="viewcode-block" id="WhereNode">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.WhereNode">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">WhereNode</span><span class="p">(</span><span class="n">tree</span><span class="o">.</span><span class="n">Node</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    An SQL WHERE clause.</span>
+
+<span class="sd">    The class is tied to the Query class that created it (in order to create</span>
+<span class="sd">    the correct SQL).</span>
+
+<span class="sd">    A child is usually an expression producing boolean values. Most likely the</span>
+<span class="sd">    expression is a Lookup instance.</span>
+
+<span class="sd">    However, a child could also be any class with as_sql() and either</span>
+<span class="sd">    relabeled_clone() method or relabel_aliases() and clone() methods and</span>
+<span class="sd">    contains_aggregate attribute.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="WhereNode.default">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.WhereNode.default">[docs]</a>
+    <span class="n">default</span> <span class="o">=</span> <span class="n">AND</span></div>
+
+<div class="viewcode-block" id="WhereNode.resolved">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.WhereNode.resolved">[docs]</a>
+    <span class="n">resolved</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+<div class="viewcode-block" id="WhereNode.conditional">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.WhereNode.conditional">[docs]</a>
+    <span class="n">conditional</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="WhereNode.split_having_qualify">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.WhereNode.split_having_qualify">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">split_having_qualify</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">negated</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">must_group_by</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return three possibly None nodes: one for those parts of self that</span>
+<span class="sd">        should be included in the WHERE clause, one for those parts of self</span>
+<span class="sd">        that must be included in the HAVING clause, and one for those parts</span>
+<span class="sd">        that refer to window functions.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">contains_aggregate</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">contains_over_clause</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+        <span class="n">in_negated</span> <span class="o">=</span> <span class="n">negated</span> <span class="o">^</span> <span class="bp">self</span><span class="o">.</span><span class="n">negated</span>
+        <span class="c1"># Whether or not children must be connected in the same filtering</span>
+        <span class="c1"># clause (WHERE &gt; HAVING &gt; QUALIFY) to maintain logical semantic.</span>
+        <span class="n">must_remain_connected</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="p">(</span><span class="n">in_negated</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">connector</span> <span class="o">==</span> <span class="n">AND</span><span class="p">)</span>
+            <span class="ow">or</span> <span class="p">(</span><span class="ow">not</span> <span class="n">in_negated</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">connector</span> <span class="o">==</span> <span class="n">OR</span><span class="p">)</span>
+            <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">connector</span> <span class="o">==</span> <span class="n">XOR</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="n">must_remain_connected</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">contains_aggregate</span>
+            <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">contains_over_clause</span>
+        <span class="p">):</span>
+            <span class="c1"># It&#39;s must cheaper to short-circuit and stash everything in the</span>
+            <span class="c1"># HAVING clause than split children if possible.</span>
+            <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="bp">self</span><span class="p">,</span> <span class="kc">None</span>
+        <span class="n">where_parts</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">having_parts</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">qualify_parts</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="s2">&quot;split_having_qualify&quot;</span><span class="p">):</span>
+                <span class="n">where_part</span><span class="p">,</span> <span class="n">having_part</span><span class="p">,</span> <span class="n">qualify_part</span> <span class="o">=</span> <span class="n">c</span><span class="o">.</span><span class="n">split_having_qualify</span><span class="p">(</span>
+                    <span class="n">in_negated</span><span class="p">,</span> <span class="n">must_group_by</span>
+                <span class="p">)</span>
+                <span class="k">if</span> <span class="n">where_part</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">where_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">where_part</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">having_part</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">having_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">having_part</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">qualify_part</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">qualify_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">qualify_part</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">c</span><span class="o">.</span><span class="n">contains_over_clause</span><span class="p">:</span>
+                <span class="n">qualify_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">c</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">c</span><span class="o">.</span><span class="n">contains_aggregate</span><span class="p">:</span>
+                <span class="n">having_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">c</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">where_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">c</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">must_remain_connected</span> <span class="ow">and</span> <span class="n">qualify_parts</span><span class="p">:</span>
+            <span class="c1"># Disjunctive heterogeneous predicates can be pushed down to</span>
+            <span class="c1"># qualify as long as no conditional aggregation is involved.</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">where_parts</span> <span class="ow">or</span> <span class="p">(</span><span class="n">where_parts</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">must_group_by</span><span class="p">):</span>
+                <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="bp">self</span>
+            <span class="k">elif</span> <span class="n">where_parts</span><span class="p">:</span>
+                <span class="c1"># In theory this should only be enforced when dealing with</span>
+                <span class="c1"># where_parts containing predicates against multi-valued</span>
+                <span class="c1"># relationships that could affect aggregation results but this</span>
+                <span class="c1"># is complex to infer properly.</span>
+                <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+                    <span class="s2">&quot;Heterogeneous disjunctive predicates against window functions are &quot;</span>
+                    <span class="s2">&quot;not implemented when performing conditional aggregation.&quot;</span>
+                <span class="p">)</span>
+        <span class="n">where_node</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">where_parts</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">connector</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">negated</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">where_parts</span>
+            <span class="k">else</span> <span class="kc">None</span>
+        <span class="p">)</span>
+        <span class="n">having_node</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">having_parts</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">connector</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">negated</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">having_parts</span>
+            <span class="k">else</span> <span class="kc">None</span>
+        <span class="p">)</span>
+        <span class="n">qualify_node</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">qualify_parts</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">connector</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">negated</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">qualify_parts</span>
+            <span class="k">else</span> <span class="kc">None</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">where_node</span><span class="p">,</span> <span class="n">having_node</span><span class="p">,</span> <span class="n">qualify_node</span></div>
+
+
+<div class="viewcode-block" id="WhereNode.as_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.WhereNode.as_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">as_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">compiler</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the SQL version of the where clause and the value to be</span>
+<span class="sd">        substituted in. Return &#39;&#39;, [] if this node matches everything,</span>
+<span class="sd">        None, [] if this node is empty, and raise EmptyResultSet if this</span>
+<span class="sd">        node can&#39;t match anything.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">result_params</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connector</span> <span class="o">==</span> <span class="n">AND</span><span class="p">:</span>
+            <span class="n">full_needed</span><span class="p">,</span> <span class="n">empty_needed</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">),</span> <span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">full_needed</span><span class="p">,</span> <span class="n">empty_needed</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connector</span> <span class="o">==</span> <span class="n">XOR</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">supports_logical_xor</span><span class="p">:</span>
+            <span class="c1"># Convert if the database doesn&#39;t support XOR:</span>
+            <span class="c1">#   a XOR b XOR c XOR ...</span>
+            <span class="c1"># to:</span>
+            <span class="c1">#   (a OR b OR c OR ...) AND (a + b + c + ...) == 1</span>
+            <span class="n">lhs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">,</span> <span class="n">OR</span><span class="p">)</span>
+            <span class="n">rhs_sum</span> <span class="o">=</span> <span class="n">reduce</span><span class="p">(</span>
+                <span class="n">operator</span><span class="o">.</span><span class="n">add</span><span class="p">,</span>
+                <span class="p">(</span><span class="n">Case</span><span class="p">(</span><span class="n">When</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">then</span><span class="o">=</span><span class="mi">1</span><span class="p">),</span> <span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">),</span>
+            <span class="p">)</span>
+            <span class="n">rhs</span> <span class="o">=</span> <span class="n">Exact</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">rhs_sum</span><span class="p">)</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="p">([</span><span class="n">lhs</span><span class="p">,</span> <span class="n">rhs</span><span class="p">],</span> <span class="n">AND</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">negated</span><span class="p">)</span><span class="o">.</span><span class="n">as_sql</span><span class="p">(</span>
+                <span class="n">compiler</span><span class="p">,</span> <span class="n">connection</span>
+            <span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">child</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">sql</span><span class="p">,</span> <span class="n">params</span> <span class="o">=</span> <span class="n">compiler</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">child</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">EmptyResultSet</span><span class="p">:</span>
+                <span class="n">empty_needed</span> <span class="o">-=</span> <span class="mi">1</span>
+            <span class="k">except</span> <span class="n">FullResultSet</span><span class="p">:</span>
+                <span class="n">full_needed</span> <span class="o">-=</span> <span class="mi">1</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">sql</span><span class="p">:</span>
+                    <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">sql</span><span class="p">)</span>
+                    <span class="n">result_params</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">full_needed</span> <span class="o">-=</span> <span class="mi">1</span>
+            <span class="c1"># Check if this node matches nothing or everything.</span>
+            <span class="c1"># First check the amount of full nodes and empty nodes</span>
+            <span class="c1"># to make this node empty/full.</span>
+            <span class="c1"># Now, check if this node is full/empty using the</span>
+            <span class="c1"># counts.</span>
+            <span class="k">if</span> <span class="n">empty_needed</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">negated</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">FullResultSet</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">EmptyResultSet</span>
+            <span class="k">if</span> <span class="n">full_needed</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">negated</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">EmptyResultSet</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">FullResultSet</span>
+        <span class="n">conn</span> <span class="o">=</span> <span class="s2">&quot; </span><span class="si">%s</span><span class="s2"> &quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">connector</span>
+        <span class="n">sql_string</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">sql_string</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">FullResultSet</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">negated</span><span class="p">:</span>
+            <span class="c1"># Some backends (Oracle at least) need parentheses around the inner</span>
+            <span class="c1"># SQL in the negated case, even if the inner SQL contains just a</span>
+            <span class="c1"># single expression.</span>
+            <span class="n">sql_string</span> <span class="o">=</span> <span class="s2">&quot;NOT (</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="n">sql_string</span>
+        <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">resolved</span><span class="p">:</span>
+            <span class="n">sql_string</span> <span class="o">=</span> <span class="s2">&quot;(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="n">sql_string</span>
+        <span class="k">return</span> <span class="n">sql_string</span><span class="p">,</span> <span class="n">result_params</span></div>
+
+
+<div class="viewcode-block" id="WhereNode.get_group_by_cols">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.WhereNode.get_group_by_cols">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_group_by_cols</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">cols</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">child</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">:</span>
+            <span class="n">cols</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">child</span><span class="o">.</span><span class="n">get_group_by_cols</span><span class="p">())</span>
+        <span class="k">return</span> <span class="n">cols</span></div>
+
+
+<div class="viewcode-block" id="WhereNode.get_source_expressions">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.WhereNode.get_source_expressions">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_source_expressions</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">[:]</span></div>
+
+
+<div class="viewcode-block" id="WhereNode.set_source_expressions">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.WhereNode.set_source_expressions">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_source_expressions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">children</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">children</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">children</span> <span class="o">=</span> <span class="n">children</span></div>
+
+
+<div class="viewcode-block" id="WhereNode.relabel_aliases">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.WhereNode.relabel_aliases">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">relabel_aliases</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">change_map</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Relabel the alias values of any children. &#39;change_map&#39; is a dictionary</span>
+<span class="sd">        mapping old (current) alias values to the new values.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">pos</span><span class="p">,</span> <span class="n">child</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">):</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">child</span><span class="p">,</span> <span class="s2">&quot;relabel_aliases&quot;</span><span class="p">):</span>
+                <span class="c1"># For example another WhereNode</span>
+                <span class="n">child</span><span class="o">.</span><span class="n">relabel_aliases</span><span class="p">(</span><span class="n">change_map</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">child</span><span class="p">,</span> <span class="s2">&quot;relabeled_clone&quot;</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">[</span><span class="n">pos</span><span class="p">]</span> <span class="o">=</span> <span class="n">child</span><span class="o">.</span><span class="n">relabeled_clone</span><span class="p">(</span><span class="n">change_map</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="WhereNode.clone">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.WhereNode.clone">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clone</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">clone</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">connector</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">connector</span><span class="p">,</span> <span class="n">negated</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">negated</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">child</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">child</span><span class="p">,</span> <span class="s2">&quot;clone&quot;</span><span class="p">):</span>
+                <span class="n">child</span> <span class="o">=</span> <span class="n">child</span><span class="o">.</span><span class="n">clone</span><span class="p">()</span>
+            <span class="n">clone</span><span class="o">.</span><span class="n">children</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">child</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">clone</span></div>
+
+
+<div class="viewcode-block" id="WhereNode.relabeled_clone">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.WhereNode.relabeled_clone">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">relabeled_clone</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">change_map</span><span class="p">):</span>
+        <span class="n">clone</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">clone</span><span class="p">()</span>
+        <span class="n">clone</span><span class="o">.</span><span class="n">relabel_aliases</span><span class="p">(</span><span class="n">change_map</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">clone</span></div>
+
+
+<div class="viewcode-block" id="WhereNode.replace_expressions">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.WhereNode.replace_expressions">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">replace_expressions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">replacements</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">replacement</span> <span class="o">:=</span> <span class="n">replacements</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">replacement</span>
+        <span class="n">clone</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">connector</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">connector</span><span class="p">,</span> <span class="n">negated</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">negated</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">child</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">:</span>
+            <span class="n">clone</span><span class="o">.</span><span class="n">children</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">child</span><span class="o">.</span><span class="n">replace_expressions</span><span class="p">(</span><span class="n">replacements</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">clone</span></div>
+
+
+<div class="viewcode-block" id="WhereNode.get_refs">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.WhereNode.get_refs">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_refs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">refs</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">child</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">:</span>
+            <span class="n">refs</span> <span class="o">|=</span> <span class="n">child</span><span class="o">.</span><span class="n">get_refs</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">refs</span></div>
+
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_contains_aggregate</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">tree</span><span class="o">.</span><span class="n">Node</span><span class="p">):</span>
+            <span class="k">return</span> <span class="nb">any</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="n">_contains_aggregate</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">obj</span><span class="o">.</span><span class="n">children</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">obj</span><span class="o">.</span><span class="n">contains_aggregate</span>
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="WhereNode.contains_aggregate">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.WhereNode.contains_aggregate">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">contains_aggregate</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_contains_aggregate</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
+
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_contains_over_clause</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">tree</span><span class="o">.</span><span class="n">Node</span><span class="p">):</span>
+            <span class="k">return</span> <span class="nb">any</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="n">_contains_over_clause</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">obj</span><span class="o">.</span><span class="n">children</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">obj</span><span class="o">.</span><span class="n">contains_over_clause</span>
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="WhereNode.contains_over_clause">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.WhereNode.contains_over_clause">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">contains_over_clause</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_contains_over_clause</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
+
+
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="WhereNode.is_summary">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.WhereNode.is_summary">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_summary</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">any</span><span class="p">(</span><span class="n">child</span><span class="o">.</span><span class="n">is_summary</span> <span class="k">for</span> <span class="n">child</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">)</span></div>
+
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_resolve_leaf</span><span class="p">(</span><span class="n">expr</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">expr</span><span class="p">,</span> <span class="s2">&quot;resolve_expression&quot;</span><span class="p">):</span>
+            <span class="n">expr</span> <span class="o">=</span> <span class="n">expr</span><span class="o">.</span><span class="n">resolve_expression</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">expr</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_resolve_node</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">node</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="s2">&quot;children&quot;</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">child</span> <span class="ow">in</span> <span class="n">node</span><span class="o">.</span><span class="n">children</span><span class="p">:</span>
+                <span class="bp">cls</span><span class="o">.</span><span class="n">_resolve_node</span><span class="p">(</span><span class="n">child</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="s2">&quot;lhs&quot;</span><span class="p">):</span>
+            <span class="n">node</span><span class="o">.</span><span class="n">lhs</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_resolve_leaf</span><span class="p">(</span><span class="n">node</span><span class="o">.</span><span class="n">lhs</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="s2">&quot;rhs&quot;</span><span class="p">):</span>
+            <span class="n">node</span><span class="o">.</span><span class="n">rhs</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_resolve_leaf</span><span class="p">(</span><span class="n">node</span><span class="o">.</span><span class="n">rhs</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="WhereNode.resolve_expression">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.WhereNode.resolve_expression">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">resolve_expression</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">clone</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">clone</span><span class="p">()</span>
+        <span class="n">clone</span><span class="o">.</span><span class="n">_resolve_node</span><span class="p">(</span><span class="n">clone</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="n">clone</span><span class="o">.</span><span class="n">resolved</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">return</span> <span class="n">clone</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="WhereNode.output_field">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.WhereNode.output_field">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">output_field</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">django.db.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">BooleanField</span>
+
+        <span class="k">return</span> <span class="n">BooleanField</span><span class="p">()</span></div>
+
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_output_field_or_none</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_field</span>
+
+<div class="viewcode-block" id="WhereNode.select_format">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.WhereNode.select_format">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">select_format</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">compiler</span><span class="p">,</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="c1"># Wrap filters with a CASE WHEN expression if a database backend</span>
+        <span class="c1"># (e.g. Oracle) doesn&#39;t support boolean expression in SELECT or GROUP</span>
+        <span class="c1"># BY list.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">compiler</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">supports_boolean_expr_in_select_clause</span><span class="p">:</span>
+            <span class="n">sql</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;CASE WHEN </span><span class="si">{</span><span class="n">sql</span><span class="si">}</span><span class="s2"> THEN 1 ELSE 0 END&quot;</span>
+        <span class="k">return</span> <span class="n">sql</span><span class="p">,</span> <span class="n">params</span></div>
+
+
+<div class="viewcode-block" id="WhereNode.get_db_converters">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.WhereNode.get_db_converters">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_db_converters</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_field</span><span class="o">.</span><span class="n">get_db_converters</span><span class="p">(</span><span class="n">connection</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="WhereNode.get_lookup">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.WhereNode.get_lookup">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_lookup</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_field</span><span class="o">.</span><span class="n">get_lookup</span><span class="p">(</span><span class="n">lookup</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="WhereNode.leaves">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.WhereNode.leaves">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">leaves</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">child</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">children</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">child</span><span class="p">,</span> <span class="n">WhereNode</span><span class="p">):</span>
+                <span class="k">yield from</span> <span class="n">child</span><span class="o">.</span><span class="n">leaves</span><span class="p">()</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">yield</span> <span class="n">child</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="NothingNode">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.NothingNode">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NothingNode</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A node that matches nothing.&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="NothingNode.contains_aggregate">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.NothingNode.contains_aggregate">[docs]</a>
+    <span class="n">contains_aggregate</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+<div class="viewcode-block" id="NothingNode.contains_over_clause">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.NothingNode.contains_over_clause">[docs]</a>
+    <span class="n">contains_over_clause</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+
+<div class="viewcode-block" id="NothingNode.as_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.NothingNode.as_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">as_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">compiler</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">connection</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="n">EmptyResultSet</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="ExtraWhere">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.ExtraWhere">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ExtraWhere</span><span class="p">:</span>
+    <span class="c1"># The contents are a black box - assume no aggregates or windows are used.</span>
+<div class="viewcode-block" id="ExtraWhere.contains_aggregate">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.ExtraWhere.contains_aggregate">[docs]</a>
+    <span class="n">contains_aggregate</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+<div class="viewcode-block" id="ExtraWhere.contains_over_clause">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.ExtraWhere.contains_over_clause">[docs]</a>
+    <span class="n">contains_over_clause</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sqls</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+<div class="viewcode-block" id="ExtraWhere.sqls">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.ExtraWhere.sqls">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sqls</span> <span class="o">=</span> <span class="n">sqls</span></div>
+
+<div class="viewcode-block" id="ExtraWhere.params">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.ExtraWhere.params">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">params</span> <span class="o">=</span> <span class="n">params</span></div>
+
+
+<div class="viewcode-block" id="ExtraWhere.as_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.ExtraWhere.as_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">as_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">compiler</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">connection</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="n">sqls</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="n">sql</span> <span class="k">for</span> <span class="n">sql</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">sqls</span><span class="p">]</span>
+        <span class="k">return</span> <span class="s2">&quot; AND &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">sqls</span><span class="p">),</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">params</span> <span class="ow">or</span> <span class="p">())</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="SubqueryConstraint">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.SubqueryConstraint">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SubqueryConstraint</span><span class="p">:</span>
+    <span class="c1"># Even if aggregates or windows would be used in a subquery,</span>
+    <span class="c1"># the outer query isn&#39;t interested about those.</span>
+<div class="viewcode-block" id="SubqueryConstraint.contains_aggregate">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.SubqueryConstraint.contains_aggregate">[docs]</a>
+    <span class="n">contains_aggregate</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+<div class="viewcode-block" id="SubqueryConstraint.contains_over_clause">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.SubqueryConstraint.contains_over_clause">[docs]</a>
+    <span class="n">contains_over_clause</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">alias</span><span class="p">,</span> <span class="n">columns</span><span class="p">,</span> <span class="n">targets</span><span class="p">,</span> <span class="n">query_object</span><span class="p">):</span>
+<div class="viewcode-block" id="SubqueryConstraint.alias">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.SubqueryConstraint.alias">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">alias</span> <span class="o">=</span> <span class="n">alias</span></div>
+
+<div class="viewcode-block" id="SubqueryConstraint.columns">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.SubqueryConstraint.columns">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="n">columns</span></div>
+
+<div class="viewcode-block" id="SubqueryConstraint.targets">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.SubqueryConstraint.targets">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">targets</span> <span class="o">=</span> <span class="n">targets</span></div>
+
+        <span class="n">query_object</span><span class="o">.</span><span class="n">clear_ordering</span><span class="p">(</span><span class="n">clear_default</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<div class="viewcode-block" id="SubqueryConstraint.query_object">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.SubqueryConstraint.query_object">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">query_object</span> <span class="o">=</span> <span class="n">query_object</span></div>
+
+
+<div class="viewcode-block" id="SubqueryConstraint.as_sql">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/models/sql/where/index.html#django.db.models.sql.where.SubqueryConstraint.as_sql">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">as_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">compiler</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+        <span class="n">query</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">query_object</span>
+        <span class="n">query</span><span class="o">.</span><span class="n">set_values</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">targets</span><span class="p">)</span>
+        <span class="n">query_compiler</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">get_compiler</span><span class="p">(</span><span class="n">connection</span><span class="o">=</span><span class="n">connection</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">query_compiler</span><span class="o">.</span><span class="n">as_subquery_condition</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">alias</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">columns</span><span class="p">,</span> <span class="n">compiler</span><span class="p">)</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

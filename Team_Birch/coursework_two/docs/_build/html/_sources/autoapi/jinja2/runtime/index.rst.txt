@@ -1,0 +1,572 @@
+jinja2.runtime
+==============
+
+.. py:module:: jinja2.runtime
+
+.. autoapi-nested-parse::
+
+   The runtime functions and state used by compiled templates.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   jinja2.runtime.V
+   jinja2.runtime.F
+   jinja2.runtime.exported
+   jinja2.runtime.async_exported
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   jinja2.runtime.LoopRenderFunc
+   jinja2.runtime.TemplateReference
+   jinja2.runtime.Context
+   jinja2.runtime.BlockReference
+   jinja2.runtime.LoopContext
+   jinja2.runtime.AsyncLoopContext
+   jinja2.runtime.Macro
+   jinja2.runtime.Undefined
+   jinja2.runtime.ChainableUndefined
+   jinja2.runtime.DebugUndefined
+   jinja2.runtime.StrictUndefined
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   jinja2.runtime.identity
+   jinja2.runtime.markup_join
+   jinja2.runtime.str_join
+   jinja2.runtime.new_context
+   jinja2.runtime.make_logging_undefined
+
+
+Module Contents
+---------------
+
+.. py:data:: V
+
+.. py:data:: F
+
+.. py:class:: LoopRenderFunc
+
+   Bases: :py:obj:`typing_extensions.Protocol`
+
+
+   Base class for protocol classes.
+
+   Protocol classes are defined as::
+
+       class Proto(Protocol):
+           def meth(self) -> int:
+               ...
+
+   Such classes are primarily used with static type checkers that recognize
+   structural subtyping (static duck-typing).
+
+   For example::
+
+       class C:
+           def meth(self) -> int:
+               return 0
+
+       def func(x: Proto) -> int:
+           return x.meth()
+
+       func(C())  # Passes static type check
+
+   See PEP 544 for details. Protocol classes decorated with
+   @typing.runtime_checkable act as simple-minded runtime protocols that check
+   only the presence of given attributes, ignoring their type signatures.
+   Protocol classes can be generic, they are defined as::
+
+       class GenProto[T](Protocol):
+           def meth(self) -> T:
+               ...
+
+
+.. py:data:: exported
+   :value: ['LoopContext', 'TemplateReference', 'Macro', 'Markup', 'TemplateRuntimeError', 'missing',...
+
+
+.. py:data:: async_exported
+   :value: ['AsyncLoopContext', 'auto_aiter', 'auto_await']
+
+
+.. py:function:: identity(x: V) -> V
+
+   Returns its argument. Useful for certain things in the
+   environment.
+
+
+.. py:function:: markup_join(seq: Iterable[Any]) -> str
+
+   Concatenation that escapes if necessary and converts to string.
+
+
+.. py:function:: str_join(seq: Iterable[Any]) -> str
+
+   Simple args to string conversion and concatenation.
+
+
+.. py:function:: new_context(environment: jinja2.environment.Environment, template_name: Optional[str], blocks: Dict[str, Callable[[Context], Iterator[str]]], vars: Optional[Dict[str, Any]] = None, shared: bool = False, globals: Optional[MutableMapping[str, Any]] = None, locals: Optional[Mapping[str, Any]] = None) -> Context
+
+   Internal helper for context creation.
+
+
+.. py:class:: TemplateReference(context: Context)
+
+   The `self` in templates.
+
+
+.. py:class:: Context(environment: jinja2.environment.Environment, parent: Dict[str, Any], name: Optional[str], blocks: Dict[str, Callable[[Context], Iterator[str]]], globals: Optional[MutableMapping[str, Any]] = None)
+
+   The template context holds the variables of a template.  It stores the
+   values passed to the template and also the names the template exports.
+   Creating instances is neither supported nor useful as it's created
+   automatically at various stages of the template evaluation and should not
+   be created by hand.
+
+   The context is immutable.  Modifications on :attr:`parent` **must not**
+   happen and modifications on :attr:`vars` are allowed from generated
+   template code only.  Template filters and global functions marked as
+   :func:`pass_context` get the active context passed as first argument
+   and are allowed to access the context read-only.
+
+   The template context supports read only dict operations (`get`,
+   `keys`, `values`, `items`, `iterkeys`, `itervalues`, `iteritems`,
+   `__getitem__`, `__contains__`).  Additionally there is a :meth:`resolve`
+   method that doesn't fail with a `KeyError` but returns an
+   :class:`Undefined` object for missing variables.
+
+
+   .. py:attribute:: parent
+
+
+   .. py:attribute:: vars
+      :type:  Dict[str, Any]
+
+
+   .. py:attribute:: environment
+      :type:  jinja2.environment.Environment
+
+
+   .. py:attribute:: eval_ctx
+
+
+   .. py:attribute:: exported_vars
+      :type:  Set[str]
+
+
+   .. py:attribute:: name
+
+
+   .. py:attribute:: globals_keys
+
+
+   .. py:attribute:: blocks
+
+
+   .. py:method:: super(name: str, current: Callable[[Context], Iterator[str]]) -> Union[BlockReference, Undefined]
+
+      Render a parent block.
+
+
+
+   .. py:method:: get(key: str, default: Any = None) -> Any
+
+      Look up a variable by name, or return a default if the key is
+      not found.
+
+      :param key: The variable name to look up.
+      :param default: The value to return if the key is not found.
+
+
+
+   .. py:method:: resolve(key: str) -> Union[Any, Undefined]
+
+      Look up a variable by name, or return an :class:`Undefined`
+      object if the key is not found.
+
+      If you need to add custom behavior, override
+      :meth:`resolve_or_missing`, not this method. The various lookup
+      functions use that method, not this one.
+
+      :param key: The variable name to look up.
+
+
+
+   .. py:method:: resolve_or_missing(key: str) -> Any
+
+      Look up a variable by name, or return a ``missing`` sentinel
+      if the key is not found.
+
+      Override this method to add custom lookup behavior.
+      :meth:`resolve`, :meth:`get`, and :meth:`__getitem__` use this
+      method. Don't call this method directly.
+
+      :param key: The variable name to look up.
+
+
+
+   .. py:method:: get_exported() -> Dict[str, Any]
+
+      Get a new dict with the exported variables.
+
+
+
+   .. py:method:: get_all() -> Dict[str, Any]
+
+      Return the complete context as dict including the exported
+      variables.  For optimizations reasons this might not return an
+      actual copy so be careful with using it.
+
+
+
+   .. py:method:: call(__obj: Callable[Ellipsis, Any], *args: Any, **kwargs: Any) -> Union[Any, Undefined]
+
+      Call the callable with the arguments and keyword arguments
+      provided but inject the active context or environment as first
+      argument if the callable has :func:`pass_context` or
+      :func:`pass_environment`.
+
+
+
+   .. py:method:: derived(locals: Optional[Dict[str, Any]] = None) -> Context
+
+      Internal helper function to create a derived context.  This is
+      used in situations where the system needs a new context in the same
+      template that is independent.
+
+
+
+   .. py:attribute:: keys
+
+
+   .. py:attribute:: values
+
+
+   .. py:attribute:: items
+
+
+.. py:class:: BlockReference(name: str, context: Context, stack: List[Callable[[Context], Iterator[str]]], depth: int)
+
+   One block on a template reference.
+
+
+   .. py:attribute:: name
+
+
+   .. py:property:: super
+      :type: Union[BlockReference, Undefined]
+
+
+      Super the block.
+
+
+.. py:class:: LoopContext(iterable: Iterable[V], undefined: Type[Undefined], recurse: Optional[LoopRenderFunc] = None, depth0: int = 0)
+
+   A wrapper iterable for dynamic ``for`` loops, with information
+   about the loop and iteration.
+
+
+   .. py:attribute:: index0
+      :value: -1
+
+
+
+   .. py:attribute:: depth0
+      :value: 0
+
+
+
+   .. py:property:: length
+      :type: int
+
+
+      Length of the iterable.
+
+      If the iterable is a generator or otherwise does not have a
+      size, it is eagerly evaluated to get a size.
+
+
+   .. py:property:: depth
+      :type: int
+
+
+      How many levels deep a recursive loop currently is, starting at 1.
+
+
+   .. py:property:: index
+      :type: int
+
+
+      Current iteration of the loop, starting at 1.
+
+
+   .. py:property:: revindex0
+      :type: int
+
+
+      Number of iterations from the end of the loop, ending at 0.
+
+      Requires calculating :attr:`length`.
+
+
+   .. py:property:: revindex
+      :type: int
+
+
+      Number of iterations from the end of the loop, ending at 1.
+
+      Requires calculating :attr:`length`.
+
+
+   .. py:property:: first
+      :type: bool
+
+
+      Whether this is the first iteration of the loop.
+
+
+   .. py:property:: last
+      :type: bool
+
+
+      Whether this is the last iteration of the loop.
+
+      Causes the iterable to advance early. See
+      :func:`itertools.groupby` for issues this can cause.
+      The :func:`groupby` filter avoids that issue.
+
+
+   .. py:property:: previtem
+      :type: Union[Any, Undefined]
+
+
+      The item in the previous iteration. Undefined during the
+      first iteration.
+
+
+   .. py:property:: nextitem
+      :type: Union[Any, Undefined]
+
+
+      The item in the next iteration. Undefined during the last
+      iteration.
+
+      Causes the iterable to advance early. See
+      :func:`itertools.groupby` for issues this can cause.
+      The :func:`jinja-filters.groupby` filter avoids that issue.
+
+
+   .. py:method:: cycle(*args: V) -> V
+
+      Return a value from the given args, cycling through based on
+      the current :attr:`index0`.
+
+      :param args: One or more values to cycle through.
+
+
+
+   .. py:method:: changed(*value: Any) -> bool
+
+      Return ``True`` if previously called with a different value
+      (including when called for the first time).
+
+      :param value: One or more values to compare to the last call.
+
+
+
+.. py:class:: AsyncLoopContext(iterable: Iterable[V], undefined: Type[Undefined], recurse: Optional[LoopRenderFunc] = None, depth0: int = 0)
+
+   Bases: :py:obj:`LoopContext`
+
+
+   A wrapper iterable for dynamic ``for`` loops, with information
+   about the loop and iteration.
+
+
+   .. py:property:: length
+      :type: int
+
+
+      Length of the iterable.
+
+      If the iterable is a generator or otherwise does not have a
+      size, it is eagerly evaluated to get a size.
+
+
+   .. py:property:: revindex0
+      :type: int
+
+
+      Number of iterations from the end of the loop, ending at 0.
+
+      Requires calculating :attr:`length`.
+
+
+   .. py:property:: revindex
+      :type: int
+
+
+      Number of iterations from the end of the loop, ending at 1.
+
+      Requires calculating :attr:`length`.
+
+
+   .. py:property:: last
+      :type: bool
+
+
+      Whether this is the last iteration of the loop.
+
+      Causes the iterable to advance early. See
+      :func:`itertools.groupby` for issues this can cause.
+      The :func:`groupby` filter avoids that issue.
+
+
+   .. py:property:: nextitem
+      :type: Union[Any, Undefined]
+
+
+      The item in the next iteration. Undefined during the last
+      iteration.
+
+      Causes the iterable to advance early. See
+      :func:`itertools.groupby` for issues this can cause.
+      The :func:`jinja-filters.groupby` filter avoids that issue.
+
+
+.. py:class:: Macro(environment: jinja2.environment.Environment, func: Callable[Ellipsis, str], name: str, arguments: List[str], catch_kwargs: bool, catch_varargs: bool, caller: bool, default_autoescape: Optional[bool] = None)
+
+   Wraps a macro function.
+
+
+   .. py:attribute:: name
+
+
+   .. py:attribute:: arguments
+
+
+   .. py:attribute:: catch_kwargs
+
+
+   .. py:attribute:: catch_varargs
+
+
+   .. py:attribute:: caller
+
+
+   .. py:attribute:: explicit_caller
+
+
+.. py:class:: Undefined(hint: Optional[str] = None, obj: Any = missing, name: Optional[str] = None, exc: Type[jinja2.exceptions.TemplateRuntimeError] = UndefinedError)
+
+   The default undefined type. This can be printed, iterated, and treated as
+   a boolean. Any other operation will raise an :exc:`UndefinedError`.
+
+   >>> foo = Undefined(name='foo')
+   >>> str(foo)
+   ''
+   >>> not foo
+   True
+   >>> foo + 42
+   Traceback (most recent call last):
+     ...
+   jinja2.exceptions.UndefinedError: 'foo' is undefined
+
+
+.. py:function:: make_logging_undefined(logger: Optional[logging.Logger] = None, base: Type[Undefined] = Undefined) -> Type[Undefined]
+
+   Given a logger object this returns a new undefined class that will
+   log certain failures.  It will log iterations and printing.  If no
+   logger is given a default logger is created.
+
+   Example::
+
+       logger = logging.getLogger(__name__)
+       LoggingUndefined = make_logging_undefined(
+           logger=logger,
+           base=Undefined
+       )
+
+   .. versionadded:: 2.8
+
+   :param logger: the logger to use.  If not provided, a default logger
+                  is created.
+   :param base: the base class to add logging functionality to.  This
+                defaults to :class:`Undefined`.
+
+
+.. py:class:: ChainableUndefined(hint: Optional[str] = None, obj: Any = missing, name: Optional[str] = None, exc: Type[jinja2.exceptions.TemplateRuntimeError] = UndefinedError)
+
+   Bases: :py:obj:`Undefined`
+
+
+   An undefined that is chainable, where both ``__getattr__`` and
+   ``__getitem__`` return itself rather than raising an
+   :exc:`UndefinedError`.
+
+   >>> foo = ChainableUndefined(name='foo')
+   >>> str(foo.bar['baz'])
+   ''
+   >>> foo.bar['baz'] + 42
+   Traceback (most recent call last):
+     ...
+   jinja2.exceptions.UndefinedError: 'foo' is undefined
+
+   .. versionadded:: 2.11.0
+
+
+.. py:class:: DebugUndefined(hint: Optional[str] = None, obj: Any = missing, name: Optional[str] = None, exc: Type[jinja2.exceptions.TemplateRuntimeError] = UndefinedError)
+
+   Bases: :py:obj:`Undefined`
+
+
+   An undefined that returns the debug info when printed.
+
+   >>> foo = DebugUndefined(name='foo')
+   >>> str(foo)
+   '{{ foo }}'
+   >>> not foo
+   True
+   >>> foo + 42
+   Traceback (most recent call last):
+     ...
+   jinja2.exceptions.UndefinedError: 'foo' is undefined
+
+
+.. py:class:: StrictUndefined(hint: Optional[str] = None, obj: Any = missing, name: Optional[str] = None, exc: Type[jinja2.exceptions.TemplateRuntimeError] = UndefinedError)
+
+   Bases: :py:obj:`Undefined`
+
+
+   An undefined that barks on print and iteration as well as boolean
+   tests and all kinds of comparisons.  In other words: you can do nothing
+   with it except checking if it's defined using the `defined` test.
+
+   >>> foo = StrictUndefined(name='foo')
+   >>> str(foo)
+   Traceback (most recent call last):
+     ...
+   jinja2.exceptions.UndefinedError: 'foo' is undefined
+   >>> not foo
+   Traceback (most recent call last):
+     ...
+   jinja2.exceptions.UndefinedError: 'foo' is undefined
+   >>> foo + 42
+   Traceback (most recent call last):
+     ...
+   jinja2.exceptions.UndefinedError: 'foo' is undefined
+
+

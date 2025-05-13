@@ -1,0 +1,437 @@
+django.db.models.sql.compiler
+=============================
+
+.. py:module:: django.db.models.sql.compiler
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   django.db.models.sql.compiler.PositionRef
+   django.db.models.sql.compiler.SQLCompiler
+   django.db.models.sql.compiler.SQLInsertCompiler
+   django.db.models.sql.compiler.SQLDeleteCompiler
+   django.db.models.sql.compiler.SQLUpdateCompiler
+   django.db.models.sql.compiler.SQLAggregateCompiler
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   django.db.models.sql.compiler.cursor_iter
+
+
+Module Contents
+---------------
+
+.. py:class:: PositionRef(ordinal, refs, source)
+
+   Bases: :py:obj:`django.db.models.expressions.Ref`
+
+
+   Reference to column alias of the query. For example, Ref('sum_cost') in
+   qs.annotate(sum_cost=Sum('cost')) query.
+
+
+   .. py:attribute:: ordinal
+
+
+   .. py:method:: as_sql(compiler, connection)
+
+      Responsible for returning a (sql, [params]) tuple to be included
+      in the current query.
+
+      Different backends can provide their own implementation, by
+      providing an `as_{vendor}` method and patching the Expression:
+
+      ```
+      def override_as_sql(self, compiler, connection):
+          # custom logic
+          return super().as_sql(compiler, connection)
+      setattr(Expression, 'as_' + connection.vendor, override_as_sql)
+      ```
+
+      :param \* compiler: the query compiler responsible for generating the query.
+                          Must have a compile method, returning a (sql, [params]) tuple.
+                          Calling compiler(value) will return a quoted `value`.
+      :param \* connection: the database connection used for the current query.
+
+      Return: (sql, params)
+        Where `sql` is a string containing ordered sql parameters to be
+        replaced with the elements of the list `params`.
+
+
+
+.. py:class:: SQLCompiler(query, connection, using, elide_empty=True)
+
+   .. py:attribute:: ordering_parts
+
+
+   .. py:attribute:: query
+
+
+   .. py:attribute:: connection
+
+
+   .. py:attribute:: using
+
+
+   .. py:attribute:: elide_empty
+      :value: True
+
+
+
+   .. py:attribute:: quote_cache
+
+
+   .. py:attribute:: select
+      :value: None
+
+
+
+   .. py:attribute:: annotation_col_map
+      :value: None
+
+
+
+   .. py:attribute:: klass_info
+      :value: None
+
+
+
+   .. py:method:: setup_query(with_col_aliases=False)
+
+
+   .. py:method:: pre_sql_setup(with_col_aliases=False)
+
+      Do any necessary class setup immediately prior to producing SQL. This
+      is for things that can't necessarily be done in __init__ because we
+      might not have all the pieces in place at that time.
+
+
+
+   .. py:method:: get_group_by(select, order_by)
+
+      Return a list of 2-tuples of form (sql, params).
+
+      The logic of what exactly the GROUP BY clause contains is hard
+      to describe in other words than "if it passes the test suite,
+      then it is correct".
+
+
+
+   .. py:method:: collapse_group_by(expressions, having)
+
+
+   .. py:method:: get_select(with_col_aliases=False)
+
+      Return three values:
+      - a list of 3-tuples of (expression, (sql, params), alias)
+      - a klass_info structure,
+      - a dictionary of annotations
+
+      The (sql, params) is what the expression will produce, and alias is the
+      "AS alias" for the column (possibly None).
+
+      The klass_info structure contains the following information:
+      - The base model of the query.
+      - Which columns for that model are present in the query (by
+        position of the select clause).
+      - related_klass_infos: [f, klass_info] to descent into
+
+      The annotations is a dictionary of {'attname': column position} values.
+
+
+
+   .. py:method:: get_order_by()
+
+      Return a list of 2-tuples of the form (expr, (sql, params, is_ref)) for
+      the ORDER BY clause.
+
+      The order_by clause can alter the select clause (for example it can add
+      aliases to clauses that do not yet have one, or it can add totally new
+      select clauses).
+
+
+
+   .. py:method:: get_extra_select(order_by, select)
+
+
+   .. py:method:: quote_name_unless_alias(name)
+
+      A wrapper around connection.ops.quote_name that doesn't quote aliases
+      for table names. This avoids problems with some SQL dialects that treat
+      quoted strings specially (e.g. PostgreSQL).
+
+
+
+   .. py:method:: compile(node)
+
+
+   .. py:method:: get_combinator_sql(combinator, all)
+
+
+   .. py:method:: get_qualify_sql()
+
+
+   .. py:method:: as_sql(with_limits=True, with_col_aliases=False)
+
+      Create the SQL for this query. Return the SQL string and list of
+      parameters.
+
+      If 'with_limits' is False, any limit/offset information is not included
+      in the query.
+
+
+
+   .. py:method:: get_default_columns(select_mask, start_alias=None, opts=None, from_parent=None)
+
+      Compute the default columns for selecting every field in the base
+      model. Will sometimes be called to pull in related models (e.g. via
+      select_related), in which case "opts" and "start_alias" will be given
+      to provide a starting point for the traversal.
+
+      Return a list of strings, quoted appropriately for use in SQL
+      directly, as well as a set of aliases used in the select statement (if
+      'as_pairs' is True, return a list of (alias, col_name) pairs instead
+      of strings as the first component and None as the second component).
+
+
+
+   .. py:method:: get_distinct()
+
+      Return a quoted list of fields to use in DISTINCT ON part of the query.
+
+      This method can alter the tables in the query, and thus it must be
+      called before get_from_clause().
+
+
+
+   .. py:method:: find_ordering_name(name, opts, alias=None, default_order='ASC', already_seen=None)
+
+      Return the table alias (the name might be ambiguous, the alias will
+      not be) and column name for ordering by the given 'name' parameter.
+      The 'name' is of the form 'field1__field2__...__fieldN'.
+
+
+
+   .. py:method:: get_from_clause()
+
+      Return a list of strings that are joined together to go after the
+      "FROM" part of the query, as well as a list any extra parameters that
+      need to be included. Subclasses, can override this to create a
+      from-clause via a "select".
+
+      This should only be called after any SQL construction methods that
+      might change the tables that are needed. This means the select columns,
+      ordering, and distinct must be done first.
+
+
+
+   .. py:method:: get_related_selections(select, select_mask, opts=None, root_alias=None, cur_depth=1, requested=None, restricted=None)
+
+      Fill in the information needed for a select_related query. The current
+      depth is measured as the number of connections away from the root model
+      (for example, cur_depth=1 means we are looking at models with direct
+      connections to the root model).
+
+
+
+   .. py:method:: get_select_for_update_of_arguments()
+
+      Return a quoted list of arguments for the SELECT FOR UPDATE OF part of
+      the query.
+
+
+
+   .. py:method:: get_converters(expressions)
+
+
+   .. py:method:: apply_converters(rows, converters)
+
+
+   .. py:method:: results_iter(results=None, tuple_expected=False, chunked_fetch=False, chunk_size=GET_ITERATOR_CHUNK_SIZE)
+
+      Return an iterator over the results from executing this query.
+
+
+
+   .. py:method:: has_results()
+
+      Backends (e.g. NoSQL) can override this in order to use optimized
+      versions of "query has any results."
+
+
+
+   .. py:method:: execute_sql(result_type=MULTI, chunked_fetch=False, chunk_size=GET_ITERATOR_CHUNK_SIZE)
+
+      Run the query against the database and return the result(s). The
+      return value is a single data item if result_type is SINGLE, or an
+      iterator over the results if the result_type is MULTI.
+
+      result_type is either MULTI (use fetchmany() to retrieve all rows),
+      SINGLE (only retrieve a single row), or None. In this last case, the
+      cursor is returned if any query is executed, since it's used by
+      subclasses such as InsertQuery). It's possible, however, that no query
+      is needed, as the filters describe an empty set. In that case, None is
+      returned, to avoid any unnecessary database interaction.
+
+
+
+   .. py:method:: as_subquery_condition(alias, columns, compiler)
+
+
+   .. py:method:: explain_query()
+
+
+.. py:class:: SQLInsertCompiler(query, connection, using, elide_empty=True)
+
+   Bases: :py:obj:`SQLCompiler`
+
+
+   .. py:attribute:: returning_fields
+      :value: None
+
+
+
+   .. py:attribute:: returning_params
+      :value: ()
+
+
+
+   .. py:method:: field_as_sql(field, val)
+
+      Take a field and a value intended to be saved on that field, and
+      return placeholder SQL and accompanying params. Check for raw values,
+      expressions, and fields with get_placeholder() defined in that order.
+
+      When field is None, consider the value raw and use it as the
+      placeholder, with no corresponding parameters returned.
+
+
+
+   .. py:method:: prepare_value(field, value)
+
+      Prepare a value to be used in a query by resolving it if it is an
+      expression and otherwise calling the field's get_db_prep_save().
+
+
+
+   .. py:method:: pre_save_val(field, obj)
+
+      Get the given field's value off the given obj. pre_save() is used for
+      things like auto_now on DateTimeField. Skip it if this is a raw query.
+
+
+
+   .. py:method:: assemble_as_sql(fields, value_rows)
+
+      Take a sequence of N fields and a sequence of M rows of values, and
+      generate placeholder SQL and parameters for each field and value.
+      Return a pair containing:
+       * a sequence of M rows of N SQL placeholder strings, and
+       * a sequence of M rows of corresponding parameter values.
+
+      Each placeholder string may contain any number of '%s' interpolation
+      strings, and each parameter row will contain exactly as many params
+      as the total number of '%s's in the corresponding placeholder row.
+
+
+
+   .. py:method:: as_sql()
+
+      Create the SQL for this query. Return the SQL string and list of
+      parameters.
+
+      If 'with_limits' is False, any limit/offset information is not included
+      in the query.
+
+
+
+   .. py:method:: execute_sql(returning_fields=None)
+
+      Run the query against the database and return the result(s). The
+      return value is a single data item if result_type is SINGLE, or an
+      iterator over the results if the result_type is MULTI.
+
+      result_type is either MULTI (use fetchmany() to retrieve all rows),
+      SINGLE (only retrieve a single row), or None. In this last case, the
+      cursor is returned if any query is executed, since it's used by
+      subclasses such as InsertQuery). It's possible, however, that no query
+      is needed, as the filters describe an empty set. In that case, None is
+      returned, to avoid any unnecessary database interaction.
+
+
+
+.. py:class:: SQLDeleteCompiler(query, connection, using, elide_empty=True)
+
+   Bases: :py:obj:`SQLCompiler`
+
+
+   .. py:method:: single_alias()
+
+
+   .. py:method:: contains_self_reference_subquery()
+
+
+   .. py:method:: as_sql()
+
+      Create the SQL for this query. Return the SQL string and list of
+      parameters.
+
+
+
+.. py:class:: SQLUpdateCompiler(query, connection, using, elide_empty=True)
+
+   Bases: :py:obj:`SQLCompiler`
+
+
+   .. py:method:: as_sql()
+
+      Create the SQL for this query. Return the SQL string and list of
+      parameters.
+
+
+
+   .. py:method:: execute_sql(result_type)
+
+      Execute the specified update. Return the number of rows affected by
+      the primary update query. The "primary update query" is the first
+      non-empty query that is executed. Row counts for any subsequent,
+      related queries are not available.
+
+
+
+   .. py:method:: pre_sql_setup()
+
+      If the update depends on results from other tables, munge the "where"
+      conditions to match the format required for (portable) SQL updates.
+
+      If multiple updates are required, pull out the id values to update at
+      this point so that they don't change as a result of the progressive
+      updates.
+
+
+
+.. py:class:: SQLAggregateCompiler(query, connection, using, elide_empty=True)
+
+   Bases: :py:obj:`SQLCompiler`
+
+
+   .. py:method:: as_sql()
+
+      Create the SQL for this query. Return the SQL string and list of
+      parameters.
+
+
+
+.. py:function:: cursor_iter(cursor, sentinel, col_count, itersize)
+
+   Yield blocks of rows from a cursor and ensure the cursor is closed when
+   done.
+
+

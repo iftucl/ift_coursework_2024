@@ -1,0 +1,678 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.middleware.csrf &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../django.html">django</a></li>
+      <li class="breadcrumb-item active">django.middleware.csrf</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.middleware.csrf</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Cross Site Request Forgery Middleware.</span>
+
+<span class="sd">This module provides a middleware that implements protection</span>
+<span class="sd">against request forgeries from other sites.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">string</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">defaultdict</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">urllib.parse</span><span class="w"> </span><span class="kn">import</span> <span class="n">urlparse</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">DisallowedHost</span><span class="p">,</span> <span class="n">ImproperlyConfigured</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.http</span><span class="w"> </span><span class="kn">import</span> <span class="n">HttpHeaders</span><span class="p">,</span> <span class="n">UnreadablePostError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.urls</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_callable</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.cache</span><span class="w"> </span><span class="kn">import</span> <span class="n">patch_vary_headers</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.crypto</span><span class="w"> </span><span class="kn">import</span> <span class="n">constant_time_compare</span><span class="p">,</span> <span class="n">get_random_string</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.deprecation</span><span class="w"> </span><span class="kn">import</span> <span class="n">MiddlewareMixin</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">cached_property</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.http</span><span class="w"> </span><span class="kn">import</span> <span class="n">is_same_domain</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.log</span><span class="w"> </span><span class="kn">import</span> <span class="n">log_response</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.regex_helper</span><span class="w"> </span><span class="kn">import</span> <span class="n">_lazy_re_compile</span>
+
+<div class="viewcode-block" id="logger">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.logger">[docs]</a>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;django.security.csrf&quot;</span><span class="p">)</span></div>
+
+<span class="c1"># This matches if any character is not in CSRF_ALLOWED_CHARS.</span>
+<div class="viewcode-block" id="invalid_token_chars_re">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.invalid_token_chars_re">[docs]</a>
+<span class="n">invalid_token_chars_re</span> <span class="o">=</span> <span class="n">_lazy_re_compile</span><span class="p">(</span><span class="s2">&quot;[^a-zA-Z0-9]&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="REASON_BAD_ORIGIN">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.REASON_BAD_ORIGIN">[docs]</a>
+<span class="n">REASON_BAD_ORIGIN</span> <span class="o">=</span> <span class="s2">&quot;Origin checking failed - </span><span class="si">%s</span><span class="s2"> does not match any trusted origins.&quot;</span></div>
+
+<div class="viewcode-block" id="REASON_NO_REFERER">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.REASON_NO_REFERER">[docs]</a>
+<span class="n">REASON_NO_REFERER</span> <span class="o">=</span> <span class="s2">&quot;Referer checking failed - no Referer.&quot;</span></div>
+
+<div class="viewcode-block" id="REASON_BAD_REFERER">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.REASON_BAD_REFERER">[docs]</a>
+<span class="n">REASON_BAD_REFERER</span> <span class="o">=</span> <span class="s2">&quot;Referer checking failed - </span><span class="si">%s</span><span class="s2"> does not match any trusted origins.&quot;</span></div>
+
+<div class="viewcode-block" id="REASON_NO_CSRF_COOKIE">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.REASON_NO_CSRF_COOKIE">[docs]</a>
+<span class="n">REASON_NO_CSRF_COOKIE</span> <span class="o">=</span> <span class="s2">&quot;CSRF cookie not set.&quot;</span></div>
+
+<div class="viewcode-block" id="REASON_CSRF_TOKEN_MISSING">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.REASON_CSRF_TOKEN_MISSING">[docs]</a>
+<span class="n">REASON_CSRF_TOKEN_MISSING</span> <span class="o">=</span> <span class="s2">&quot;CSRF token missing.&quot;</span></div>
+
+<div class="viewcode-block" id="REASON_MALFORMED_REFERER">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.REASON_MALFORMED_REFERER">[docs]</a>
+<span class="n">REASON_MALFORMED_REFERER</span> <span class="o">=</span> <span class="s2">&quot;Referer checking failed - Referer is malformed.&quot;</span></div>
+
+<div class="viewcode-block" id="REASON_INSECURE_REFERER">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.REASON_INSECURE_REFERER">[docs]</a>
+<span class="n">REASON_INSECURE_REFERER</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="s2">&quot;Referer checking failed - Referer is insecure while host is secure.&quot;</span>
+<span class="p">)</span></div>
+
+<span class="c1"># The reason strings below are for passing to InvalidTokenFormat. They are</span>
+<span class="c1"># phrases without a subject because they can be in reference to either the CSRF</span>
+<span class="c1"># cookie or non-cookie token.</span>
+<div class="viewcode-block" id="REASON_INCORRECT_LENGTH">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.REASON_INCORRECT_LENGTH">[docs]</a>
+<span class="n">REASON_INCORRECT_LENGTH</span> <span class="o">=</span> <span class="s2">&quot;has incorrect length&quot;</span></div>
+
+<div class="viewcode-block" id="REASON_INVALID_CHARACTERS">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.REASON_INVALID_CHARACTERS">[docs]</a>
+<span class="n">REASON_INVALID_CHARACTERS</span> <span class="o">=</span> <span class="s2">&quot;has invalid characters&quot;</span></div>
+
+
+<div class="viewcode-block" id="CSRF_SECRET_LENGTH">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.CSRF_SECRET_LENGTH">[docs]</a>
+<span class="n">CSRF_SECRET_LENGTH</span> <span class="o">=</span> <span class="mi">32</span></div>
+
+<div class="viewcode-block" id="CSRF_TOKEN_LENGTH">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.CSRF_TOKEN_LENGTH">[docs]</a>
+<span class="n">CSRF_TOKEN_LENGTH</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">CSRF_SECRET_LENGTH</span></div>
+
+<div class="viewcode-block" id="CSRF_ALLOWED_CHARS">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.CSRF_ALLOWED_CHARS">[docs]</a>
+<span class="n">CSRF_ALLOWED_CHARS</span> <span class="o">=</span> <span class="n">string</span><span class="o">.</span><span class="n">ascii_letters</span> <span class="o">+</span> <span class="n">string</span><span class="o">.</span><span class="n">digits</span></div>
+
+<div class="viewcode-block" id="CSRF_SESSION_KEY">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.CSRF_SESSION_KEY">[docs]</a>
+<span class="n">CSRF_SESSION_KEY</span> <span class="o">=</span> <span class="s2">&quot;_csrftoken&quot;</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_get_failure_view</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the view to be used for CSRF rejections.&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">get_callable</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">CSRF_FAILURE_VIEW</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_get_new_csrf_string</span><span class="p">():</span>
+    <span class="k">return</span> <span class="n">get_random_string</span><span class="p">(</span><span class="n">CSRF_SECRET_LENGTH</span><span class="p">,</span> <span class="n">allowed_chars</span><span class="o">=</span><span class="n">CSRF_ALLOWED_CHARS</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_mask_cipher_secret</span><span class="p">(</span><span class="n">secret</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Given a secret (assumed to be a string of CSRF_ALLOWED_CHARS), generate a</span>
+<span class="sd">    token by adding a mask and applying it to the secret.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">mask</span> <span class="o">=</span> <span class="n">_get_new_csrf_string</span><span class="p">()</span>
+    <span class="n">chars</span> <span class="o">=</span> <span class="n">CSRF_ALLOWED_CHARS</span>
+    <span class="n">pairs</span> <span class="o">=</span> <span class="nb">zip</span><span class="p">((</span><span class="n">chars</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">secret</span><span class="p">),</span> <span class="p">(</span><span class="n">chars</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">mask</span><span class="p">))</span>
+    <span class="n">cipher</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">chars</span><span class="p">[(</span><span class="n">x</span> <span class="o">+</span> <span class="n">y</span><span class="p">)</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="n">chars</span><span class="p">)]</span> <span class="k">for</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="ow">in</span> <span class="n">pairs</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">mask</span> <span class="o">+</span> <span class="n">cipher</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_unmask_cipher_token</span><span class="p">(</span><span class="n">token</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Given a token (assumed to be a string of CSRF_ALLOWED_CHARS, of length</span>
+<span class="sd">    CSRF_TOKEN_LENGTH, and that its first half is a mask), use it to decrypt</span>
+<span class="sd">    the second half to produce the original secret.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">mask</span> <span class="o">=</span> <span class="n">token</span><span class="p">[:</span><span class="n">CSRF_SECRET_LENGTH</span><span class="p">]</span>
+    <span class="n">token</span> <span class="o">=</span> <span class="n">token</span><span class="p">[</span><span class="n">CSRF_SECRET_LENGTH</span><span class="p">:]</span>
+    <span class="n">chars</span> <span class="o">=</span> <span class="n">CSRF_ALLOWED_CHARS</span>
+    <span class="n">pairs</span> <span class="o">=</span> <span class="nb">zip</span><span class="p">((</span><span class="n">chars</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">token</span><span class="p">),</span> <span class="p">(</span><span class="n">chars</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">mask</span><span class="p">))</span>
+    <span class="k">return</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">chars</span><span class="p">[</span><span class="n">x</span> <span class="o">-</span> <span class="n">y</span><span class="p">]</span> <span class="k">for</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="ow">in</span> <span class="n">pairs</span><span class="p">)</span>  <span class="c1"># Note negative values are ok</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_add_new_csrf_cookie</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate a new random CSRF_COOKIE value, and add it to request.META.&quot;&quot;&quot;</span>
+    <span class="n">csrf_secret</span> <span class="o">=</span> <span class="n">_get_new_csrf_string</span><span class="p">()</span>
+    <span class="n">request</span><span class="o">.</span><span class="n">META</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="c1"># RemovedInDjango50Warning: when the deprecation ends, replace</span>
+            <span class="c1"># with: &#39;CSRF_COOKIE&#39;: csrf_secret</span>
+            <span class="s2">&quot;CSRF_COOKIE&quot;</span><span class="p">:</span> <span class="p">(</span>
+                <span class="n">_mask_cipher_secret</span><span class="p">(</span><span class="n">csrf_secret</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">CSRF_COOKIE_MASKED</span>
+                <span class="k">else</span> <span class="n">csrf_secret</span>
+            <span class="p">),</span>
+            <span class="s2">&quot;CSRF_COOKIE_NEEDS_UPDATE&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">csrf_secret</span>
+
+
+<div class="viewcode-block" id="get_token">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.get_token">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_token</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the CSRF token required for a POST form. The token is an</span>
+<span class="sd">    alphanumeric value. A new token is created if one is not already set.</span>
+
+<span class="sd">    A side effect of calling this function is to make the csrf_protect</span>
+<span class="sd">    decorator and the CsrfViewMiddleware add a CSRF cookie and a &#39;Vary: Cookie&#39;</span>
+<span class="sd">    header to the outgoing response.  For this reason, you may need to use this</span>
+<span class="sd">    function lazily, as is done by the csrf context processor.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="s2">&quot;CSRF_COOKIE&quot;</span> <span class="ow">in</span> <span class="n">request</span><span class="o">.</span><span class="n">META</span><span class="p">:</span>
+        <span class="n">csrf_secret</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;CSRF_COOKIE&quot;</span><span class="p">]</span>
+        <span class="c1"># Since the cookie is being used, flag to send the cookie in</span>
+        <span class="c1"># process_response() (even if the client already has it) in order to</span>
+        <span class="c1"># renew the expiry timer.</span>
+        <span class="n">request</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;CSRF_COOKIE_NEEDS_UPDATE&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">csrf_secret</span> <span class="o">=</span> <span class="n">_add_new_csrf_cookie</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">_mask_cipher_secret</span><span class="p">(</span><span class="n">csrf_secret</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="rotate_token">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.rotate_token">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">rotate_token</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Change the CSRF token in use for a request - should be done on login</span>
+<span class="sd">    for security purposes.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_add_new_csrf_cookie</span><span class="p">(</span><span class="n">request</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="InvalidTokenFormat">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.InvalidTokenFormat">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">InvalidTokenFormat</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reason</span><span class="p">):</span>
+<div class="viewcode-block" id="InvalidTokenFormat.reason">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.InvalidTokenFormat.reason">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">reason</span> <span class="o">=</span> <span class="n">reason</span></div>
+</div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_check_token_format</span><span class="p">(</span><span class="n">token</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Raise an InvalidTokenFormat error if the token has an invalid length or</span>
+<span class="sd">    characters that aren&#39;t allowed. The token argument can be a CSRF cookie</span>
+<span class="sd">    secret or non-cookie CSRF token, and either masked or unmasked.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">token</span><span class="p">)</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="n">CSRF_TOKEN_LENGTH</span><span class="p">,</span> <span class="n">CSRF_SECRET_LENGTH</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="n">InvalidTokenFormat</span><span class="p">(</span><span class="n">REASON_INCORRECT_LENGTH</span><span class="p">)</span>
+    <span class="c1"># Make sure all characters are in CSRF_ALLOWED_CHARS.</span>
+    <span class="k">if</span> <span class="n">invalid_token_chars_re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">token</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="n">InvalidTokenFormat</span><span class="p">(</span><span class="n">REASON_INVALID_CHARACTERS</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_does_token_match</span><span class="p">(</span><span class="n">request_csrf_token</span><span class="p">,</span> <span class="n">csrf_secret</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return whether the given CSRF token matches the given CSRF secret, after</span>
+<span class="sd">    unmasking the token if necessary.</span>
+
+<span class="sd">    This function assumes that the request_csrf_token argument has been</span>
+<span class="sd">    validated to have the correct length (CSRF_SECRET_LENGTH or</span>
+<span class="sd">    CSRF_TOKEN_LENGTH characters) and allowed characters, and that if it has</span>
+<span class="sd">    length CSRF_TOKEN_LENGTH, it is a masked secret.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Only unmask tokens that are exactly CSRF_TOKEN_LENGTH characters long.</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">request_csrf_token</span><span class="p">)</span> <span class="o">==</span> <span class="n">CSRF_TOKEN_LENGTH</span><span class="p">:</span>
+        <span class="n">request_csrf_token</span> <span class="o">=</span> <span class="n">_unmask_cipher_token</span><span class="p">(</span><span class="n">request_csrf_token</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">request_csrf_token</span><span class="p">)</span> <span class="o">==</span> <span class="n">CSRF_SECRET_LENGTH</span>
+    <span class="k">return</span> <span class="n">constant_time_compare</span><span class="p">(</span><span class="n">request_csrf_token</span><span class="p">,</span> <span class="n">csrf_secret</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="RejectRequest">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.RejectRequest">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">RejectRequest</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reason</span><span class="p">):</span>
+<div class="viewcode-block" id="RejectRequest.reason">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.RejectRequest.reason">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">reason</span> <span class="o">=</span> <span class="n">reason</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="CsrfViewMiddleware">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.CsrfViewMiddleware">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">CsrfViewMiddleware</span><span class="p">(</span><span class="n">MiddlewareMixin</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Require a present and correct csrfmiddlewaretoken for POST requests that</span>
+<span class="sd">    have a CSRF cookie, and set an outgoing CSRF cookie.</span>
+
+<span class="sd">    This middleware should be used in conjunction with the {% csrf_token %}</span>
+<span class="sd">    template tag.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="CsrfViewMiddleware.csrf_trusted_origins_hosts">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.CsrfViewMiddleware.csrf_trusted_origins_hosts">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">csrf_trusted_origins_hosts</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span>
+            <span class="n">urlparse</span><span class="p">(</span><span class="n">origin</span><span class="p">)</span><span class="o">.</span><span class="n">netloc</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s2">&quot;*&quot;</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">origin</span> <span class="ow">in</span> <span class="n">settings</span><span class="o">.</span><span class="n">CSRF_TRUSTED_ORIGINS</span>
+        <span class="p">]</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="CsrfViewMiddleware.allowed_origins_exact">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.CsrfViewMiddleware.allowed_origins_exact">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">allowed_origins_exact</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">{</span><span class="n">origin</span> <span class="k">for</span> <span class="n">origin</span> <span class="ow">in</span> <span class="n">settings</span><span class="o">.</span><span class="n">CSRF_TRUSTED_ORIGINS</span> <span class="k">if</span> <span class="s2">&quot;*&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">origin</span><span class="p">}</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="CsrfViewMiddleware.allowed_origin_subdomains">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.CsrfViewMiddleware.allowed_origin_subdomains">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">allowed_origin_subdomains</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        A mapping of allowed schemes to list of allowed netlocs, where all</span>
+<span class="sd">        subdomains of the netloc are allowed.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">allowed_origin_subdomains</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">parsed</span> <span class="ow">in</span> <span class="p">(</span>
+            <span class="n">urlparse</span><span class="p">(</span><span class="n">origin</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">origin</span> <span class="ow">in</span> <span class="n">settings</span><span class="o">.</span><span class="n">CSRF_TRUSTED_ORIGINS</span>
+            <span class="k">if</span> <span class="s2">&quot;*&quot;</span> <span class="ow">in</span> <span class="n">origin</span>
+        <span class="p">):</span>
+            <span class="n">allowed_origin_subdomains</span><span class="p">[</span><span class="n">parsed</span><span class="o">.</span><span class="n">scheme</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">parsed</span><span class="o">.</span><span class="n">netloc</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s2">&quot;*&quot;</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">allowed_origin_subdomains</span></div>
+
+
+    <span class="c1"># The _accept and _reject methods currently only exist for the sake of the</span>
+    <span class="c1"># requires_csrf_token decorator.</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_accept</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">):</span>
+        <span class="c1"># Avoid checking the request twice by adding a custom attribute to</span>
+        <span class="c1"># request.  This will be relevant when both decorator and middleware</span>
+        <span class="c1"># are used.</span>
+        <span class="n">request</span><span class="o">.</span><span class="n">csrf_processing_done</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_reject</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">reason</span><span class="p">):</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="n">_get_failure_view</span><span class="p">()(</span><span class="n">request</span><span class="p">,</span> <span class="n">reason</span><span class="o">=</span><span class="n">reason</span><span class="p">)</span>
+        <span class="n">log_response</span><span class="p">(</span>
+            <span class="s2">&quot;Forbidden (</span><span class="si">%s</span><span class="s2">): </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="n">reason</span><span class="p">,</span>
+            <span class="n">request</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+            <span class="n">response</span><span class="o">=</span><span class="n">response</span><span class="p">,</span>
+            <span class="n">request</span><span class="o">=</span><span class="n">request</span><span class="p">,</span>
+            <span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">response</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_secret</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the CSRF secret originally associated with the request, or None</span>
+<span class="sd">        if it didn&#39;t have one.</span>
+
+<span class="sd">        If the CSRF_USE_SESSIONS setting is false, raises InvalidTokenFormat if</span>
+<span class="sd">        the request&#39;s secret has invalid characters or an invalid length.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">CSRF_USE_SESSIONS</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">csrf_secret</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">CSRF_SESSION_KEY</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+                    <span class="s2">&quot;CSRF_USE_SESSIONS is enabled, but request.session is not &quot;</span>
+                    <span class="s2">&quot;set. SessionMiddleware must appear before CsrfViewMiddleware &quot;</span>
+                    <span class="s2">&quot;in MIDDLEWARE.&quot;</span>
+                <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">csrf_secret</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">COOKIES</span><span class="p">[</span><span class="n">settings</span><span class="o">.</span><span class="n">CSRF_COOKIE_NAME</span><span class="p">]</span>
+            <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+                <span class="n">csrf_secret</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># This can raise InvalidTokenFormat.</span>
+                <span class="n">_check_token_format</span><span class="p">(</span><span class="n">csrf_secret</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">csrf_secret</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="c1"># Django versions before 4.0 masked the secret before storing.</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">csrf_secret</span><span class="p">)</span> <span class="o">==</span> <span class="n">CSRF_TOKEN_LENGTH</span><span class="p">:</span>
+            <span class="n">csrf_secret</span> <span class="o">=</span> <span class="n">_unmask_cipher_token</span><span class="p">(</span><span class="n">csrf_secret</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">csrf_secret</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_set_csrf_cookie</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">response</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">CSRF_USE_SESSIONS</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">request</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">CSRF_SESSION_KEY</span><span class="p">)</span> <span class="o">!=</span> <span class="n">request</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;CSRF_COOKIE&quot;</span><span class="p">]:</span>
+                <span class="n">request</span><span class="o">.</span><span class="n">session</span><span class="p">[</span><span class="n">CSRF_SESSION_KEY</span><span class="p">]</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;CSRF_COOKIE&quot;</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">response</span><span class="o">.</span><span class="n">set_cookie</span><span class="p">(</span>
+                <span class="n">settings</span><span class="o">.</span><span class="n">CSRF_COOKIE_NAME</span><span class="p">,</span>
+                <span class="n">request</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;CSRF_COOKIE&quot;</span><span class="p">],</span>
+                <span class="n">max_age</span><span class="o">=</span><span class="n">settings</span><span class="o">.</span><span class="n">CSRF_COOKIE_AGE</span><span class="p">,</span>
+                <span class="n">domain</span><span class="o">=</span><span class="n">settings</span><span class="o">.</span><span class="n">CSRF_COOKIE_DOMAIN</span><span class="p">,</span>
+                <span class="n">path</span><span class="o">=</span><span class="n">settings</span><span class="o">.</span><span class="n">CSRF_COOKIE_PATH</span><span class="p">,</span>
+                <span class="n">secure</span><span class="o">=</span><span class="n">settings</span><span class="o">.</span><span class="n">CSRF_COOKIE_SECURE</span><span class="p">,</span>
+                <span class="n">httponly</span><span class="o">=</span><span class="n">settings</span><span class="o">.</span><span class="n">CSRF_COOKIE_HTTPONLY</span><span class="p">,</span>
+                <span class="n">samesite</span><span class="o">=</span><span class="n">settings</span><span class="o">.</span><span class="n">CSRF_COOKIE_SAMESITE</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="c1"># Set the Vary header since content varies with the CSRF cookie.</span>
+            <span class="n">patch_vary_headers</span><span class="p">(</span><span class="n">response</span><span class="p">,</span> <span class="p">(</span><span class="s2">&quot;Cookie&quot;</span><span class="p">,))</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_origin_verified</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">):</span>
+        <span class="n">request_origin</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;HTTP_ORIGIN&quot;</span><span class="p">]</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">good_host</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">get_host</span><span class="p">()</span>
+        <span class="k">except</span> <span class="n">DisallowedHost</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">good_origin</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">://</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span>
+                <span class="s2">&quot;https&quot;</span> <span class="k">if</span> <span class="n">request</span><span class="o">.</span><span class="n">is_secure</span><span class="p">()</span> <span class="k">else</span> <span class="s2">&quot;http&quot;</span><span class="p">,</span>
+                <span class="n">good_host</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">request_origin</span> <span class="o">==</span> <span class="n">good_origin</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">if</span> <span class="n">request_origin</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">allowed_origins_exact</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">parsed_origin</span> <span class="o">=</span> <span class="n">urlparse</span><span class="p">(</span><span class="n">request_origin</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">request_scheme</span> <span class="o">=</span> <span class="n">parsed_origin</span><span class="o">.</span><span class="n">scheme</span>
+        <span class="n">request_netloc</span> <span class="o">=</span> <span class="n">parsed_origin</span><span class="o">.</span><span class="n">netloc</span>
+        <span class="k">return</span> <span class="nb">any</span><span class="p">(</span>
+            <span class="n">is_same_domain</span><span class="p">(</span><span class="n">request_netloc</span><span class="p">,</span> <span class="n">host</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">host</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">allowed_origin_subdomains</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">request_scheme</span><span class="p">,</span> <span class="p">())</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_referer</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">):</span>
+        <span class="n">referer</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">META</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;HTTP_REFERER&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">referer</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">RejectRequest</span><span class="p">(</span><span class="n">REASON_NO_REFERER</span><span class="p">)</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">referer</span> <span class="o">=</span> <span class="n">urlparse</span><span class="p">(</span><span class="n">referer</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">RejectRequest</span><span class="p">(</span><span class="n">REASON_MALFORMED_REFERER</span><span class="p">)</span>
+
+        <span class="c1"># Make sure we have a valid URL for Referer.</span>
+        <span class="k">if</span> <span class="s2">&quot;&quot;</span> <span class="ow">in</span> <span class="p">(</span><span class="n">referer</span><span class="o">.</span><span class="n">scheme</span><span class="p">,</span> <span class="n">referer</span><span class="o">.</span><span class="n">netloc</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">RejectRequest</span><span class="p">(</span><span class="n">REASON_MALFORMED_REFERER</span><span class="p">)</span>
+
+        <span class="c1"># Ensure that our Referer is also secure.</span>
+        <span class="k">if</span> <span class="n">referer</span><span class="o">.</span><span class="n">scheme</span> <span class="o">!=</span> <span class="s2">&quot;https&quot;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">RejectRequest</span><span class="p">(</span><span class="n">REASON_INSECURE_REFERER</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">any</span><span class="p">(</span>
+            <span class="n">is_same_domain</span><span class="p">(</span><span class="n">referer</span><span class="o">.</span><span class="n">netloc</span><span class="p">,</span> <span class="n">host</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">host</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">csrf_trusted_origins_hosts</span>
+        <span class="p">):</span>
+            <span class="k">return</span>
+        <span class="c1"># Allow matching the configured cookie domain.</span>
+        <span class="n">good_referer</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">settings</span><span class="o">.</span><span class="n">SESSION_COOKIE_DOMAIN</span>
+            <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">CSRF_USE_SESSIONS</span>
+            <span class="k">else</span> <span class="n">settings</span><span class="o">.</span><span class="n">CSRF_COOKIE_DOMAIN</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">good_referer</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># If no cookie domain is configured, allow matching the current</span>
+            <span class="c1"># host:port exactly if it&#39;s permitted by ALLOWED_HOSTS.</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="c1"># request.get_host() includes the port.</span>
+                <span class="n">good_referer</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">get_host</span><span class="p">()</span>
+            <span class="k">except</span> <span class="n">DisallowedHost</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">RejectRequest</span><span class="p">(</span><span class="n">REASON_BAD_REFERER</span> <span class="o">%</span> <span class="n">referer</span><span class="o">.</span><span class="n">geturl</span><span class="p">())</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">server_port</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">get_port</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">server_port</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;443&quot;</span><span class="p">,</span> <span class="s2">&quot;80&quot;</span><span class="p">):</span>
+                <span class="n">good_referer</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">:</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">good_referer</span><span class="p">,</span> <span class="n">server_port</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">is_same_domain</span><span class="p">(</span><span class="n">referer</span><span class="o">.</span><span class="n">netloc</span><span class="p">,</span> <span class="n">good_referer</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">RejectRequest</span><span class="p">(</span><span class="n">REASON_BAD_REFERER</span> <span class="o">%</span> <span class="n">referer</span><span class="o">.</span><span class="n">geturl</span><span class="p">())</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_bad_token_message</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reason</span><span class="p">,</span> <span class="n">token_source</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">token_source</span> <span class="o">!=</span> <span class="s2">&quot;POST&quot;</span><span class="p">:</span>
+            <span class="c1"># Assume it is a settings.CSRF_HEADER_NAME value.</span>
+            <span class="n">header_name</span> <span class="o">=</span> <span class="n">HttpHeaders</span><span class="o">.</span><span class="n">parse_header_name</span><span class="p">(</span><span class="n">token_source</span><span class="p">)</span>
+            <span class="n">token_source</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;the </span><span class="si">{</span><span class="n">header_name</span><span class="si">!r}</span><span class="s2"> HTTP header&quot;</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;CSRF token from </span><span class="si">{</span><span class="n">token_source</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">reason</span><span class="si">}</span><span class="s2">.&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_token</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">):</span>
+        <span class="c1"># Access csrf_secret via self._get_secret() as rotate_token() may have</span>
+        <span class="c1"># been called by an authentication middleware during the</span>
+        <span class="c1"># process_request() phase.</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">csrf_secret</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_secret</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">InvalidTokenFormat</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">RejectRequest</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;CSRF cookie </span><span class="si">{</span><span class="n">exc</span><span class="o">.</span><span class="n">reason</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">csrf_secret</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># No CSRF cookie. For POST requests, we insist on a CSRF cookie,</span>
+            <span class="c1"># and in this way we can avoid all CSRF attacks, including login</span>
+            <span class="c1"># CSRF.</span>
+            <span class="k">raise</span> <span class="n">RejectRequest</span><span class="p">(</span><span class="n">REASON_NO_CSRF_COOKIE</span><span class="p">)</span>
+
+        <span class="c1"># Check non-cookie token for match.</span>
+        <span class="n">request_csrf_token</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">request</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;POST&quot;</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">request_csrf_token</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">POST</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;csrfmiddlewaretoken&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">UnreadablePostError</span><span class="p">:</span>
+                <span class="c1"># Handle a broken connection before we&#39;ve completed reading the</span>
+                <span class="c1"># POST data. process_view shouldn&#39;t raise any exceptions, so</span>
+                <span class="c1"># we&#39;ll ignore and serve the user a 403 (assuming they&#39;re still</span>
+                <span class="c1"># listening, which they probably aren&#39;t because of the error).</span>
+                <span class="k">pass</span>
+
+        <span class="k">if</span> <span class="n">request_csrf_token</span> <span class="o">==</span> <span class="s2">&quot;&quot;</span><span class="p">:</span>
+            <span class="c1"># Fall back to X-CSRFToken, to make things easier for AJAX, and</span>
+            <span class="c1"># possible for PUT/DELETE.</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="c1"># This can have length CSRF_SECRET_LENGTH or CSRF_TOKEN_LENGTH,</span>
+                <span class="c1"># depending on whether the client obtained the token from</span>
+                <span class="c1"># the DOM or the cookie (and if the cookie, whether the cookie</span>
+                <span class="c1"># was masked or unmasked).</span>
+                <span class="n">request_csrf_token</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="n">settings</span><span class="o">.</span><span class="n">CSRF_HEADER_NAME</span><span class="p">]</span>
+            <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">RejectRequest</span><span class="p">(</span><span class="n">REASON_CSRF_TOKEN_MISSING</span><span class="p">)</span>
+            <span class="n">token_source</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">CSRF_HEADER_NAME</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">token_source</span> <span class="o">=</span> <span class="s2">&quot;POST&quot;</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">_check_token_format</span><span class="p">(</span><span class="n">request_csrf_token</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">InvalidTokenFormat</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+            <span class="n">reason</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_bad_token_message</span><span class="p">(</span><span class="n">exc</span><span class="o">.</span><span class="n">reason</span><span class="p">,</span> <span class="n">token_source</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">RejectRequest</span><span class="p">(</span><span class="n">reason</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">_does_token_match</span><span class="p">(</span><span class="n">request_csrf_token</span><span class="p">,</span> <span class="n">csrf_secret</span><span class="p">):</span>
+            <span class="n">reason</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_bad_token_message</span><span class="p">(</span><span class="s2">&quot;incorrect&quot;</span><span class="p">,</span> <span class="n">token_source</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">RejectRequest</span><span class="p">(</span><span class="n">reason</span><span class="p">)</span>
+
+<div class="viewcode-block" id="CsrfViewMiddleware.process_request">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.CsrfViewMiddleware.process_request">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">process_request</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">csrf_secret</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_secret</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">InvalidTokenFormat</span><span class="p">:</span>
+            <span class="n">_add_new_csrf_cookie</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">csrf_secret</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="c1"># Use the same secret next time. If the secret was originally</span>
+                <span class="c1"># masked, this also causes it to be replaced with the unmasked</span>
+                <span class="c1"># form, but only in cases where the secret is already getting</span>
+                <span class="c1"># saved anyways.</span>
+                <span class="n">request</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;CSRF_COOKIE&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">csrf_secret</span></div>
+
+
+<div class="viewcode-block" id="CsrfViewMiddleware.process_view">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.CsrfViewMiddleware.process_view">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">process_view</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">callback</span><span class="p">,</span> <span class="n">callback_args</span><span class="p">,</span> <span class="n">callback_kwargs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="s2">&quot;csrf_processing_done&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="c1"># Wait until request.META[&quot;CSRF_COOKIE&quot;] has been manipulated before</span>
+        <span class="c1"># bailing out, so that get_token still works</span>
+        <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">callback</span><span class="p">,</span> <span class="s2">&quot;csrf_exempt&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="c1"># Assume that anything not defined as &#39;safe&#39; by RFC 9110 needs protection</span>
+        <span class="k">if</span> <span class="n">request</span><span class="o">.</span><span class="n">method</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;GET&quot;</span><span class="p">,</span> <span class="s2">&quot;HEAD&quot;</span><span class="p">,</span> <span class="s2">&quot;OPTIONS&quot;</span><span class="p">,</span> <span class="s2">&quot;TRACE&quot;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_accept</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="s2">&quot;_dont_enforce_csrf_checks&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
+            <span class="c1"># Mechanism to turn off CSRF checks for test suite. It comes after</span>
+            <span class="c1"># the creation of CSRF cookies, so that everything else continues</span>
+            <span class="c1"># to work exactly the same (e.g. cookies are sent, etc.), but</span>
+            <span class="c1"># before any branches that call the _reject method.</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_accept</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+
+        <span class="c1"># Reject the request if the Origin header doesn&#39;t match an allowed</span>
+        <span class="c1"># value.</span>
+        <span class="k">if</span> <span class="s2">&quot;HTTP_ORIGIN&quot;</span> <span class="ow">in</span> <span class="n">request</span><span class="o">.</span><span class="n">META</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_origin_verified</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_reject</span><span class="p">(</span>
+                    <span class="n">request</span><span class="p">,</span> <span class="n">REASON_BAD_ORIGIN</span> <span class="o">%</span> <span class="n">request</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;HTTP_ORIGIN&quot;</span><span class="p">]</span>
+                <span class="p">)</span>
+        <span class="k">elif</span> <span class="n">request</span><span class="o">.</span><span class="n">is_secure</span><span class="p">():</span>
+            <span class="c1"># If the Origin header wasn&#39;t provided, reject HTTPS requests if</span>
+            <span class="c1"># the Referer header doesn&#39;t match an allowed value.</span>
+            <span class="c1">#</span>
+            <span class="c1"># Suppose user visits http://example.com/</span>
+            <span class="c1"># An active network attacker (man-in-the-middle, MITM) sends a</span>
+            <span class="c1"># POST form that targets https://example.com/detonate-bomb/ and</span>
+            <span class="c1"># submits it via JavaScript.</span>
+            <span class="c1">#</span>
+            <span class="c1"># The attacker will need to provide a CSRF cookie and token, but</span>
+            <span class="c1"># that&#39;s no problem for a MITM and the session-independent secret</span>
+            <span class="c1"># we&#39;re using. So the MITM can circumvent the CSRF protection. This</span>
+            <span class="c1"># is true for any HTTP connection, but anyone using HTTPS expects</span>
+            <span class="c1"># better! For this reason, for https://example.com/ we need</span>
+            <span class="c1"># additional protection that treats http://example.com/ as</span>
+            <span class="c1"># completely untrusted. Under HTTPS, Barth et al. found that the</span>
+            <span class="c1"># Referer header is missing for same-domain requests in only about</span>
+            <span class="c1"># 0.2% of cases or less, so we can use strict Referer checking.</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_check_referer</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">RejectRequest</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_reject</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">exc</span><span class="o">.</span><span class="n">reason</span><span class="p">)</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_check_token</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">RejectRequest</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_reject</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">exc</span><span class="o">.</span><span class="n">reason</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_accept</span><span class="p">(</span><span class="n">request</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="CsrfViewMiddleware.process_response">
+<a class="viewcode-back" href="../../../autoapi/django/middleware/csrf/index.html#django.middleware.csrf.CsrfViewMiddleware.process_response">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">process_response</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">response</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">request</span><span class="o">.</span><span class="n">META</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;CSRF_COOKIE_NEEDS_UPDATE&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_set_csrf_cookie</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">response</span><span class="p">)</span>
+            <span class="c1"># Unset the flag to prevent _set_csrf_cookie() from being</span>
+            <span class="c1"># unnecessarily called again in process_response() by other</span>
+            <span class="c1"># instances of CsrfViewMiddleware. This can happen e.g. when both a</span>
+            <span class="c1"># decorator and middleware are used. However,</span>
+            <span class="c1"># CSRF_COOKIE_NEEDS_UPDATE is still respected in subsequent calls</span>
+            <span class="c1"># e.g. in case rotate_token() is called in process_response() later</span>
+            <span class="c1"># by custom middleware but before those subsequent calls.</span>
+            <span class="n">request</span><span class="o">.</span><span class="n">META</span><span class="p">[</span><span class="s2">&quot;CSRF_COOKIE_NEEDS_UPDATE&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+
+        <span class="k">return</span> <span class="n">response</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

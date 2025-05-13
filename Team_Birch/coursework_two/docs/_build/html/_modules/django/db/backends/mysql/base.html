@@ -1,0 +1,668 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.db.backends.mysql.base &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../../../db.html">django.db</a></li>
+      <li class="breadcrumb-item active">django.db.backends.mysql.base</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.db.backends.mysql.base</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">MySQL database backend for Django.</span>
+
+<span class="sd">Requires mysqlclient: https://pypi.org/project/mysqlclient/</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImproperlyConfigured</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">IntegrityError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends</span><span class="w"> </span><span class="kn">import</span> <span class="n">utils</span> <span class="k">as</span> <span class="n">backend_utils</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.backends.base.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseDatabaseWrapper</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.asyncio</span><span class="w"> </span><span class="kn">import</span> <span class="n">async_unsafe</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">cached_property</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.regex_helper</span><span class="w"> </span><span class="kn">import</span> <span class="n">_lazy_re_compile</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">MySQLdb</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">Database</span>
+<span class="k">except</span> <span class="ne">ImportError</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+    <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+        <span class="s2">&quot;Error loading MySQLdb module.</span><span class="se">\n</span><span class="s2">Did you install mysqlclient?&quot;</span>
+    <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">err</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">MySQLdb.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">CLIENT</span><span class="p">,</span> <span class="n">FIELD_TYPE</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">MySQLdb.converters</span><span class="w"> </span><span class="kn">import</span> <span class="n">conversions</span>
+
+<span class="c1"># Some of these import MySQLdb, so import them after checking if it&#39;s installed.</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.client</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseClient</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.creation</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseCreation</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.features</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseFeatures</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.introspection</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseIntrospection</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.operations</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseOperations</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.schema</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseSchemaEditor</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.validation</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatabaseValidation</span>
+
+<div class="viewcode-block" id="version">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.version">[docs]</a>
+<span class="n">version</span> <span class="o">=</span> <span class="n">Database</span><span class="o">.</span><span class="n">version_info</span></div>
+
+<span class="k">if</span> <span class="n">version</span> <span class="o">&lt;</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">):</span>
+    <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+        <span class="s2">&quot;mysqlclient 1.4.3 or newer is required; you have </span><span class="si">%s</span><span class="s2">.&quot;</span> <span class="o">%</span> <span class="n">Database</span><span class="o">.</span><span class="n">__version__</span>
+    <span class="p">)</span>
+
+
+<span class="c1"># MySQLdb returns TIME columns as timedelta -- they are more like timedelta in</span>
+<span class="c1"># terms of actual behavior as they are signed and include days -- and Django</span>
+<span class="c1"># expects time.</span>
+<div class="viewcode-block" id="django_conversions">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.django_conversions">[docs]</a>
+<span class="n">django_conversions</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="o">**</span><span class="n">conversions</span><span class="p">,</span>
+    <span class="o">**</span><span class="p">{</span><span class="n">FIELD_TYPE</span><span class="o">.</span><span class="n">TIME</span><span class="p">:</span> <span class="n">backend_utils</span><span class="o">.</span><span class="n">typecast_time</span><span class="p">},</span>
+<span class="p">}</span></div>
+
+
+<span class="c1"># This should match the numerical portion of the version numbers (we can treat</span>
+<span class="c1"># versions like 5.0.24 and 5.0.24a as the same).</span>
+<div class="viewcode-block" id="server_version_re">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.server_version_re">[docs]</a>
+<span class="n">server_version_re</span> <span class="o">=</span> <span class="n">_lazy_re_compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;(\d{1,2})\.(\d{1,2})\.(\d{1,2})&quot;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="CursorWrapper">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.CursorWrapper">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">CursorWrapper</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A thin wrapper around MySQLdb&#39;s normal cursor class that catches particular</span>
+<span class="sd">    exception instances and reraises them with the correct types.</span>
+
+<span class="sd">    Implemented as a wrapper, rather than a subclass, so that it isn&#39;t stuck</span>
+<span class="sd">    to the particular underlying representation returned by Connection.cursor().</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="CursorWrapper.codes_for_integrityerror">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.CursorWrapper.codes_for_integrityerror">[docs]</a>
+    <span class="n">codes_for_integrityerror</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="mi">1048</span><span class="p">,</span>  <span class="c1"># Column cannot be null</span>
+        <span class="mi">1690</span><span class="p">,</span>  <span class="c1"># BIGINT UNSIGNED value is out of range</span>
+        <span class="mi">3819</span><span class="p">,</span>  <span class="c1"># CHECK constraint is violated</span>
+        <span class="mi">4025</span><span class="p">,</span>  <span class="c1"># CHECK constraint failed</span>
+    <span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">):</span>
+<div class="viewcode-block" id="CursorWrapper.cursor">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.CursorWrapper.cursor">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span> <span class="o">=</span> <span class="n">cursor</span></div>
+
+
+<div class="viewcode-block" id="CursorWrapper.execute">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.CursorWrapper.execute">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">execute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># args is None means no string interpolation</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">args</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">Database</span><span class="o">.</span><span class="n">OperationalError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="c1"># Map some error codes to IntegrityError, since they seem to be</span>
+            <span class="c1"># misclassified and Django would prefer the more logical place.</span>
+            <span class="k">if</span> <span class="n">e</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">codes_for_integrityerror</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">IntegrityError</span><span class="p">(</span><span class="o">*</span><span class="nb">tuple</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">args</span><span class="p">))</span>
+            <span class="k">raise</span></div>
+
+
+<div class="viewcode-block" id="CursorWrapper.executemany">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.CursorWrapper.executemany">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">executemany</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="n">args</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="o">.</span><span class="n">executemany</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">args</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">Database</span><span class="o">.</span><span class="n">OperationalError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="c1"># Map some error codes to IntegrityError, since they seem to be</span>
+            <span class="c1"># misclassified and Django would prefer the more logical place.</span>
+            <span class="k">if</span> <span class="n">e</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">codes_for_integrityerror</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">IntegrityError</span><span class="p">(</span><span class="o">*</span><span class="nb">tuple</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">args</span><span class="p">))</span>
+            <span class="k">raise</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__getattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">attr</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="p">,</span> <span class="n">attr</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">iter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="DatabaseWrapper">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DatabaseWrapper</span><span class="p">(</span><span class="n">BaseDatabaseWrapper</span><span class="p">):</span>
+<div class="viewcode-block" id="DatabaseWrapper.vendor">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.vendor">[docs]</a>
+    <span class="n">vendor</span> <span class="o">=</span> <span class="s2">&quot;mysql&quot;</span></div>
+
+    <span class="c1"># This dictionary maps Field objects to their associated MySQL column</span>
+    <span class="c1"># types, as strings. Column-type strings can contain format strings; they&#39;ll</span>
+    <span class="c1"># be interpolated against the values of Field.__dict__ before being output.</span>
+    <span class="c1"># If a column type is set to None, it won&#39;t be included in the output.</span>
+<div class="viewcode-block" id="DatabaseWrapper.data_types">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.data_types">[docs]</a>
+    <span class="n">data_types</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;AutoField&quot;</span><span class="p">:</span> <span class="s2">&quot;integer AUTO_INCREMENT&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;BigAutoField&quot;</span><span class="p">:</span> <span class="s2">&quot;bigint AUTO_INCREMENT&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;BinaryField&quot;</span><span class="p">:</span> <span class="s2">&quot;longblob&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;BooleanField&quot;</span><span class="p">:</span> <span class="s2">&quot;bool&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;CharField&quot;</span><span class="p">:</span> <span class="s2">&quot;varchar(</span><span class="si">%(max_length)s</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;DateField&quot;</span><span class="p">:</span> <span class="s2">&quot;date&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;DateTimeField&quot;</span><span class="p">:</span> <span class="s2">&quot;datetime(6)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;DecimalField&quot;</span><span class="p">:</span> <span class="s2">&quot;numeric(</span><span class="si">%(max_digits)s</span><span class="s2">, </span><span class="si">%(decimal_places)s</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;DurationField&quot;</span><span class="p">:</span> <span class="s2">&quot;bigint&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;FileField&quot;</span><span class="p">:</span> <span class="s2">&quot;varchar(</span><span class="si">%(max_length)s</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;FilePathField&quot;</span><span class="p">:</span> <span class="s2">&quot;varchar(</span><span class="si">%(max_length)s</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;FloatField&quot;</span><span class="p">:</span> <span class="s2">&quot;double precision&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;IntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;BigIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;bigint&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;IPAddressField&quot;</span><span class="p">:</span> <span class="s2">&quot;char(15)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;GenericIPAddressField&quot;</span><span class="p">:</span> <span class="s2">&quot;char(39)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;JSONField&quot;</span><span class="p">:</span> <span class="s2">&quot;json&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;OneToOneField&quot;</span><span class="p">:</span> <span class="s2">&quot;integer&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;PositiveBigIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;bigint UNSIGNED&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;PositiveIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;integer UNSIGNED&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;PositiveSmallIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;smallint UNSIGNED&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;SlugField&quot;</span><span class="p">:</span> <span class="s2">&quot;varchar(</span><span class="si">%(max_length)s</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;SmallAutoField&quot;</span><span class="p">:</span> <span class="s2">&quot;smallint AUTO_INCREMENT&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;SmallIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;smallint&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;TextField&quot;</span><span class="p">:</span> <span class="s2">&quot;longtext&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;TimeField&quot;</span><span class="p">:</span> <span class="s2">&quot;time(6)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;UUIDField&quot;</span><span class="p">:</span> <span class="s2">&quot;char(32)&quot;</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+
+    <span class="c1"># For these data types:</span>
+    <span class="c1"># - MySQL &lt; 8.0.13 doesn&#39;t accept default values and implicitly treats them</span>
+    <span class="c1">#   as nullable</span>
+    <span class="c1"># - all versions of MySQL and MariaDB don&#39;t support full width database</span>
+    <span class="c1">#   indexes</span>
+    <span class="n">_limited_data_types</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="s2">&quot;tinyblob&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;blob&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;mediumblob&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;longblob&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;tinytext&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;text&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;mediumtext&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;longtext&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;json&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+<div class="viewcode-block" id="DatabaseWrapper.operators">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.operators">[docs]</a>
+    <span class="n">operators</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;exact&quot;</span><span class="p">:</span> <span class="s2">&quot;= </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;iexact&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;contains&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE BINARY </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;icontains&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;gt&quot;</span><span class="p">:</span> <span class="s2">&quot;&gt; </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;gte&quot;</span><span class="p">:</span> <span class="s2">&quot;&gt;= </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;lt&quot;</span><span class="p">:</span> <span class="s2">&quot;&lt; </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;lte&quot;</span><span class="p">:</span> <span class="s2">&quot;&lt;= </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;startswith&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE BINARY </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;endswith&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE BINARY </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;istartswith&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;iendswith&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+
+    <span class="c1"># The patterns below are used to generate SQL pattern lookup clauses when</span>
+    <span class="c1"># the right-hand side of the lookup isn&#39;t a raw string (it might be an expression</span>
+    <span class="c1"># or the result of a bilateral transformation).</span>
+    <span class="c1"># In those cases, special characters for LIKE operators (e.g. \, *, _) should be</span>
+    <span class="c1"># escaped on database side.</span>
+    <span class="c1">#</span>
+    <span class="c1"># Note: we use str.format() here for readability as &#39;%&#39; is used as a wildcard for</span>
+    <span class="c1"># the LIKE operator.</span>
+<div class="viewcode-block" id="DatabaseWrapper.pattern_esc">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.pattern_esc">[docs]</a>
+    <span class="n">pattern_esc</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;REPLACE(REPLACE(REPLACE(</span><span class="si">{}</span><span class="s2">, &#39;</span><span class="se">\\</span><span class="s2">&#39;, &#39;</span><span class="se">\\\\</span><span class="s2">&#39;), &#39;</span><span class="si">%%</span><span class="s2">&#39;, &#39;\</span><span class="si">%%</span><span class="s2">&#39;), &#39;_&#39;, &#39;\_&#39;)&quot;</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.pattern_ops">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.pattern_ops">[docs]</a>
+    <span class="n">pattern_ops</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;contains&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE BINARY CONCAT(&#39;</span><span class="si">%%</span><span class="s2">&#39;, </span><span class="si">{}</span><span class="s2">, &#39;</span><span class="si">%%</span><span class="s2">&#39;)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;icontains&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE CONCAT(&#39;</span><span class="si">%%</span><span class="s2">&#39;, </span><span class="si">{}</span><span class="s2">, &#39;</span><span class="si">%%</span><span class="s2">&#39;)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;startswith&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE BINARY CONCAT(</span><span class="si">{}</span><span class="s2">, &#39;</span><span class="si">%%</span><span class="s2">&#39;)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;istartswith&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE CONCAT(</span><span class="si">{}</span><span class="s2">, &#39;</span><span class="si">%%</span><span class="s2">&#39;)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;endswith&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE BINARY CONCAT(&#39;</span><span class="si">%%</span><span class="s2">&#39;, </span><span class="si">{}</span><span class="s2">)&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;iendswith&quot;</span><span class="p">:</span> <span class="s2">&quot;LIKE CONCAT(&#39;</span><span class="si">%%</span><span class="s2">&#39;, </span><span class="si">{}</span><span class="s2">)&quot;</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.isolation_levels">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.isolation_levels">[docs]</a>
+    <span class="n">isolation_levels</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;read uncommitted&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;read committed&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;repeatable read&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;serializable&quot;</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.Database">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.Database">[docs]</a>
+    <span class="n">Database</span> <span class="o">=</span> <span class="n">Database</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.SchemaEditorClass">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.SchemaEditorClass">[docs]</a>
+    <span class="n">SchemaEditorClass</span> <span class="o">=</span> <span class="n">DatabaseSchemaEditor</span></div>
+
+    <span class="c1"># Classes instantiated in __init__().</span>
+<div class="viewcode-block" id="DatabaseWrapper.client_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.client_class">[docs]</a>
+    <span class="n">client_class</span> <span class="o">=</span> <span class="n">DatabaseClient</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.creation_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.creation_class">[docs]</a>
+    <span class="n">creation_class</span> <span class="o">=</span> <span class="n">DatabaseCreation</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.features_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.features_class">[docs]</a>
+    <span class="n">features_class</span> <span class="o">=</span> <span class="n">DatabaseFeatures</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.introspection_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.introspection_class">[docs]</a>
+    <span class="n">introspection_class</span> <span class="o">=</span> <span class="n">DatabaseIntrospection</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.ops_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.ops_class">[docs]</a>
+    <span class="n">ops_class</span> <span class="o">=</span> <span class="n">DatabaseOperations</span></div>
+
+<div class="viewcode-block" id="DatabaseWrapper.validation_class">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.validation_class">[docs]</a>
+    <span class="n">validation_class</span> <span class="o">=</span> <span class="n">DatabaseValidation</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.get_database_version">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.get_database_version">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_database_version</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">mysql_version</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.get_connection_params">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.get_connection_params">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_connection_params</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">kwargs</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;conv&quot;</span><span class="p">:</span> <span class="n">django_conversions</span><span class="p">,</span>
+            <span class="s2">&quot;charset&quot;</span><span class="p">:</span> <span class="s2">&quot;utf8&quot;</span><span class="p">,</span>
+        <span class="p">}</span>
+        <span class="n">settings_dict</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">settings_dict</span>
+        <span class="k">if</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;USER&quot;</span><span class="p">]:</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;user&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;USER&quot;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;NAME&quot;</span><span class="p">]:</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;database&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;NAME&quot;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;PASSWORD&quot;</span><span class="p">]:</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;password&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;PASSWORD&quot;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;HOST&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">):</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;unix_socket&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;HOST&quot;</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;HOST&quot;</span><span class="p">]:</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;host&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;HOST&quot;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;PORT&quot;</span><span class="p">]:</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;port&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;PORT&quot;</span><span class="p">])</span>
+        <span class="c1"># We need the number of potentially affected rows after an</span>
+        <span class="c1"># &quot;UPDATE&quot;, not the number of changed rows.</span>
+        <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;client_flag&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">CLIENT</span><span class="o">.</span><span class="n">FOUND_ROWS</span>
+        <span class="c1"># Validate the transaction isolation level, if specified.</span>
+        <span class="n">options</span> <span class="o">=</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;OPTIONS&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">isolation_level</span> <span class="o">=</span> <span class="n">options</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;isolation_level&quot;</span><span class="p">,</span> <span class="s2">&quot;read committed&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">isolation_level</span><span class="p">:</span>
+            <span class="n">isolation_level</span> <span class="o">=</span> <span class="n">isolation_level</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">isolation_level</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">isolation_levels</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+                    <span class="s2">&quot;Invalid transaction isolation level &#39;</span><span class="si">%s</span><span class="s2">&#39; specified.</span><span class="se">\n</span><span class="s2">&quot;</span>
+                    <span class="s2">&quot;Use one of </span><span class="si">%s</span><span class="s2">, or None.&quot;</span>
+                    <span class="o">%</span> <span class="p">(</span>
+                        <span class="n">isolation_level</span><span class="p">,</span>
+                        <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s2">&quot;&#39;</span><span class="si">%s</span><span class="s2">&#39;&quot;</span> <span class="o">%</span> <span class="n">s</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">isolation_levels</span><span class="p">)),</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">isolation_level</span> <span class="o">=</span> <span class="n">isolation_level</span>
+        <span class="n">kwargs</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">options</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">kwargs</span></div>
+
+
+    <span class="nd">@async_unsafe</span>
+<div class="viewcode-block" id="DatabaseWrapper.get_new_connection">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.get_new_connection">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_new_connection</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">conn_params</span><span class="p">):</span>
+        <span class="n">connection</span> <span class="o">=</span> <span class="n">Database</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="o">**</span><span class="n">conn_params</span><span class="p">)</span>
+        <span class="c1"># bytes encoder in mysqlclient doesn&#39;t work and was added only to</span>
+        <span class="c1"># prevent KeyErrors in Django &lt; 2.0. We can remove this workaround when</span>
+        <span class="c1"># mysqlclient 2.1 becomes the minimal mysqlclient supported by Django.</span>
+        <span class="c1"># See https://github.com/PyMySQL/mysqlclient/issues/489</span>
+        <span class="k">if</span> <span class="n">connection</span><span class="o">.</span><span class="n">encoders</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="nb">bytes</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">bytes</span><span class="p">:</span>
+            <span class="n">connection</span><span class="o">.</span><span class="n">encoders</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="nb">bytes</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">connection</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.init_connection_state">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.init_connection_state">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">init_connection_state</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">init_connection_state</span><span class="p">()</span>
+        <span class="n">assignments</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">is_sql_auto_is_null_enabled</span><span class="p">:</span>
+            <span class="c1"># SQL_AUTO_IS_NULL controls whether an AUTO_INCREMENT column on</span>
+            <span class="c1"># a recently inserted row will return when the field is tested</span>
+            <span class="c1"># for NULL. Disabling this brings this aspect of MySQL in line</span>
+            <span class="c1"># with SQL standards.</span>
+            <span class="n">assignments</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;SET SQL_AUTO_IS_NULL = 0&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">isolation_level</span><span class="p">:</span>
+            <span class="n">assignments</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="s2">&quot;SET SESSION TRANSACTION ISOLATION LEVEL </span><span class="si">%s</span><span class="s2">&quot;</span>
+                <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">isolation_level</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">assignments</span><span class="p">:</span>
+            <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+                <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">assignments</span><span class="p">))</span></div>
+
+
+    <span class="nd">@async_unsafe</span>
+<div class="viewcode-block" id="DatabaseWrapper.create_cursor">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.create_cursor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_cursor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="n">cursor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">CursorWrapper</span><span class="p">(</span><span class="n">cursor</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_rollback</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">BaseDatabaseWrapper</span><span class="o">.</span><span class="n">_rollback</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">Database</span><span class="o">.</span><span class="n">NotSupportedError</span><span class="p">:</span>
+            <span class="k">pass</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_set_autocommit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">autocommit</span><span class="p">):</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">wrap_database_errors</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">autocommit</span><span class="p">(</span><span class="n">autocommit</span><span class="p">)</span>
+
+<div class="viewcode-block" id="DatabaseWrapper.disable_constraint_checking">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.disable_constraint_checking">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">disable_constraint_checking</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Disable foreign key checks, primarily for use in adding rows with</span>
+<span class="sd">        forward references. Always return True to indicate constraint checks</span>
+<span class="sd">        need to be re-enabled.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;SET foreign_key_checks=0&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">True</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.enable_constraint_checking">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.enable_constraint_checking">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">enable_constraint_checking</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Re-enable foreign key checks after they have been disabled.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Override needs_rollback in case constraint_checks_disabled is</span>
+        <span class="c1"># nested inside transaction.atomic.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">needs_rollback</span><span class="p">,</span> <span class="n">needs_rollback</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">needs_rollback</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+                <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;SET foreign_key_checks=1&quot;</span><span class="p">)</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">needs_rollback</span> <span class="o">=</span> <span class="n">needs_rollback</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.check_constraints">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.check_constraints">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_constraints</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table_names</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Check each table name in `table_names` for rows with invalid foreign</span>
+<span class="sd">        key references. This method is intended to be used in conjunction with</span>
+<span class="sd">        `disable_constraint_checking()` and `enable_constraint_checking()`, to</span>
+<span class="sd">        determine if rows with invalid references were entered while constraint</span>
+<span class="sd">        checks were off.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">table_names</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">table_names</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">introspection</span><span class="o">.</span><span class="n">table_names</span><span class="p">(</span><span class="n">cursor</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">table_name</span> <span class="ow">in</span> <span class="n">table_names</span><span class="p">:</span>
+                <span class="n">primary_key_column_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">introspection</span><span class="o">.</span><span class="n">get_primary_key_column</span><span class="p">(</span>
+                    <span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span>
+                <span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">primary_key_column_name</span><span class="p">:</span>
+                    <span class="k">continue</span>
+                <span class="n">relations</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">introspection</span><span class="o">.</span><span class="n">get_relations</span><span class="p">(</span><span class="n">cursor</span><span class="p">,</span> <span class="n">table_name</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">column_name</span><span class="p">,</span> <span class="p">(</span>
+                    <span class="n">referenced_column_name</span><span class="p">,</span>
+                    <span class="n">referenced_table_name</span><span class="p">,</span>
+                <span class="p">)</span> <span class="ow">in</span> <span class="n">relations</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                    <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">                        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">                        SELECT REFERRING.`%s`, REFERRING.`%s` FROM `%s` as REFERRING</span>
+<span class="sd">                        LEFT JOIN `%s` as REFERRED</span>
+<span class="sd">                        ON (REFERRING.`%s` = REFERRED.`%s`)</span>
+<span class="sd">                        WHERE REFERRING.`%s` IS NOT NULL AND REFERRED.`%s` IS NULL</span>
+<span class="sd">                        &quot;&quot;&quot;</span>
+                        <span class="o">%</span> <span class="p">(</span>
+                            <span class="n">primary_key_column_name</span><span class="p">,</span>
+                            <span class="n">column_name</span><span class="p">,</span>
+                            <span class="n">table_name</span><span class="p">,</span>
+                            <span class="n">referenced_table_name</span><span class="p">,</span>
+                            <span class="n">column_name</span><span class="p">,</span>
+                            <span class="n">referenced_column_name</span><span class="p">,</span>
+                            <span class="n">column_name</span><span class="p">,</span>
+                            <span class="n">referenced_column_name</span><span class="p">,</span>
+                        <span class="p">)</span>
+                    <span class="p">)</span>
+                    <span class="k">for</span> <span class="n">bad_row</span> <span class="ow">in</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">():</span>
+                        <span class="k">raise</span> <span class="n">IntegrityError</span><span class="p">(</span>
+                            <span class="s2">&quot;The row in table &#39;</span><span class="si">%s</span><span class="s2">&#39; with primary key &#39;</span><span class="si">%s</span><span class="s2">&#39; has an &quot;</span>
+                            <span class="s2">&quot;invalid foreign key: </span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2"> contains a value &#39;</span><span class="si">%s</span><span class="s2">&#39; that &quot;</span>
+                            <span class="s2">&quot;does not have a corresponding value in </span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2">.&quot;</span>
+                            <span class="o">%</span> <span class="p">(</span>
+                                <span class="n">table_name</span><span class="p">,</span>
+                                <span class="n">bad_row</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+                                <span class="n">table_name</span><span class="p">,</span>
+                                <span class="n">column_name</span><span class="p">,</span>
+                                <span class="n">bad_row</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+                                <span class="n">referenced_table_name</span><span class="p">,</span>
+                                <span class="n">referenced_column_name</span><span class="p">,</span>
+                            <span class="p">)</span>
+                        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DatabaseWrapper.is_usable">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.is_usable">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_usable</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">ping</span><span class="p">()</span>
+        <span class="k">except</span> <span class="n">Database</span><span class="o">.</span><span class="n">Error</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="DatabaseWrapper.display_name">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.display_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">display_name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;MariaDB&quot;</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">mysql_is_mariadb</span> <span class="k">else</span> <span class="s2">&quot;MySQL&quot;</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="DatabaseWrapper.data_type_check_constraints">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.data_type_check_constraints">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">data_type_check_constraints</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">supports_column_check_constraints</span><span class="p">:</span>
+            <span class="n">check_constraints</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">&quot;PositiveBigIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;`</span><span class="si">%(column)s</span><span class="s2">` &gt;= 0&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;PositiveIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;`</span><span class="si">%(column)s</span><span class="s2">` &gt;= 0&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;PositiveSmallIntegerField&quot;</span><span class="p">:</span> <span class="s2">&quot;`</span><span class="si">%(column)s</span><span class="s2">` &gt;= 0&quot;</span><span class="p">,</span>
+            <span class="p">}</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">mysql_is_mariadb</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">mysql_version</span> <span class="o">&lt;</span> <span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">):</span>
+                <span class="c1"># MariaDB &lt; 10.4.3 doesn&#39;t automatically use the JSON_VALID as</span>
+                <span class="c1"># a check constraint.</span>
+                <span class="n">check_constraints</span><span class="p">[</span><span class="s2">&quot;JSONField&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;JSON_VALID(`</span><span class="si">%(column)s</span><span class="s2">`)&quot;</span>
+            <span class="k">return</span> <span class="n">check_constraints</span>
+        <span class="k">return</span> <span class="p">{}</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="DatabaseWrapper.mysql_server_data">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.mysql_server_data">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">mysql_server_data</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">temporary_connection</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="c1"># Select some server variables and test if the time zone</span>
+            <span class="c1"># definitions are installed. CONVERT_TZ returns NULL if &#39;UTC&#39;</span>
+            <span class="c1"># timezone isn&#39;t loaded into the mysql.time_zone table.</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">                </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">                SELECT VERSION(),</span>
+<span class="sd">                       @@sql_mode,</span>
+<span class="sd">                       @@default_storage_engine,</span>
+<span class="sd">                       @@sql_auto_is_null,</span>
+<span class="sd">                       @@lower_case_table_names,</span>
+<span class="sd">                       CONVERT_TZ(&#39;2001-01-01 01:00:00&#39;, &#39;UTC&#39;, &#39;UTC&#39;) IS NOT NULL</span>
+<span class="sd">            &quot;&quot;&quot;</span>
+            <span class="p">)</span>
+            <span class="n">row</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="s2">&quot;version&quot;</span><span class="p">:</span> <span class="n">row</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+            <span class="s2">&quot;sql_mode&quot;</span><span class="p">:</span> <span class="n">row</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+            <span class="s2">&quot;default_storage_engine&quot;</span><span class="p">:</span> <span class="n">row</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span>
+            <span class="s2">&quot;sql_auto_is_null&quot;</span><span class="p">:</span> <span class="nb">bool</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="mi">3</span><span class="p">]),</span>
+            <span class="s2">&quot;lower_case_table_names&quot;</span><span class="p">:</span> <span class="nb">bool</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="mi">4</span><span class="p">]),</span>
+            <span class="s2">&quot;has_zoneinfo_database&quot;</span><span class="p">:</span> <span class="nb">bool</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="mi">5</span><span class="p">]),</span>
+        <span class="p">}</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="DatabaseWrapper.mysql_server_info">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.mysql_server_info">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">mysql_server_info</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">mysql_server_data</span><span class="p">[</span><span class="s2">&quot;version&quot;</span><span class="p">]</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="DatabaseWrapper.mysql_version">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.mysql_version">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">mysql_version</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">match</span> <span class="o">=</span> <span class="n">server_version_re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mysql_server_info</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">match</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span>
+                <span class="s2">&quot;Unable to determine MySQL version from version string </span><span class="si">%r</span><span class="s2">&quot;</span>
+                <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">mysql_server_info</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">match</span><span class="o">.</span><span class="n">groups</span><span class="p">())</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="DatabaseWrapper.mysql_is_mariadb">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.mysql_is_mariadb">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">mysql_is_mariadb</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;mariadb&quot;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">mysql_server_info</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span></div>
+
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="DatabaseWrapper.sql_mode">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/mysql/base/index.html#django.db.backends.mysql.base.DatabaseWrapper.sql_mode">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">sql_mode</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">sql_mode</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mysql_server_data</span><span class="p">[</span><span class="s2">&quot;sql_mode&quot;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="nb">set</span><span class="p">(</span><span class="n">sql_mode</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">sql_mode</span> <span class="k">else</span> <span class="p">())</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

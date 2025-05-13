@@ -1,0 +1,239 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>modules.db.data_storage &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">modules.db.data_storage</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for modules.db.data_storage</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">psycopg2</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">dotenv</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_dotenv</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sqlalchemy</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_engine</span>
+
+<span class="n">load_dotenv</span><span class="p">()</span>
+
+
+<div class="viewcode-block" id="store_clean_data_to_postgres">
+<a class="viewcode-back" href="../../../autoapi/modules/db/data_storage/index.html#modules.db.data_storage.store_clean_data_to_postgres">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">store_clean_data_to_postgres</span><span class="p">(</span><span class="n">cleaned_csv_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Store cleaned CSR indicator data into a PostgreSQL database.</span>
+
+<span class="sd">    This function reads a cleaned CSV file containing company sustainability indicators</span>
+<span class="sd">    and writes the data into a PostgreSQL table `csr_reporting.company_indicators`.</span>
+<span class="sd">    If the table or schema does not exist, they will be created. If the table already exists,</span>
+<span class="sd">    the new data will be appended.</span>
+
+<span class="sd">    Environment variables must be set via a `.env` file or system environment for:</span>
+<span class="sd">    - POSTGRES_USER</span>
+<span class="sd">    - POSTGRES_PASSWORD</span>
+<span class="sd">    - POSTGRES_HOST</span>
+<span class="sd">    - POSTGRES_PORT</span>
+<span class="sd">    - POSTGRES_DB</span>
+
+<span class="sd">    The CSV file is expected to have the following columns (in order):</span>
+<span class="sd">    - company</span>
+<span class="sd">    - year</span>
+<span class="sd">    - annual_carbon_emissions_tonnes_co2</span>
+<span class="sd">    - annual_carbon_emissions_reduction_percent</span>
+<span class="sd">    - annual_water_use_cubic_meters</span>
+<span class="sd">    - annual_water_use_reduction_percent</span>
+<span class="sd">    - renewable_energy_use_mwh</span>
+<span class="sd">    - sustainable_materials_ratio_percent</span>
+<span class="sd">    - waste_recycling_rate_percent</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    cleaned_csv_path : str</span>
+<span class="sd">        Path to the cleaned CSV file containing CSR indicator data.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    psycopg2.Error</span>
+<span class="sd">        If connection to the PostgreSQL database fails.</span>
+<span class="sd">    pandas.errors.EmptyDataError</span>
+<span class="sd">        If the CSV file is empty or unreadable.</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If column count or names in the CSV do not match expected schema.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># PostgreSQL configuration</span>
+    <span class="n">db_user</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;POSTGRES_USER&quot;</span><span class="p">)</span>
+    <span class="n">db_password</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;POSTGRES_PASSWORD&quot;</span><span class="p">)</span>
+    <span class="n">db_host</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;POSTGRES_HOST&quot;</span><span class="p">)</span>
+    <span class="n">db_port</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;POSTGRES_PORT&quot;</span><span class="p">)</span>
+    <span class="n">db_name</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;POSTGRES_DB&quot;</span><span class="p">)</span>
+    <span class="n">schema_name</span> <span class="o">=</span> <span class="s2">&quot;csr_reporting&quot;</span>
+    <span class="n">table_name</span> <span class="o">=</span> <span class="s2">&quot;company_indicators&quot;</span>
+
+    <span class="n">check_table_exists_query</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">    SELECT EXISTS (</span>
+<span class="s2">        SELECT 1 </span>
+<span class="s2">        FROM information_schema.tables </span>
+<span class="s2">        WHERE table_schema = &#39;csr_reporting&#39; </span>
+<span class="s2">        AND table_name = &#39;company_indicators&#39;</span>
+<span class="s2">    );</span>
+<span class="s2">    &quot;&quot;&quot;</span>
+
+    <span class="n">conn</span> <span class="o">=</span> <span class="n">psycopg2</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span>
+        <span class="n">dbname</span><span class="o">=</span><span class="n">db_name</span><span class="p">,</span> <span class="n">user</span><span class="o">=</span><span class="n">db_user</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="n">db_password</span><span class="p">,</span> <span class="n">host</span><span class="o">=</span><span class="n">db_host</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="n">db_port</span>
+    <span class="p">)</span>
+    <span class="n">cur</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span>
+
+    <span class="c1"># Check if the table exists</span>
+    <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">check_table_exists_query</span><span class="p">)</span>
+    <span class="n">table_exists</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">table_exists</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Table csr_reporting.company_indicators already exists.&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        CREATE SCHEMA IF NOT EXISTS csr_reporting;</span>
+
+<span class="sd">        CREATE TABLE IF NOT EXISTS csr_reporting.company_indicators (</span>
+<span class="sd">            company TEXT,</span>
+<span class="sd">            year INT,</span>
+<span class="sd">            annual_carbon_emissions_tonnes_CO2 FLOAT,</span>
+<span class="sd">            annual_carbon_emissions_reduction_percent FLOAT,</span>
+<span class="sd">            annual_water_use_cubic_meters FLOAT,</span>
+<span class="sd">            annual_water_use_reduction_percent FLOAT,</span>
+<span class="sd">            renewable_energy_use_MWh FLOAT,</span>
+<span class="sd">            sustainable_materials_ratio_percent FLOAT,</span>
+<span class="sd">            waste_recycling_rate_percent FLOAT,</span>
+<span class="sd">            PRIMARY KEY (company, year)</span>
+<span class="sd">        );</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">conn</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+
+    <span class="n">engine</span> <span class="o">=</span> <span class="n">create_engine</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;postgresql+psycopg2://</span><span class="si">{</span><span class="n">db_user</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">db_password</span><span class="si">}</span><span class="s2">@</span><span class="si">{</span><span class="n">db_host</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">db_port</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">db_name</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="p">)</span>
+
+    <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">cleaned_csv_path</span><span class="p">)</span>
+    <span class="n">df</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s2">&quot;company&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;year&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;annual_carbon_emissions_tonnes_co2&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;annual_carbon_emissions_reduction_percent&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;annual_water_use_cubic_meters&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;annual_water_use_reduction_percent&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;renewable_energy_use_mwh&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;sustainable_materials_ratio_percent&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;waste_recycling_rate_percent&quot;</span><span class="p">,</span>
+    <span class="p">]</span>
+
+    <span class="n">df</span><span class="o">.</span><span class="n">to_sql</span><span class="p">(</span>
+        <span class="n">name</span><span class="o">=</span><span class="n">table_name</span><span class="p">,</span>
+        <span class="n">schema</span><span class="o">=</span><span class="n">schema_name</span><span class="p">,</span>
+        <span class="n">con</span><span class="o">=</span><span class="n">engine</span><span class="p">,</span>
+        <span class="n">if_exists</span><span class="o">=</span><span class="s2">&quot;append&quot;</span><span class="p">,</span>  <span class="c1"># Append data if the table exists</span>
+        <span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>  <span class="c1"># Do not include the DataFrame index column</span>
+    <span class="p">)</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Data inserted successfully.&quot;</span><span class="p">)</span>
+
+    <span class="n">cur</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="n">conn</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

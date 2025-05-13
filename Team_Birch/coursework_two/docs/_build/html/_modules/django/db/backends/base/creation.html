@@ -1,0 +1,533 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.db.backends.base.creation &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../../django.html">django</a></li>
+          <li class="breadcrumb-item"><a href="../../../db.html">django.db</a></li>
+      <li class="breadcrumb-item active">django.db.backends.base.creation</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.db.backends.base.creation</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">io</span><span class="w"> </span><span class="kn">import</span> <span class="n">StringIO</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.apps</span><span class="w"> </span><span class="kn">import</span> <span class="n">apps</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">serializers</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">router</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.transaction</span><span class="w"> </span><span class="kn">import</span> <span class="n">atomic</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.module_loading</span><span class="w"> </span><span class="kn">import</span> <span class="n">import_string</span>
+
+<span class="c1"># The prefix to put on the default database name when creating</span>
+<span class="c1"># the test database.</span>
+<div class="viewcode-block" id="TEST_DATABASE_PREFIX">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/creation/index.html#django.db.backends.base.creation.TEST_DATABASE_PREFIX">[docs]</a>
+<span class="n">TEST_DATABASE_PREFIX</span> <span class="o">=</span> <span class="s2">&quot;test_&quot;</span></div>
+
+
+
+<div class="viewcode-block" id="BaseDatabaseCreation">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/creation/index.html#django.db.backends.base.creation.BaseDatabaseCreation">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BaseDatabaseCreation</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Encapsulate backend-specific differences pertaining to creation and</span>
+<span class="sd">    destruction of the test database.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">connection</span><span class="p">):</span>
+<div class="viewcode-block" id="BaseDatabaseCreation.connection">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/creation/index.html#django.db.backends.base.creation.BaseDatabaseCreation.connection">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">connection</span> <span class="o">=</span> <span class="n">connection</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_nodb_cursor</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">_nodb_cursor</span><span class="p">()</span>
+
+<div class="viewcode-block" id="BaseDatabaseCreation.log">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/creation/index.html#django.db.backends.base.creation.BaseDatabaseCreation.log">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">log</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">):</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">msg</span> <span class="o">+</span> <span class="n">os</span><span class="o">.</span><span class="n">linesep</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseCreation.create_test_db">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/creation/index.html#django.db.backends.base.creation.BaseDatabaseCreation.create_test_db">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_test_db</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">verbosity</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">autoclobber</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">serialize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">keepdb</span><span class="o">=</span><span class="kc">False</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create a test database, prompting the user for confirmation if the</span>
+<span class="sd">        database already exists. Return the name of the test database created.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Don&#39;t import django.core.management if it isn&#39;t needed.</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">django.core.management</span><span class="w"> </span><span class="kn">import</span> <span class="n">call_command</span>
+
+        <span class="n">test_database_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_test_db_name</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">verbosity</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">action</span> <span class="o">=</span> <span class="s2">&quot;Creating&quot;</span>
+            <span class="k">if</span> <span class="n">keepdb</span><span class="p">:</span>
+                <span class="n">action</span> <span class="o">=</span> <span class="s2">&quot;Using existing&quot;</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span>
+                <span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> test database for alias </span><span class="si">%s</span><span class="s2">...&quot;</span>
+                <span class="o">%</span> <span class="p">(</span>
+                    <span class="n">action</span><span class="p">,</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_get_database_display_str</span><span class="p">(</span><span class="n">verbosity</span><span class="p">,</span> <span class="n">test_database_name</span><span class="p">),</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+
+        <span class="c1"># We could skip this call if keepdb is True, but we instead</span>
+        <span class="c1"># give it the keepdb param. This is to handle the case</span>
+        <span class="c1"># where the test DB doesn&#39;t exist, in which case we need to</span>
+        <span class="c1"># create it, then just not destroy it. If we instead skip</span>
+        <span class="c1"># this, we will get an exception.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_create_test_db</span><span class="p">(</span><span class="n">verbosity</span><span class="p">,</span> <span class="n">autoclobber</span><span class="p">,</span> <span class="n">keepdb</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="n">settings</span><span class="o">.</span><span class="n">DATABASES</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">alias</span><span class="p">][</span><span class="s2">&quot;NAME&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">test_database_name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;NAME&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">test_database_name</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;TEST&quot;</span><span class="p">][</span><span class="s2">&quot;MIGRATE&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">False</span><span class="p">:</span>
+                <span class="c1"># Disable migrations for all apps.</span>
+                <span class="n">old_migration_modules</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">MIGRATION_MODULES</span>
+                <span class="n">settings</span><span class="o">.</span><span class="n">MIGRATION_MODULES</span> <span class="o">=</span> <span class="p">{</span>
+                    <span class="n">app</span><span class="o">.</span><span class="n">label</span><span class="p">:</span> <span class="kc">None</span> <span class="k">for</span> <span class="n">app</span> <span class="ow">in</span> <span class="n">apps</span><span class="o">.</span><span class="n">get_app_configs</span><span class="p">()</span>
+                <span class="p">}</span>
+            <span class="c1"># We report migrate messages at one level lower than that</span>
+            <span class="c1"># requested. This ensures we don&#39;t get flooded with messages during</span>
+            <span class="c1"># testing (unless you really ask to be flooded).</span>
+            <span class="n">call_command</span><span class="p">(</span>
+                <span class="s2">&quot;migrate&quot;</span><span class="p">,</span>
+                <span class="n">verbosity</span><span class="o">=</span><span class="nb">max</span><span class="p">(</span><span class="n">verbosity</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
+                <span class="n">interactive</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                <span class="n">database</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">alias</span><span class="p">,</span>
+                <span class="n">run_syncdb</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;TEST&quot;</span><span class="p">][</span><span class="s2">&quot;MIGRATE&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">False</span><span class="p">:</span>
+                <span class="n">settings</span><span class="o">.</span><span class="n">MIGRATION_MODULES</span> <span class="o">=</span> <span class="n">old_migration_modules</span>
+
+        <span class="c1"># We then serialize the current state of the database into a string</span>
+        <span class="c1"># and store it on the connection. This slightly horrific process is so people</span>
+        <span class="c1"># who are testing on databases without transactions or who are using</span>
+        <span class="c1"># a TransactionTestCase still get a clean database on every test run.</span>
+        <span class="k">if</span> <span class="n">serialize</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">_test_serialized_contents</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">serialize_db_to_string</span><span class="p">()</span>
+
+        <span class="n">call_command</span><span class="p">(</span><span class="s2">&quot;createcachetable&quot;</span><span class="p">,</span> <span class="n">database</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">alias</span><span class="p">)</span>
+
+        <span class="c1"># Ensure a connection for the side effect of initializing the test database.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">ensure_connection</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;RUNNING_DJANGOS_TEST_SUITE&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;true&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">mark_expected_failures_and_skips</span><span class="p">()</span>
+
+        <span class="k">return</span> <span class="n">test_database_name</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseCreation.set_as_test_mirror">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/creation/index.html#django.db.backends.base.creation.BaseDatabaseCreation.set_as_test_mirror">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_as_test_mirror</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">primary_settings_dict</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Set this database up to be used in testing as a mirror of a primary</span>
+<span class="sd">        database whose settings are given.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;NAME&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">primary_settings_dict</span><span class="p">[</span><span class="s2">&quot;NAME&quot;</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseCreation.serialize_db_to_string">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/creation/index.html#django.db.backends.base.creation.BaseDatabaseCreation.serialize_db_to_string">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">serialize_db_to_string</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Serialize all data in the database into a JSON string.</span>
+<span class="sd">        Designed only for test runner usage; will not handle large</span>
+<span class="sd">        amounts of data.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># Iteratively return every object for all models to serialize.</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">get_objects</span><span class="p">():</span>
+            <span class="kn">from</span><span class="w"> </span><span class="nn">django.db.migrations.loader</span><span class="w"> </span><span class="kn">import</span> <span class="n">MigrationLoader</span>
+
+            <span class="n">loader</span> <span class="o">=</span> <span class="n">MigrationLoader</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">app_config</span> <span class="ow">in</span> <span class="n">apps</span><span class="o">.</span><span class="n">get_app_configs</span><span class="p">():</span>
+                <span class="k">if</span> <span class="p">(</span>
+                    <span class="n">app_config</span><span class="o">.</span><span class="n">models_module</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+                    <span class="ow">and</span> <span class="n">app_config</span><span class="o">.</span><span class="n">label</span> <span class="ow">in</span> <span class="n">loader</span><span class="o">.</span><span class="n">migrated_apps</span>
+                    <span class="ow">and</span> <span class="n">app_config</span><span class="o">.</span><span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">settings</span><span class="o">.</span><span class="n">TEST_NON_SERIALIZED_APPS</span>
+                <span class="p">):</span>
+                    <span class="k">for</span> <span class="n">model</span> <span class="ow">in</span> <span class="n">app_config</span><span class="o">.</span><span class="n">get_models</span><span class="p">():</span>
+                        <span class="k">if</span> <span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">can_migrate</span><span class="p">(</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">connection</span>
+                        <span class="p">)</span> <span class="ow">and</span> <span class="n">router</span><span class="o">.</span><span class="n">allow_migrate_model</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">alias</span><span class="p">,</span> <span class="n">model</span><span class="p">):</span>
+                            <span class="n">queryset</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_base_manager</span><span class="o">.</span><span class="n">using</span><span class="p">(</span>
+                                <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">alias</span><span class="p">,</span>
+                            <span class="p">)</span><span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">pk</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+                            <span class="k">yield from</span> <span class="n">queryset</span><span class="o">.</span><span class="n">iterator</span><span class="p">()</span>
+
+        <span class="c1"># Serialize to a string</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">StringIO</span><span class="p">()</span>
+        <span class="n">serializers</span><span class="o">.</span><span class="n">serialize</span><span class="p">(</span><span class="s2">&quot;json&quot;</span><span class="p">,</span> <span class="n">get_objects</span><span class="p">(),</span> <span class="n">indent</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">stream</span><span class="o">=</span><span class="n">out</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">out</span><span class="o">.</span><span class="n">getvalue</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseCreation.deserialize_db_from_string">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/creation/index.html#django.db.backends.base.creation.BaseDatabaseCreation.deserialize_db_from_string">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">deserialize_db_from_string</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Reload the database with data from a string generated by</span>
+<span class="sd">        the serialize_db_to_string() method.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">StringIO</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="n">table_names</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="c1"># Load data in a transaction to handle forward references and cycles.</span>
+        <span class="k">with</span> <span class="n">atomic</span><span class="p">(</span><span class="n">using</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">alias</span><span class="p">):</span>
+            <span class="c1"># Disable constraint checks, because some databases (MySQL) doesn&#39;t</span>
+            <span class="c1"># support deferred checks.</span>
+            <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">constraint_checks_disabled</span><span class="p">():</span>
+                <span class="k">for</span> <span class="n">obj</span> <span class="ow">in</span> <span class="n">serializers</span><span class="o">.</span><span class="n">deserialize</span><span class="p">(</span>
+                    <span class="s2">&quot;json&quot;</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">using</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">alias</span>
+                <span class="p">):</span>
+                    <span class="n">obj</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+                    <span class="n">table_names</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">object</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="n">_meta</span><span class="o">.</span><span class="n">db_table</span><span class="p">)</span>
+            <span class="c1"># Manually check for any invalid keys that might have been added,</span>
+            <span class="c1"># because constraint checks were disabled.</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">check_constraints</span><span class="p">(</span><span class="n">table_names</span><span class="o">=</span><span class="n">table_names</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_database_display_str</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">verbosity</span><span class="p">,</span> <span class="n">database_name</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return display string for a database for use in various actions.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s2">&quot;&#39;</span><span class="si">%s</span><span class="s2">&#39;</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">alias</span><span class="p">,</span>
+            <span class="p">(</span><span class="s2">&quot; (&#39;</span><span class="si">%s</span><span class="s2">&#39;)&quot;</span> <span class="o">%</span> <span class="n">database_name</span><span class="p">)</span> <span class="k">if</span> <span class="n">verbosity</span> <span class="o">&gt;=</span> <span class="mi">2</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_test_db_name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Internal implementation - return the name of the test DB that will be</span>
+<span class="sd">        created. Only useful when called from create_test_db() and</span>
+<span class="sd">        _create_test_db() and when no external munging is done with the &#39;NAME&#39;</span>
+<span class="sd">        settings.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;TEST&quot;</span><span class="p">][</span><span class="s2">&quot;NAME&quot;</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;TEST&quot;</span><span class="p">][</span><span class="s2">&quot;NAME&quot;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">TEST_DATABASE_PREFIX</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;NAME&quot;</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_execute_create_test_db</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">,</span> <span class="n">parameters</span><span class="p">,</span> <span class="n">keepdb</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;CREATE DATABASE </span><span class="si">%(dbname)s</span><span class="s2"> </span><span class="si">%(suffix)s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">parameters</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_create_test_db</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">verbosity</span><span class="p">,</span> <span class="n">autoclobber</span><span class="p">,</span> <span class="n">keepdb</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Internal implementation - create the test db tables.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">test_database_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_test_db_name</span><span class="p">()</span>
+        <span class="n">test_db_params</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;dbname&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">test_database_name</span><span class="p">),</span>
+            <span class="s2">&quot;suffix&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">sql_table_creation_suffix</span><span class="p">(),</span>
+        <span class="p">}</span>
+        <span class="c1"># Create the test database and connect to it.</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nodb_cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_execute_create_test_db</span><span class="p">(</span><span class="n">cursor</span><span class="p">,</span> <span class="n">test_db_params</span><span class="p">,</span> <span class="n">keepdb</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="c1"># if we want to keep the db, then no need to do any of the below,</span>
+                <span class="c1"># just return and skip it all.</span>
+                <span class="k">if</span> <span class="n">keepdb</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="n">test_database_name</span>
+
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s2">&quot;Got an error creating the test database: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">e</span><span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">autoclobber</span><span class="p">:</span>
+                    <span class="n">confirm</span> <span class="o">=</span> <span class="nb">input</span><span class="p">(</span>
+                        <span class="s2">&quot;Type &#39;yes&#39; if you would like to try deleting the test &quot;</span>
+                        <span class="s2">&quot;database &#39;</span><span class="si">%s</span><span class="s2">&#39;, or &#39;no&#39; to cancel: &quot;</span> <span class="o">%</span> <span class="n">test_database_name</span>
+                    <span class="p">)</span>
+                <span class="k">if</span> <span class="n">autoclobber</span> <span class="ow">or</span> <span class="n">confirm</span> <span class="o">==</span> <span class="s2">&quot;yes&quot;</span><span class="p">:</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="n">verbosity</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span>
+                                <span class="s2">&quot;Destroying old test database for alias </span><span class="si">%s</span><span class="s2">...&quot;</span>
+                                <span class="o">%</span> <span class="p">(</span>
+                                    <span class="bp">self</span><span class="o">.</span><span class="n">_get_database_display_str</span><span class="p">(</span>
+                                        <span class="n">verbosity</span><span class="p">,</span> <span class="n">test_database_name</span>
+                                    <span class="p">),</span>
+                                <span class="p">)</span>
+                            <span class="p">)</span>
+                        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;DROP DATABASE </span><span class="si">%(dbname)s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">test_db_params</span><span class="p">)</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">_execute_create_test_db</span><span class="p">(</span><span class="n">cursor</span><span class="p">,</span> <span class="n">test_db_params</span><span class="p">,</span> <span class="n">keepdb</span><span class="p">)</span>
+                    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s2">&quot;Got an error recreating the test database: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">e</span><span class="p">)</span>
+                        <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s2">&quot;Tests cancelled.&quot;</span><span class="p">)</span>
+                    <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">test_database_name</span>
+
+<div class="viewcode-block" id="BaseDatabaseCreation.clone_test_db">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/creation/index.html#django.db.backends.base.creation.BaseDatabaseCreation.clone_test_db">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clone_test_db</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">suffix</span><span class="p">,</span> <span class="n">verbosity</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">autoclobber</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">keepdb</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Clone a test database.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">source_database_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;NAME&quot;</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">verbosity</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">action</span> <span class="o">=</span> <span class="s2">&quot;Cloning test database&quot;</span>
+            <span class="k">if</span> <span class="n">keepdb</span><span class="p">:</span>
+                <span class="n">action</span> <span class="o">=</span> <span class="s2">&quot;Using existing clone&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span>
+                <span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> for alias </span><span class="si">%s</span><span class="s2">...&quot;</span>
+                <span class="o">%</span> <span class="p">(</span>
+                    <span class="n">action</span><span class="p">,</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_get_database_display_str</span><span class="p">(</span><span class="n">verbosity</span><span class="p">,</span> <span class="n">source_database_name</span><span class="p">),</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+
+        <span class="c1"># We could skip this call if keepdb is True, but we instead</span>
+        <span class="c1"># give it the keepdb param. See create_test_db for details.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_clone_test_db</span><span class="p">(</span><span class="n">suffix</span><span class="p">,</span> <span class="n">verbosity</span><span class="p">,</span> <span class="n">keepdb</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseCreation.get_test_db_clone_settings">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/creation/index.html#django.db.backends.base.creation.BaseDatabaseCreation.get_test_db_clone_settings">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_test_db_clone_settings</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">suffix</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a modified connection settings dict for the n-th clone of a DB.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># When this function is called, the test database has been created</span>
+        <span class="c1"># already and its name has been copied to settings_dict[&#39;NAME&#39;] so</span>
+        <span class="c1"># we don&#39;t need to call _get_test_db_name.</span>
+        <span class="n">orig_settings_dict</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">settings_dict</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="o">**</span><span class="n">orig_settings_dict</span><span class="p">,</span>
+            <span class="s2">&quot;NAME&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="si">{}</span><span class="s2">_</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">orig_settings_dict</span><span class="p">[</span><span class="s2">&quot;NAME&quot;</span><span class="p">],</span> <span class="n">suffix</span><span class="p">),</span>
+        <span class="p">}</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_clone_test_db</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">suffix</span><span class="p">,</span> <span class="n">verbosity</span><span class="p">,</span> <span class="n">keepdb</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Internal implementation - duplicate the test db tables.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;The database backend doesn&#39;t support cloning databases. &quot;</span>
+            <span class="s2">&quot;Disable the option to run tests in parallel processes.&quot;</span>
+        <span class="p">)</span>
+
+<div class="viewcode-block" id="BaseDatabaseCreation.destroy_test_db">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/creation/index.html#django.db.backends.base.creation.BaseDatabaseCreation.destroy_test_db">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">destroy_test_db</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">old_database_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">verbosity</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdb</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="kc">None</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Destroy a test database, prompting the user for confirmation if the</span>
+<span class="sd">        database already exists.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">suffix</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">test_database_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;NAME&quot;</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">test_database_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_test_db_clone_settings</span><span class="p">(</span><span class="n">suffix</span><span class="p">)[</span><span class="s2">&quot;NAME&quot;</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">verbosity</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">action</span> <span class="o">=</span> <span class="s2">&quot;Destroying&quot;</span>
+            <span class="k">if</span> <span class="n">keepdb</span><span class="p">:</span>
+                <span class="n">action</span> <span class="o">=</span> <span class="s2">&quot;Preserving&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span>
+                <span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> test database for alias </span><span class="si">%s</span><span class="s2">...&quot;</span>
+                <span class="o">%</span> <span class="p">(</span>
+                    <span class="n">action</span><span class="p">,</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_get_database_display_str</span><span class="p">(</span><span class="n">verbosity</span><span class="p">,</span> <span class="n">test_database_name</span><span class="p">),</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+
+        <span class="c1"># if we want to preserve the database</span>
+        <span class="c1"># skip the actual destroying piece.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">keepdb</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_destroy_test_db</span><span class="p">(</span><span class="n">test_database_name</span><span class="p">,</span> <span class="n">verbosity</span><span class="p">)</span>
+
+        <span class="c1"># Restore the original database name</span>
+        <span class="k">if</span> <span class="n">old_database_name</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">settings</span><span class="o">.</span><span class="n">DATABASES</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">alias</span><span class="p">][</span><span class="s2">&quot;NAME&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">old_database_name</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;NAME&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">old_database_name</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_destroy_test_db</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">test_database_name</span><span class="p">,</span> <span class="n">verbosity</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Internal implementation - remove the test db tables.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Remove the test database to clean up after</span>
+        <span class="c1"># ourselves. Connect to the previous database (not the test database)</span>
+        <span class="c1"># to do so, because it&#39;s not allowed to delete a database while being</span>
+        <span class="c1"># connected to it.</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nodb_cursor</span><span class="p">()</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+                <span class="s2">&quot;DROP DATABASE </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">quote_name</span><span class="p">(</span><span class="n">test_database_name</span><span class="p">)</span>
+            <span class="p">)</span>
+
+<div class="viewcode-block" id="BaseDatabaseCreation.mark_expected_failures_and_skips">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/creation/index.html#django.db.backends.base.creation.BaseDatabaseCreation.mark_expected_failures_and_skips">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">mark_expected_failures_and_skips</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Mark tests in Django&#39;s test suite which are expected failures on this</span>
+<span class="sd">        database and test which should be skipped on this database.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Only load unittest if we&#39;re actually testing.</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">unittest</span><span class="w"> </span><span class="kn">import</span> <span class="n">expectedFailure</span><span class="p">,</span> <span class="n">skip</span>
+
+        <span class="k">for</span> <span class="n">test_name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">django_test_expected_failures</span><span class="p">:</span>
+            <span class="n">test_case_name</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">test_method_name</span> <span class="o">=</span> <span class="n">test_name</span><span class="o">.</span><span class="n">rpartition</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)</span>
+            <span class="n">test_app</span> <span class="o">=</span> <span class="n">test_name</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="c1"># Importing a test app that isn&#39;t installed raises RuntimeError.</span>
+            <span class="k">if</span> <span class="n">test_app</span> <span class="ow">in</span> <span class="n">settings</span><span class="o">.</span><span class="n">INSTALLED_APPS</span><span class="p">:</span>
+                <span class="n">test_case</span> <span class="o">=</span> <span class="n">import_string</span><span class="p">(</span><span class="n">test_case_name</span><span class="p">)</span>
+                <span class="n">test_method</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">test_case</span><span class="p">,</span> <span class="n">test_method_name</span><span class="p">)</span>
+                <span class="nb">setattr</span><span class="p">(</span><span class="n">test_case</span><span class="p">,</span> <span class="n">test_method_name</span><span class="p">,</span> <span class="n">expectedFailure</span><span class="p">(</span><span class="n">test_method</span><span class="p">))</span>
+        <span class="k">for</span> <span class="n">reason</span><span class="p">,</span> <span class="n">tests</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">django_test_skips</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">for</span> <span class="n">test_name</span> <span class="ow">in</span> <span class="n">tests</span><span class="p">:</span>
+                <span class="n">test_case_name</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">test_method_name</span> <span class="o">=</span> <span class="n">test_name</span><span class="o">.</span><span class="n">rpartition</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)</span>
+                <span class="n">test_app</span> <span class="o">=</span> <span class="n">test_name</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="c1"># Importing a test app that isn&#39;t installed raises RuntimeError.</span>
+                <span class="k">if</span> <span class="n">test_app</span> <span class="ow">in</span> <span class="n">settings</span><span class="o">.</span><span class="n">INSTALLED_APPS</span><span class="p">:</span>
+                    <span class="n">test_case</span> <span class="o">=</span> <span class="n">import_string</span><span class="p">(</span><span class="n">test_case_name</span><span class="p">)</span>
+                    <span class="n">test_method</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">test_case</span><span class="p">,</span> <span class="n">test_method_name</span><span class="p">)</span>
+                    <span class="nb">setattr</span><span class="p">(</span><span class="n">test_case</span><span class="p">,</span> <span class="n">test_method_name</span><span class="p">,</span> <span class="n">skip</span><span class="p">(</span><span class="n">reason</span><span class="p">)(</span><span class="n">test_method</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseCreation.sql_table_creation_suffix">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/creation/index.html#django.db.backends.base.creation.BaseDatabaseCreation.sql_table_creation_suffix">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">sql_table_creation_suffix</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        SQL to append to the end of the test table creation statements.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s2">&quot;&quot;</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseCreation.test_db_signature">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/creation/index.html#django.db.backends.base.creation.BaseDatabaseCreation.test_db_signature">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">test_db_signature</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a tuple with elements of self.connection.settings_dict (a</span>
+<span class="sd">        DATABASES setting value) that uniquely identify a database</span>
+<span class="sd">        accordingly to the RDBMS particularities.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">settings_dict</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">settings_dict</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;HOST&quot;</span><span class="p">],</span>
+            <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;PORT&quot;</span><span class="p">],</span>
+            <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;ENGINE&quot;</span><span class="p">],</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_get_test_db_name</span><span class="p">(),</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseDatabaseCreation.setup_worker_connection">
+<a class="viewcode-back" href="../../../../../autoapi/django/db/backends/base/creation/index.html#django.db.backends.base.creation.BaseDatabaseCreation.setup_worker_connection">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">setup_worker_connection</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">_worker_id</span><span class="p">):</span>
+        <span class="n">settings_dict</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_test_db_clone_settings</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">_worker_id</span><span class="p">))</span>
+        <span class="c1"># connection.settings_dict must be updated in place for changes to be</span>
+        <span class="c1"># reflected in django.db.connections. If the following line assigned</span>
+        <span class="c1"># connection.settings_dict = settings_dict, new threads would connect</span>
+        <span class="c1"># to the default database instead of the appropriate clone.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">settings_dict</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">settings_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

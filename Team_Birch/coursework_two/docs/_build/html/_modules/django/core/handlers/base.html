@@ -1,0 +1,511 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.core.handlers.base &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../../django.html">django</a></li>
+      <li class="breadcrumb-item active">django.core.handlers.base</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.core.handlers.base</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">types</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">asgiref.sync</span><span class="w"> </span><span class="kn">import</span> <span class="n">async_to_sync</span><span class="p">,</span> <span class="n">iscoroutinefunction</span><span class="p">,</span> <span class="n">sync_to_async</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImproperlyConfigured</span><span class="p">,</span> <span class="n">MiddlewareNotUsed</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.signals</span><span class="w"> </span><span class="kn">import</span> <span class="n">request_finished</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">connections</span><span class="p">,</span> <span class="n">transaction</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.urls</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_resolver</span><span class="p">,</span> <span class="n">set_urlconf</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.log</span><span class="w"> </span><span class="kn">import</span> <span class="n">log_response</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.module_loading</span><span class="w"> </span><span class="kn">import</span> <span class="n">import_string</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.exception</span><span class="w"> </span><span class="kn">import</span> <span class="n">convert_exception_to_response</span>
+
+<div class="viewcode-block" id="logger">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/base/index.html#django.core.handlers.base.logger">[docs]</a>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;django.request&quot;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="BaseHandler">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/base/index.html#django.core.handlers.base.BaseHandler">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BaseHandler</span><span class="p">:</span>
+    <span class="n">_view_middleware</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">_template_response_middleware</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">_exception_middleware</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">_middleware_chain</span> <span class="o">=</span> <span class="kc">None</span>
+
+<div class="viewcode-block" id="BaseHandler.load_middleware">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/base/index.html#django.core.handlers.base.BaseHandler.load_middleware">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load_middleware</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">is_async</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Populate middleware lists from settings.MIDDLEWARE.</span>
+
+<span class="sd">        Must be called after the environment is fixed (see __call__ in subclasses).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_view_middleware</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_template_response_middleware</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_exception_middleware</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="n">get_response</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_response_async</span> <span class="k">if</span> <span class="n">is_async</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_response</span>
+        <span class="n">handler</span> <span class="o">=</span> <span class="n">convert_exception_to_response</span><span class="p">(</span><span class="n">get_response</span><span class="p">)</span>
+        <span class="n">handler_is_async</span> <span class="o">=</span> <span class="n">is_async</span>
+        <span class="k">for</span> <span class="n">middleware_path</span> <span class="ow">in</span> <span class="nb">reversed</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">MIDDLEWARE</span><span class="p">):</span>
+            <span class="n">middleware</span> <span class="o">=</span> <span class="n">import_string</span><span class="p">(</span><span class="n">middleware_path</span><span class="p">)</span>
+            <span class="n">middleware_can_sync</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">middleware</span><span class="p">,</span> <span class="s2">&quot;sync_capable&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
+            <span class="n">middleware_can_async</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">middleware</span><span class="p">,</span> <span class="s2">&quot;async_capable&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">middleware_can_sync</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">middleware_can_async</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+                    <span class="s2">&quot;Middleware </span><span class="si">%s</span><span class="s2"> must have at least one of &quot;</span>
+                    <span class="s2">&quot;sync_capable/async_capable set to True.&quot;</span> <span class="o">%</span> <span class="n">middleware_path</span>
+                <span class="p">)</span>
+            <span class="k">elif</span> <span class="ow">not</span> <span class="n">handler_is_async</span> <span class="ow">and</span> <span class="n">middleware_can_sync</span><span class="p">:</span>
+                <span class="n">middleware_is_async</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">middleware_is_async</span> <span class="o">=</span> <span class="n">middleware_can_async</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="c1"># Adapt handler, if needed.</span>
+                <span class="n">adapted_handler</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">adapt_method_mode</span><span class="p">(</span>
+                    <span class="n">middleware_is_async</span><span class="p">,</span>
+                    <span class="n">handler</span><span class="p">,</span>
+                    <span class="n">handler_is_async</span><span class="p">,</span>
+                    <span class="n">debug</span><span class="o">=</span><span class="n">settings</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">,</span>
+                    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;middleware </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">middleware_path</span><span class="p">,</span>
+                <span class="p">)</span>
+                <span class="n">mw_instance</span> <span class="o">=</span> <span class="n">middleware</span><span class="p">(</span><span class="n">adapted_handler</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">MiddlewareNotUsed</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">settings</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">):</span>
+                        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;MiddlewareNotUsed(</span><span class="si">%r</span><span class="s2">): </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">middleware_path</span><span class="p">,</span> <span class="n">exc</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;MiddlewareNotUsed: </span><span class="si">%r</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">middleware_path</span><span class="p">)</span>
+                <span class="k">continue</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">handler</span> <span class="o">=</span> <span class="n">adapted_handler</span>
+
+            <span class="k">if</span> <span class="n">mw_instance</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">ImproperlyConfigured</span><span class="p">(</span>
+                    <span class="s2">&quot;Middleware factory </span><span class="si">%s</span><span class="s2"> returned None.&quot;</span> <span class="o">%</span> <span class="n">middleware_path</span>
+                <span class="p">)</span>
+
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">mw_instance</span><span class="p">,</span> <span class="s2">&quot;process_view&quot;</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_view_middleware</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span>
+                    <span class="mi">0</span><span class="p">,</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">adapt_method_mode</span><span class="p">(</span><span class="n">is_async</span><span class="p">,</span> <span class="n">mw_instance</span><span class="o">.</span><span class="n">process_view</span><span class="p">),</span>
+                <span class="p">)</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">mw_instance</span><span class="p">,</span> <span class="s2">&quot;process_template_response&quot;</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_template_response_middleware</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">adapt_method_mode</span><span class="p">(</span>
+                        <span class="n">is_async</span><span class="p">,</span> <span class="n">mw_instance</span><span class="o">.</span><span class="n">process_template_response</span>
+                    <span class="p">),</span>
+                <span class="p">)</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">mw_instance</span><span class="p">,</span> <span class="s2">&quot;process_exception&quot;</span><span class="p">):</span>
+                <span class="c1"># The exception-handling stack is still always synchronous for</span>
+                <span class="c1"># now, so adapt that way.</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_exception_middleware</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">adapt_method_mode</span><span class="p">(</span><span class="kc">False</span><span class="p">,</span> <span class="n">mw_instance</span><span class="o">.</span><span class="n">process_exception</span><span class="p">),</span>
+                <span class="p">)</span>
+
+            <span class="n">handler</span> <span class="o">=</span> <span class="n">convert_exception_to_response</span><span class="p">(</span><span class="n">mw_instance</span><span class="p">)</span>
+            <span class="n">handler_is_async</span> <span class="o">=</span> <span class="n">middleware_is_async</span>
+
+        <span class="c1"># Adapt the top of the stack, if needed.</span>
+        <span class="n">handler</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">adapt_method_mode</span><span class="p">(</span><span class="n">is_async</span><span class="p">,</span> <span class="n">handler</span><span class="p">,</span> <span class="n">handler_is_async</span><span class="p">)</span>
+        <span class="c1"># We only assign to this when initialization is complete as it is used</span>
+        <span class="c1"># as a flag for initialization being complete.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_middleware_chain</span> <span class="o">=</span> <span class="n">handler</span></div>
+
+
+<div class="viewcode-block" id="BaseHandler.adapt_method_mode">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/base/index.html#django.core.handlers.base.BaseHandler.adapt_method_mode">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">adapt_method_mode</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">is_async</span><span class="p">,</span>
+        <span class="n">method</span><span class="p">,</span>
+        <span class="n">method_is_async</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">debug</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Adapt a method to be in the correct &quot;mode&quot;:</span>
+<span class="sd">        - If is_async is False:</span>
+<span class="sd">          - Synchronous methods are left alone</span>
+<span class="sd">          - Asynchronous methods are wrapped with async_to_sync</span>
+<span class="sd">        - If is_async is True:</span>
+<span class="sd">          - Synchronous methods are wrapped with sync_to_async()</span>
+<span class="sd">          - Asynchronous methods are left alone</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">method_is_async</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">method_is_async</span> <span class="o">=</span> <span class="n">iscoroutinefunction</span><span class="p">(</span><span class="n">method</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">debug</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">name</span><span class="p">:</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="n">name</span> <span class="ow">or</span> <span class="s2">&quot;method </span><span class="si">%s</span><span class="s2">()&quot;</span> <span class="o">%</span> <span class="n">method</span><span class="o">.</span><span class="vm">__qualname__</span>
+        <span class="k">if</span> <span class="n">is_async</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">method_is_async</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Synchronous handler adapted for </span><span class="si">%s</span><span class="s2">.&quot;</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">sync_to_async</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="n">thread_sensitive</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">method_is_async</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">debug</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Asynchronous handler adapted for </span><span class="si">%s</span><span class="s2">.&quot;</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">async_to_sync</span><span class="p">(</span><span class="n">method</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">method</span></div>
+
+
+<div class="viewcode-block" id="BaseHandler.get_response">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/base/index.html#django.core.handlers.base.BaseHandler.get_response">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_response</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return an HttpResponse object for the given HttpRequest.&quot;&quot;&quot;</span>
+        <span class="c1"># Setup default url resolver for this thread</span>
+        <span class="n">set_urlconf</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">ROOT_URLCONF</span><span class="p">)</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_middleware_chain</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+        <span class="n">response</span><span class="o">.</span><span class="n">_resource_closers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">close</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span> <span class="o">&gt;=</span> <span class="mi">400</span><span class="p">:</span>
+            <span class="n">log_response</span><span class="p">(</span>
+                <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+                <span class="n">response</span><span class="o">.</span><span class="n">reason_phrase</span><span class="p">,</span>
+                <span class="n">request</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+                <span class="n">response</span><span class="o">=</span><span class="n">response</span><span class="p">,</span>
+                <span class="n">request</span><span class="o">=</span><span class="n">request</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">response</span></div>
+
+
+<div class="viewcode-block" id="BaseHandler.get_response_async">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/base/index.html#django.core.handlers.base.BaseHandler.get_response_async">[docs]</a>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_response_async</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Asynchronous version of get_response.</span>
+
+<span class="sd">        Funneling everything, including WSGI, into a single async</span>
+<span class="sd">        get_response() is too slow. Avoid the context switch by using</span>
+<span class="sd">        a separate async response path.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Setup default url resolver for this thread.</span>
+        <span class="n">set_urlconf</span><span class="p">(</span><span class="n">settings</span><span class="o">.</span><span class="n">ROOT_URLCONF</span><span class="p">)</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_middleware_chain</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+        <span class="n">response</span><span class="o">.</span><span class="n">_resource_closers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">close</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span> <span class="o">&gt;=</span> <span class="mi">400</span><span class="p">:</span>
+            <span class="k">await</span> <span class="n">sync_to_async</span><span class="p">(</span><span class="n">log_response</span><span class="p">,</span> <span class="n">thread_sensitive</span><span class="o">=</span><span class="kc">False</span><span class="p">)(</span>
+                <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+                <span class="n">response</span><span class="o">.</span><span class="n">reason_phrase</span><span class="p">,</span>
+                <span class="n">request</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+                <span class="n">response</span><span class="o">=</span><span class="n">response</span><span class="p">,</span>
+                <span class="n">request</span><span class="o">=</span><span class="n">request</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">response</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_response</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Resolve and call the view, then apply view, exception, and</span>
+<span class="sd">        template_response middleware. This method is everything that happens</span>
+<span class="sd">        inside the request/response middleware.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">callback</span><span class="p">,</span> <span class="n">callback_args</span><span class="p">,</span> <span class="n">callback_kwargs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">resolve_request</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+
+        <span class="c1"># Apply view middleware</span>
+        <span class="k">for</span> <span class="n">middleware_method</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_view_middleware</span><span class="p">:</span>
+            <span class="n">response</span> <span class="o">=</span> <span class="n">middleware_method</span><span class="p">(</span>
+                <span class="n">request</span><span class="p">,</span> <span class="n">callback</span><span class="p">,</span> <span class="n">callback_args</span><span class="p">,</span> <span class="n">callback_kwargs</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">response</span><span class="p">:</span>
+                <span class="k">break</span>
+
+        <span class="k">if</span> <span class="n">response</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">wrapped_callback</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_view_atomic</span><span class="p">(</span><span class="n">callback</span><span class="p">)</span>
+            <span class="c1"># If it is an asynchronous view, run it in a subthread.</span>
+            <span class="k">if</span> <span class="n">iscoroutinefunction</span><span class="p">(</span><span class="n">wrapped_callback</span><span class="p">):</span>
+                <span class="n">wrapped_callback</span> <span class="o">=</span> <span class="n">async_to_sync</span><span class="p">(</span><span class="n">wrapped_callback</span><span class="p">)</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">response</span> <span class="o">=</span> <span class="n">wrapped_callback</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="o">*</span><span class="n">callback_args</span><span class="p">,</span> <span class="o">**</span><span class="n">callback_kwargs</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="n">response</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">process_exception_by_middleware</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">request</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">response</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="k">raise</span>
+
+        <span class="c1"># Complain if the view returned None (a common error).</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">check_response</span><span class="p">(</span><span class="n">response</span><span class="p">,</span> <span class="n">callback</span><span class="p">)</span>
+
+        <span class="c1"># If the response supports deferred rendering, apply template</span>
+        <span class="c1"># response middleware and then render the response</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">response</span><span class="p">,</span> <span class="s2">&quot;render&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">callable</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">render</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">middleware_method</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_template_response_middleware</span><span class="p">:</span>
+                <span class="n">response</span> <span class="o">=</span> <span class="n">middleware_method</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">response</span><span class="p">)</span>
+                <span class="c1"># Complain if the template response middleware returned None</span>
+                <span class="c1"># (a common error).</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">check_response</span><span class="p">(</span>
+                    <span class="n">response</span><span class="p">,</span>
+                    <span class="n">middleware_method</span><span class="p">,</span>
+                    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">.process_template_response&quot;</span>
+                    <span class="o">%</span> <span class="p">(</span><span class="n">middleware_method</span><span class="o">.</span><span class="vm">__self__</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,),</span>
+                <span class="p">)</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">response</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">render</span><span class="p">()</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="n">response</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">process_exception_by_middleware</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">request</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">response</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="k">raise</span>
+
+        <span class="k">return</span> <span class="n">response</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_get_response_async</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Resolve and call the view, then apply view, exception, and</span>
+<span class="sd">        template_response middleware. This method is everything that happens</span>
+<span class="sd">        inside the request/response middleware.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">callback</span><span class="p">,</span> <span class="n">callback_args</span><span class="p">,</span> <span class="n">callback_kwargs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">resolve_request</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+
+        <span class="c1"># Apply view middleware.</span>
+        <span class="k">for</span> <span class="n">middleware_method</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_view_middleware</span><span class="p">:</span>
+            <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">middleware_method</span><span class="p">(</span>
+                <span class="n">request</span><span class="p">,</span> <span class="n">callback</span><span class="p">,</span> <span class="n">callback_args</span><span class="p">,</span> <span class="n">callback_kwargs</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">response</span><span class="p">:</span>
+                <span class="k">break</span>
+
+        <span class="k">if</span> <span class="n">response</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">wrapped_callback</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_view_atomic</span><span class="p">(</span><span class="n">callback</span><span class="p">)</span>
+            <span class="c1"># If it is a synchronous view, run it in a subthread</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">iscoroutinefunction</span><span class="p">(</span><span class="n">wrapped_callback</span><span class="p">):</span>
+                <span class="n">wrapped_callback</span> <span class="o">=</span> <span class="n">sync_to_async</span><span class="p">(</span>
+                    <span class="n">wrapped_callback</span><span class="p">,</span> <span class="n">thread_sensitive</span><span class="o">=</span><span class="kc">True</span>
+                <span class="p">)</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">wrapped_callback</span><span class="p">(</span>
+                    <span class="n">request</span><span class="p">,</span> <span class="o">*</span><span class="n">callback_args</span><span class="p">,</span> <span class="o">**</span><span class="n">callback_kwargs</span>
+                <span class="p">)</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">sync_to_async</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">process_exception_by_middleware</span><span class="p">,</span>
+                    <span class="n">thread_sensitive</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="p">)(</span><span class="n">e</span><span class="p">,</span> <span class="n">request</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">response</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="k">raise</span>
+
+        <span class="c1"># Complain if the view returned None or an uncalled coroutine.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">check_response</span><span class="p">(</span><span class="n">response</span><span class="p">,</span> <span class="n">callback</span><span class="p">)</span>
+
+        <span class="c1"># If the response supports deferred rendering, apply template</span>
+        <span class="c1"># response middleware and then render the response</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">response</span><span class="p">,</span> <span class="s2">&quot;render&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">callable</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">render</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">middleware_method</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_template_response_middleware</span><span class="p">:</span>
+                <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">middleware_method</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">response</span><span class="p">)</span>
+                <span class="c1"># Complain if the template response middleware returned None or</span>
+                <span class="c1"># an uncalled coroutine.</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">check_response</span><span class="p">(</span>
+                    <span class="n">response</span><span class="p">,</span>
+                    <span class="n">middleware_method</span><span class="p">,</span>
+                    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">.process_template_response&quot;</span>
+                    <span class="o">%</span> <span class="p">(</span><span class="n">middleware_method</span><span class="o">.</span><span class="vm">__self__</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,),</span>
+                <span class="p">)</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">iscoroutinefunction</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">render</span><span class="p">):</span>
+                    <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">response</span><span class="o">.</span><span class="n">render</span><span class="p">()</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">sync_to_async</span><span class="p">(</span>
+                        <span class="n">response</span><span class="o">.</span><span class="n">render</span><span class="p">,</span> <span class="n">thread_sensitive</span><span class="o">=</span><span class="kc">True</span>
+                    <span class="p">)()</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">sync_to_async</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">process_exception_by_middleware</span><span class="p">,</span>
+                    <span class="n">thread_sensitive</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="p">)(</span><span class="n">e</span><span class="p">,</span> <span class="n">request</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">response</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="k">raise</span>
+
+        <span class="c1"># Make sure the response is not a coroutine</span>
+        <span class="k">if</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">iscoroutine</span><span class="p">(</span><span class="n">response</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;Response is still a coroutine.&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">response</span>
+
+<div class="viewcode-block" id="BaseHandler.resolve_request">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/base/index.html#django.core.handlers.base.BaseHandler.resolve_request">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">resolve_request</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Retrieve/set the urlconf for the request. Return the view resolved,</span>
+<span class="sd">        with its args and kwargs.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Work out the resolver.</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="s2">&quot;urlconf&quot;</span><span class="p">):</span>
+            <span class="n">urlconf</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">urlconf</span>
+            <span class="n">set_urlconf</span><span class="p">(</span><span class="n">urlconf</span><span class="p">)</span>
+            <span class="n">resolver</span> <span class="o">=</span> <span class="n">get_resolver</span><span class="p">(</span><span class="n">urlconf</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">resolver</span> <span class="o">=</span> <span class="n">get_resolver</span><span class="p">()</span>
+        <span class="c1"># Resolve the view, and assign the match object back to the request.</span>
+        <span class="n">resolver_match</span> <span class="o">=</span> <span class="n">resolver</span><span class="o">.</span><span class="n">resolve</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">path_info</span><span class="p">)</span>
+        <span class="n">request</span><span class="o">.</span><span class="n">resolver_match</span> <span class="o">=</span> <span class="n">resolver_match</span>
+        <span class="k">return</span> <span class="n">resolver_match</span></div>
+
+
+<div class="viewcode-block" id="BaseHandler.check_response">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/base/index.html#django.core.handlers.base.BaseHandler.check_response">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_response</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">response</span><span class="p">,</span> <span class="n">callback</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Raise an error if the view returned None or an uncalled coroutine.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">response</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">iscoroutine</span><span class="p">(</span><span class="n">response</span><span class="p">)):</span>
+            <span class="k">return</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">name</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">callback</span><span class="p">,</span> <span class="n">types</span><span class="o">.</span><span class="n">FunctionType</span><span class="p">):</span>  <span class="c1"># FBV</span>
+                <span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;The view </span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">callback</span><span class="o">.</span><span class="vm">__module__</span><span class="p">,</span> <span class="n">callback</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>  <span class="c1"># CBV</span>
+                <span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;The view </span><span class="si">%s</span><span class="s2">.</span><span class="si">%s</span><span class="s2">.__call__&quot;</span> <span class="o">%</span> <span class="p">(</span>
+                    <span class="n">callback</span><span class="o">.</span><span class="vm">__module__</span><span class="p">,</span>
+                    <span class="n">callback</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+                <span class="p">)</span>
+        <span class="k">if</span> <span class="n">response</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> didn&#39;t return an HttpResponse object. It returned None &quot;</span>
+                <span class="s2">&quot;instead.&quot;</span> <span class="o">%</span> <span class="n">name</span>
+            <span class="p">)</span>
+        <span class="k">elif</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">iscoroutine</span><span class="p">(</span><span class="n">response</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> didn&#39;t return an HttpResponse object. It returned an &quot;</span>
+                <span class="s2">&quot;unawaited coroutine instead. You may need to add an &#39;await&#39; &quot;</span>
+                <span class="s2">&quot;into your view.&quot;</span> <span class="o">%</span> <span class="n">name</span>
+            <span class="p">)</span></div>
+
+
+    <span class="c1"># Other utility methods.</span>
+
+<div class="viewcode-block" id="BaseHandler.make_view_atomic">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/base/index.html#django.core.handlers.base.BaseHandler.make_view_atomic">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">make_view_atomic</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">view</span><span class="p">):</span>
+        <span class="n">non_atomic_requests</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">view</span><span class="p">,</span> <span class="s2">&quot;_non_atomic_requests&quot;</span><span class="p">,</span> <span class="nb">set</span><span class="p">())</span>
+        <span class="k">for</span> <span class="n">alias</span><span class="p">,</span> <span class="n">settings_dict</span> <span class="ow">in</span> <span class="n">connections</span><span class="o">.</span><span class="n">settings</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">settings_dict</span><span class="p">[</span><span class="s2">&quot;ATOMIC_REQUESTS&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">alias</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">non_atomic_requests</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">iscoroutinefunction</span><span class="p">(</span><span class="n">view</span><span class="p">):</span>
+                    <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+                        <span class="s2">&quot;You cannot use ATOMIC_REQUESTS with async views.&quot;</span>
+                    <span class="p">)</span>
+                <span class="n">view</span> <span class="o">=</span> <span class="n">transaction</span><span class="o">.</span><span class="n">atomic</span><span class="p">(</span><span class="n">using</span><span class="o">=</span><span class="n">alias</span><span class="p">)(</span><span class="n">view</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">view</span></div>
+
+
+<div class="viewcode-block" id="BaseHandler.process_exception_by_middleware">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/base/index.html#django.core.handlers.base.BaseHandler.process_exception_by_middleware">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">process_exception_by_middleware</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exception</span><span class="p">,</span> <span class="n">request</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Pass the exception to the exception middleware. If no middleware</span>
+<span class="sd">        return a response for this exception, return None.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">middleware_method</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_exception_middleware</span><span class="p">:</span>
+            <span class="n">response</span> <span class="o">=</span> <span class="n">middleware_method</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">exception</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">response</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">response</span>
+        <span class="k">return</span> <span class="kc">None</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="reset_urlconf">
+<a class="viewcode-back" href="../../../../autoapi/django/core/handlers/base/index.html#django.core.handlers.base.reset_urlconf">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">reset_urlconf</span><span class="p">(</span><span class="n">sender</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Reset the URLconf after each request is finished.&quot;&quot;&quot;</span>
+    <span class="n">set_urlconf</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span></div>
+
+
+
+<span class="n">request_finished</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">reset_urlconf</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

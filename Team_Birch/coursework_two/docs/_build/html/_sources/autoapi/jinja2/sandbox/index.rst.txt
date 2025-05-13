@@ -1,0 +1,270 @@
+jinja2.sandbox
+==============
+
+.. py:module:: jinja2.sandbox
+
+.. autoapi-nested-parse::
+
+   A sandbox layer that ensures unsafe operations cannot be performed.
+   Useful when the template itself comes from an untrusted source.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   jinja2.sandbox.F
+   jinja2.sandbox.MAX_RANGE
+   jinja2.sandbox.UNSAFE_FUNCTION_ATTRIBUTES
+   jinja2.sandbox.UNSAFE_METHOD_ATTRIBUTES
+   jinja2.sandbox.UNSAFE_GENERATOR_ATTRIBUTES
+   jinja2.sandbox.UNSAFE_COROUTINE_ATTRIBUTES
+   jinja2.sandbox.UNSAFE_ASYNC_GENERATOR_ATTRIBUTES
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   jinja2.sandbox.SandboxedEnvironment
+   jinja2.sandbox.ImmutableSandboxedEnvironment
+   jinja2.sandbox.SandboxedFormatter
+   jinja2.sandbox.SandboxedEscapeFormatter
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   jinja2.sandbox.safe_range
+   jinja2.sandbox.unsafe
+   jinja2.sandbox.is_internal_attribute
+   jinja2.sandbox.modifies_known_mutable
+
+
+Module Contents
+---------------
+
+.. py:data:: F
+
+.. py:data:: MAX_RANGE
+   :value: 100000
+
+
+.. py:data:: UNSAFE_FUNCTION_ATTRIBUTES
+   :type:  Set[str]
+
+.. py:data:: UNSAFE_METHOD_ATTRIBUTES
+   :type:  Set[str]
+
+.. py:data:: UNSAFE_GENERATOR_ATTRIBUTES
+
+.. py:data:: UNSAFE_COROUTINE_ATTRIBUTES
+
+.. py:data:: UNSAFE_ASYNC_GENERATOR_ATTRIBUTES
+
+.. py:function:: safe_range(*args: int) -> range
+
+   A range that can't generate ranges with a length of more than
+   MAX_RANGE items.
+
+
+.. py:function:: unsafe(f: F) -> F
+
+   Marks a function or method as unsafe.
+
+   .. code-block: python
+
+       @unsafe
+       def delete(self):
+           pass
+
+
+.. py:function:: is_internal_attribute(obj: Any, attr: str) -> bool
+
+   Test if the attribute given is an internal python attribute.  For
+   example this function returns `True` for the `func_code` attribute of
+   python objects.  This is useful if the environment method
+   :meth:`~SandboxedEnvironment.is_safe_attribute` is overridden.
+
+   >>> from jinja2.sandbox import is_internal_attribute
+   >>> is_internal_attribute(str, "mro")
+   True
+   >>> is_internal_attribute(str, "upper")
+   False
+
+
+.. py:function:: modifies_known_mutable(obj: Any, attr: str) -> bool
+
+   This function checks if an attribute on a builtin mutable object
+   (list, dict, set or deque) or the corresponding ABCs would modify it
+   if called.
+
+   >>> modifies_known_mutable({}, "clear")
+   True
+   >>> modifies_known_mutable({}, "keys")
+   False
+   >>> modifies_known_mutable([], "append")
+   True
+   >>> modifies_known_mutable([], "index")
+   False
+
+   If called with an unsupported object, ``False`` is returned.
+
+   >>> modifies_known_mutable("foo", "upper")
+   False
+
+
+.. py:class:: SandboxedEnvironment(*args: Any, **kwargs: Any)
+
+   Bases: :py:obj:`jinja2.environment.Environment`
+
+
+   The sandboxed environment.  It works like the regular environment but
+   tells the compiler to generate sandboxed code.  Additionally subclasses of
+   this environment may override the methods that tell the runtime what
+   attributes or functions are safe to access.
+
+   If the template tries to access insecure code a :exc:`SecurityError` is
+   raised.  However also other exceptions may occur during the rendering so
+   the caller has to ensure that all exceptions are caught.
+
+
+   .. py:attribute:: sandboxed
+      :value: True
+
+
+
+   .. py:attribute:: default_binop_table
+      :type:  Dict[str, Callable[[Any, Any], Any]]
+
+
+   .. py:attribute:: default_unop_table
+      :type:  Dict[str, Callable[[Any], Any]]
+
+
+   .. py:attribute:: intercepted_binops
+      :type:  FrozenSet[str]
+
+
+   .. py:attribute:: intercepted_unops
+      :type:  FrozenSet[str]
+
+
+   .. py:attribute:: binop_table
+
+
+   .. py:attribute:: unop_table
+
+
+   .. py:method:: is_safe_attribute(obj: Any, attr: str, value: Any) -> bool
+
+      The sandboxed environment will call this method to check if the
+      attribute of an object is safe to access.  Per default all attributes
+      starting with an underscore are considered private as well as the
+      special attributes of internal python objects as returned by the
+      :func:`is_internal_attribute` function.
+
+
+
+   .. py:method:: is_safe_callable(obj: Any) -> bool
+
+      Check if an object is safely callable. By default callables
+      are considered safe unless decorated with :func:`unsafe`.
+
+      This also recognizes the Django convention of setting
+      ``func.alters_data = True``.
+
+
+
+   .. py:method:: call_binop(context: jinja2.runtime.Context, operator: str, left: Any, right: Any) -> Any
+
+      For intercepted binary operator calls (:meth:`intercepted_binops`)
+      this function is executed instead of the builtin operator.  This can
+      be used to fine tune the behavior of certain operators.
+
+      .. versionadded:: 2.6
+
+
+
+   .. py:method:: call_unop(context: jinja2.runtime.Context, operator: str, arg: Any) -> Any
+
+      For intercepted unary operator calls (:meth:`intercepted_unops`)
+      this function is executed instead of the builtin operator.  This can
+      be used to fine tune the behavior of certain operators.
+
+      .. versionadded:: 2.6
+
+
+
+   .. py:method:: getitem(obj: Any, argument: Union[str, Any]) -> Union[Any, jinja2.runtime.Undefined]
+
+      Subscribe an object from sandboxed code.
+
+
+
+   .. py:method:: getattr(obj: Any, attribute: str) -> Union[Any, jinja2.runtime.Undefined]
+
+      Subscribe an object from sandboxed code and prefer the
+      attribute.  The attribute passed *must* be a bytestring.
+
+
+
+   .. py:method:: unsafe_undefined(obj: Any, attribute: str) -> jinja2.runtime.Undefined
+
+      Return an undefined object for unsafe attributes.
+
+
+
+   .. py:method:: wrap_str_format(value: Any) -> Optional[Callable[Ellipsis, str]]
+
+      If the given value is a ``str.format`` or ``str.format_map`` method,
+      return a new function than handles sandboxing. This is done at access
+      rather than in :meth:`call`, so that calls made without ``call`` are
+      also sandboxed.
+
+
+
+   .. py:method:: call(__context: jinja2.runtime.Context, __obj: Any, *args: Any, **kwargs: Any) -> Any
+
+      Call an object from sandboxed code.
+
+
+
+.. py:class:: ImmutableSandboxedEnvironment(*args: Any, **kwargs: Any)
+
+   Bases: :py:obj:`SandboxedEnvironment`
+
+
+   Works exactly like the regular `SandboxedEnvironment` but does not
+   permit modifications on the builtin mutable objects `list`, `set`, and
+   `dict` by using the :func:`modifies_known_mutable` function.
+
+
+   .. py:method:: is_safe_attribute(obj: Any, attr: str, value: Any) -> bool
+
+      The sandboxed environment will call this method to check if the
+      attribute of an object is safe to access.  Per default all attributes
+      starting with an underscore are considered private as well as the
+      special attributes of internal python objects as returned by the
+      :func:`is_internal_attribute` function.
+
+
+
+.. py:class:: SandboxedFormatter(env: jinja2.environment.Environment, **kwargs: Any)
+
+   Bases: :py:obj:`string.Formatter`
+
+
+   .. py:method:: get_field(field_name: str, args: Sequence[Any], kwargs: Mapping[str, Any]) -> Tuple[Any, str]
+
+
+.. py:class:: SandboxedEscapeFormatter(env: jinja2.environment.Environment, **kwargs: Any)
+
+   Bases: :py:obj:`SandboxedFormatter`, :py:obj:`markupsafe.EscapeFormatter`
+
+

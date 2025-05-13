@@ -1,0 +1,938 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>django.utils.autoreload &mdash; Coursework Two 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            Coursework Two
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../installation_guide.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage_instructions.html">Usage Instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture_overview.html">Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">Coursework Two</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../../django.html">django</a></li>
+      <li class="breadcrumb-item active">django.utils.autoreload</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for django.utils.autoreload</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">itertools</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">signal</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">threading</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">traceback</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">weakref</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">defaultdict</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">lru_cache</span><span class="p">,</span> <span class="n">wraps</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">types</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModuleType</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">zipimport</span><span class="w"> </span><span class="kn">import</span> <span class="n">zipimporter</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">django</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.apps</span><span class="w"> </span><span class="kn">import</span> <span class="n">apps</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.signals</span><span class="w"> </span><span class="kn">import</span> <span class="n">request_finished</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.dispatch</span><span class="w"> </span><span class="kn">import</span> <span class="n">Signal</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">cached_property</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils.version</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_version_tuple</span>
+
+<div class="viewcode-block" id="autoreload_started">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.autoreload_started">[docs]</a>
+<span class="n">autoreload_started</span> <span class="o">=</span> <span class="n">Signal</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="file_changed">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.file_changed">[docs]</a>
+<span class="n">file_changed</span> <span class="o">=</span> <span class="n">Signal</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="DJANGO_AUTORELOAD_ENV">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.DJANGO_AUTORELOAD_ENV">[docs]</a>
+<span class="n">DJANGO_AUTORELOAD_ENV</span> <span class="o">=</span> <span class="s2">&quot;RUN_MAIN&quot;</span></div>
+
+
+<div class="viewcode-block" id="logger">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.logger">[docs]</a>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;django.utils.autoreload&quot;</span><span class="p">)</span></div>
+
+
+<span class="c1"># If an error is raised while importing a file, it&#39;s not placed in sys.modules.</span>
+<span class="c1"># This means that any future modifications aren&#39;t caught. Keep a list of these</span>
+<span class="c1"># file paths to allow watching them in the future.</span>
+<span class="n">_error_files</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="n">_exception</span> <span class="o">=</span> <span class="kc">None</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">termios</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+<div class="viewcode-block" id="termios">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.termios">[docs]</a>
+    <span class="n">termios</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">pywatchman</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+<div class="viewcode-block" id="pywatchman">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.pywatchman">[docs]</a>
+    <span class="n">pywatchman</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+
+<div class="viewcode-block" id="is_django_module">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.is_django_module">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_django_module</span><span class="p">(</span><span class="n">module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return True if the given module is nested under Django.&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">module</span><span class="o">.</span><span class="vm">__name__</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;django.&quot;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="is_django_path">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.is_django_path">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_django_path</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return True if the given file path is nested under Django.&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">Path</span><span class="p">(</span><span class="n">django</span><span class="o">.</span><span class="vm">__file__</span><span class="p">)</span><span class="o">.</span><span class="n">parent</span> <span class="ow">in</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">parents</span></div>
+
+
+
+<div class="viewcode-block" id="check_errors">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.check_errors">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">check_errors</span><span class="p">(</span><span class="n">fn</span><span class="p">):</span>
+    <span class="nd">@wraps</span><span class="p">(</span><span class="n">fn</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">wrapper</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">global</span> <span class="n">_exception</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">fn</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="n">_exception</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">exc_info</span><span class="p">()</span>
+
+            <span class="n">et</span><span class="p">,</span> <span class="n">ev</span><span class="p">,</span> <span class="n">tb</span> <span class="o">=</span> <span class="n">_exception</span>
+
+            <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">ev</span><span class="p">,</span> <span class="s2">&quot;filename&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="c1"># get the filename from the last item in the stack</span>
+                <span class="n">filename</span> <span class="o">=</span> <span class="n">traceback</span><span class="o">.</span><span class="n">extract_tb</span><span class="p">(</span><span class="n">tb</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">filename</span> <span class="o">=</span> <span class="n">ev</span><span class="o">.</span><span class="n">filename</span>
+
+            <span class="k">if</span> <span class="n">filename</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">_error_files</span><span class="p">:</span>
+                <span class="n">_error_files</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+            <span class="k">raise</span>
+
+    <span class="k">return</span> <span class="n">wrapper</span></div>
+
+
+
+<div class="viewcode-block" id="raise_last_exception">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.raise_last_exception">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">raise_last_exception</span><span class="p">():</span>
+    <span class="k">global</span> <span class="n">_exception</span>
+    <span class="k">if</span> <span class="n">_exception</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">_exception</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span></div>
+
+
+
+<div class="viewcode-block" id="ensure_echo_on">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.ensure_echo_on">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">ensure_echo_on</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Ensure that echo mode is enabled. Some tools such as PDB disable</span>
+<span class="sd">    it which causes usability issues after reload.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">termios</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">sys</span><span class="o">.</span><span class="n">stdin</span><span class="o">.</span><span class="n">isatty</span><span class="p">():</span>
+        <span class="k">return</span>
+    <span class="n">attr_list</span> <span class="o">=</span> <span class="n">termios</span><span class="o">.</span><span class="n">tcgetattr</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">stdin</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">attr_list</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">&amp;</span> <span class="n">termios</span><span class="o">.</span><span class="n">ECHO</span><span class="p">:</span>
+        <span class="n">attr_list</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">|=</span> <span class="n">termios</span><span class="o">.</span><span class="n">ECHO</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">signal</span><span class="p">,</span> <span class="s2">&quot;SIGTTOU&quot;</span><span class="p">):</span>
+            <span class="n">old_handler</span> <span class="o">=</span> <span class="n">signal</span><span class="o">.</span><span class="n">signal</span><span class="p">(</span><span class="n">signal</span><span class="o">.</span><span class="n">SIGTTOU</span><span class="p">,</span> <span class="n">signal</span><span class="o">.</span><span class="n">SIG_IGN</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">old_handler</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">termios</span><span class="o">.</span><span class="n">tcsetattr</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">stdin</span><span class="p">,</span> <span class="n">termios</span><span class="o">.</span><span class="n">TCSANOW</span><span class="p">,</span> <span class="n">attr_list</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">old_handler</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">signal</span><span class="o">.</span><span class="n">signal</span><span class="p">(</span><span class="n">signal</span><span class="o">.</span><span class="n">SIGTTOU</span><span class="p">,</span> <span class="n">old_handler</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="iter_all_python_module_files">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.iter_all_python_module_files">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">iter_all_python_module_files</span><span class="p">():</span>
+    <span class="c1"># This is a hot path during reloading. Create a stable sorted list of</span>
+    <span class="c1"># modules based on the module name and pass it to iter_modules_and_files().</span>
+    <span class="c1"># This ensures cached results are returned in the usual case that modules</span>
+    <span class="c1"># aren&#39;t loaded on the fly.</span>
+    <span class="n">keys</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">modules</span><span class="p">)</span>
+    <span class="n">modules</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span>
+        <span class="n">m</span>
+        <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="nb">map</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">modules</span><span class="o">.</span><span class="fm">__getitem__</span><span class="p">,</span> <span class="n">keys</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">weakref</span><span class="o">.</span><span class="n">ProxyTypes</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">iter_modules_and_files</span><span class="p">(</span><span class="n">modules</span><span class="p">,</span> <span class="nb">frozenset</span><span class="p">(</span><span class="n">_error_files</span><span class="p">))</span></div>
+
+
+
+<span class="nd">@lru_cache</span><span class="p">(</span><span class="n">maxsize</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<div class="viewcode-block" id="iter_modules_and_files">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.iter_modules_and_files">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">iter_modules_and_files</span><span class="p">(</span><span class="n">modules</span><span class="p">,</span> <span class="n">extra_files</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Iterate through all modules needed to be watched.&quot;&quot;&quot;</span>
+    <span class="n">sys_file_paths</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">module</span> <span class="ow">in</span> <span class="n">modules</span><span class="p">:</span>
+        <span class="c1"># During debugging (with PyDev) the &#39;typing.io&#39; and &#39;typing.re&#39; objects</span>
+        <span class="c1"># are added to sys.modules, however they are types not modules and so</span>
+        <span class="c1"># cause issues here.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="n">ModuleType</span><span class="p">):</span>
+            <span class="k">continue</span>
+        <span class="k">if</span> <span class="n">module</span><span class="o">.</span><span class="vm">__name__</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;__main__&quot;</span><span class="p">,</span> <span class="s2">&quot;__mp_main__&quot;</span><span class="p">):</span>
+            <span class="c1"># __main__ (usually manage.py) doesn&#39;t always have a __spec__ set.</span>
+            <span class="c1"># Handle this by falling back to using __file__, resolved below.</span>
+            <span class="c1"># See https://docs.python.org/reference/import.html#main-spec</span>
+            <span class="c1"># __file__ may not exists, e.g. when running ipdb debugger.</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="s2">&quot;__file__&quot;</span><span class="p">):</span>
+                <span class="n">sys_file_paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">module</span><span class="o">.</span><span class="vm">__file__</span><span class="p">)</span>
+            <span class="k">continue</span>
+        <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="s2">&quot;__spec__&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">spec</span> <span class="o">=</span> <span class="n">module</span><span class="o">.</span><span class="n">__spec__</span>
+        <span class="c1"># Modules could be loaded from places without a concrete location. If</span>
+        <span class="c1"># this is the case, skip them.</span>
+        <span class="k">if</span> <span class="n">spec</span><span class="o">.</span><span class="n">has_location</span><span class="p">:</span>
+            <span class="n">origin</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">spec</span><span class="o">.</span><span class="n">loader</span><span class="o">.</span><span class="n">archive</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">spec</span><span class="o">.</span><span class="n">loader</span><span class="p">,</span> <span class="n">zipimporter</span><span class="p">)</span>
+                <span class="k">else</span> <span class="n">spec</span><span class="o">.</span><span class="n">origin</span>
+            <span class="p">)</span>
+            <span class="n">sys_file_paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">origin</span><span class="p">)</span>
+
+    <span class="n">results</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">filename</span> <span class="ow">in</span> <span class="n">itertools</span><span class="o">.</span><span class="n">chain</span><span class="p">(</span><span class="n">sys_file_paths</span><span class="p">,</span> <span class="n">extra_files</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">filename</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+                <span class="c1"># The module could have been removed, don&#39;t fail loudly if this</span>
+                <span class="c1"># is the case.</span>
+                <span class="k">continue</span>
+        <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="c1"># Network filesystems may return null bytes in file paths.</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s1">&#39;&quot;</span><span class="si">%s</span><span class="s1">&quot; raised when resolving path: &quot;</span><span class="si">%s</span><span class="s1">&quot;&#39;</span><span class="p">,</span> <span class="n">e</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
+            <span class="k">continue</span>
+        <span class="n">resolved_path</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span><span class="o">.</span><span class="n">absolute</span><span class="p">()</span>
+        <span class="n">results</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">resolved_path</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">frozenset</span><span class="p">(</span><span class="n">results</span><span class="p">)</span></div>
+
+
+
+<span class="nd">@lru_cache</span><span class="p">(</span><span class="n">maxsize</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<div class="viewcode-block" id="common_roots">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.common_roots">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">common_roots</span><span class="p">(</span><span class="n">paths</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return a tuple of common roots that are shared between the given paths.</span>
+<span class="sd">    File system watchers operate on directories and aren&#39;t cheap to create.</span>
+<span class="sd">    Try to find the minimum set of directories to watch that encompass all of</span>
+<span class="sd">    the files that need to be watched.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Inspired from Werkzeug:</span>
+    <span class="c1"># https://github.com/pallets/werkzeug/blob/7477be2853df70a022d9613e765581b9411c3c39/werkzeug/_reloader.py</span>
+    <span class="c1"># Create a sorted list of the path components, longest first.</span>
+    <span class="n">path_parts</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">([</span><span class="n">x</span><span class="o">.</span><span class="n">parts</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">paths</span><span class="p">],</span> <span class="n">key</span><span class="o">=</span><span class="nb">len</span><span class="p">,</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">tree</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">chunks</span> <span class="ow">in</span> <span class="n">path_parts</span><span class="p">:</span>
+        <span class="n">node</span> <span class="o">=</span> <span class="n">tree</span>
+        <span class="c1"># Add each part of the path to the tree.</span>
+        <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">chunks</span><span class="p">:</span>
+            <span class="n">node</span> <span class="o">=</span> <span class="n">node</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">chunk</span><span class="p">,</span> <span class="p">{})</span>
+        <span class="c1"># Clear the last leaf in the tree.</span>
+        <span class="n">node</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+
+    <span class="c1"># Turn the tree into a list of Path instances.</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_walk</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">prefix</span><span class="p">,</span> <span class="n">child</span> <span class="ow">in</span> <span class="n">node</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">yield from</span> <span class="n">_walk</span><span class="p">(</span><span class="n">child</span><span class="p">,</span> <span class="n">path</span> <span class="o">+</span> <span class="p">(</span><span class="n">prefix</span><span class="p">,))</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">node</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="n">Path</span><span class="p">(</span><span class="o">*</span><span class="n">path</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">_walk</span><span class="p">(</span><span class="n">tree</span><span class="p">,</span> <span class="p">()))</span></div>
+
+
+
+<div class="viewcode-block" id="sys_path_directories">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.sys_path_directories">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">sys_path_directories</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Yield absolute directories from sys.path, ignoring entries that don&#39;t</span>
+<span class="sd">    exist.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="p">:</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="k">continue</span>
+        <span class="n">resolved_path</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span><span class="o">.</span><span class="n">absolute</span><span class="p">()</span>
+        <span class="c1"># If the path is a file (like a zip file), watch the parent directory.</span>
+        <span class="k">if</span> <span class="n">resolved_path</span><span class="o">.</span><span class="n">is_file</span><span class="p">():</span>
+            <span class="k">yield</span> <span class="n">resolved_path</span><span class="o">.</span><span class="n">parent</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="n">resolved_path</span></div>
+
+
+
+<div class="viewcode-block" id="get_child_arguments">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.get_child_arguments">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_child_arguments</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the executable. This contains a workaround for Windows if the</span>
+<span class="sd">    executable is reported to not have the .exe extension which can cause bugs</span>
+<span class="sd">    on reloading.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">__main__</span>
+
+    <span class="n">py_script</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+    <span class="n">args</span> <span class="o">=</span> <span class="p">[</span><span class="n">sys</span><span class="o">.</span><span class="n">executable</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="s2">&quot;-W</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">o</span> <span class="k">for</span> <span class="n">o</span> <span class="ow">in</span> <span class="n">sys</span><span class="o">.</span><span class="n">warnoptions</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">sys</span><span class="o">.</span><span class="n">implementation</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;cpython&quot;</span><span class="p">:</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;-X</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">True</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">&quot;-X</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">=</span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">sys</span><span class="o">.</span><span class="n">_xoptions</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+        <span class="p">)</span>
+    <span class="c1"># __spec__ is set when the server was started with the `-m` option,</span>
+    <span class="c1"># see https://docs.python.org/3/reference/import.html#main-spec</span>
+    <span class="c1"># __spec__ may not exist, e.g. when running in a Conda env.</span>
+    <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">__main__</span><span class="p">,</span> <span class="s2">&quot;__spec__&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">spec</span> <span class="o">=</span> <span class="n">__main__</span><span class="o">.</span><span class="n">__spec__</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">spec</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span> <span class="ow">or</span> <span class="n">spec</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;.__main__&quot;</span><span class="p">))</span> <span class="ow">and</span> <span class="n">spec</span><span class="o">.</span><span class="n">parent</span><span class="p">:</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">parent</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">name</span>
+        <span class="n">args</span> <span class="o">+=</span> <span class="p">[</span><span class="s2">&quot;-m&quot;</span><span class="p">,</span> <span class="n">name</span><span class="p">]</span>
+        <span class="n">args</span> <span class="o">+=</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+    <span class="k">elif</span> <span class="ow">not</span> <span class="n">py_script</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="c1"># sys.argv[0] may not exist for several reasons on Windows.</span>
+        <span class="c1"># It may exist with a .exe extension or have a -script.py suffix.</span>
+        <span class="n">exe_entrypoint</span> <span class="o">=</span> <span class="n">py_script</span><span class="o">.</span><span class="n">with_suffix</span><span class="p">(</span><span class="s2">&quot;.exe&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">exe_entrypoint</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="c1"># Should be executed directly, ignoring sys.executable.</span>
+            <span class="k">return</span> <span class="p">[</span><span class="n">exe_entrypoint</span><span class="p">,</span> <span class="o">*</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">:]]</span>
+        <span class="n">script_entrypoint</span> <span class="o">=</span> <span class="n">py_script</span><span class="o">.</span><span class="n">with_name</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">-script.py&quot;</span> <span class="o">%</span> <span class="n">py_script</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">script_entrypoint</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="c1"># Should be executed as usual.</span>
+            <span class="k">return</span> <span class="p">[</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="n">script_entrypoint</span><span class="p">,</span> <span class="o">*</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">:]]</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;Script </span><span class="si">%s</span><span class="s2"> does not exist.&quot;</span> <span class="o">%</span> <span class="n">py_script</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">args</span> <span class="o">+=</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span>
+    <span class="k">return</span> <span class="n">args</span></div>
+
+
+
+<div class="viewcode-block" id="trigger_reload">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.trigger_reload">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">trigger_reload</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> changed, reloading.&quot;</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span>
+    <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="restart_with_reloader">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.restart_with_reloader">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">restart_with_reloader</span><span class="p">():</span>
+    <span class="n">new_environ</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">,</span> <span class="n">DJANGO_AUTORELOAD_ENV</span><span class="p">:</span> <span class="s2">&quot;true&quot;</span><span class="p">}</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">get_child_arguments</span><span class="p">()</span>
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="n">env</span><span class="o">=</span><span class="n">new_environ</span><span class="p">,</span> <span class="n">close_fds</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">returncode</span> <span class="o">!=</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">p</span><span class="o">.</span><span class="n">returncode</span></div>
+
+
+
+<div class="viewcode-block" id="BaseReloader">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.BaseReloader">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BaseReloader</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="BaseReloader.extra_files">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.BaseReloader.extra_files">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">extra_files</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="BaseReloader.directory_globs">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.BaseReloader.directory_globs">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">directory_globs</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">set</span><span class="p">)</span></div>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_stop_condition</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Event</span><span class="p">()</span>
+
+<div class="viewcode-block" id="BaseReloader.watch_dir">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.BaseReloader.watch_dir">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">watch_dir</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">glob</span><span class="p">):</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">absolute</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">FileNotFoundError</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+                <span class="s2">&quot;Unable to watch directory </span><span class="si">%s</span><span class="s2"> as it cannot be resolved.&quot;</span><span class="p">,</span>
+                <span class="n">path</span><span class="p">,</span>
+                <span class="n">exc_info</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">return</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Watching dir </span><span class="si">%s</span><span class="s2"> with glob </span><span class="si">%s</span><span class="s2">.&quot;</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">glob</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">directory_globs</span><span class="p">[</span><span class="n">path</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">glob</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseReloader.watched_files">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.BaseReloader.watched_files">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">watched_files</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">include_globs</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Yield all files that need to be watched, including module files and</span>
+<span class="sd">        files within globs.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">yield from</span> <span class="n">iter_all_python_module_files</span><span class="p">()</span>
+        <span class="k">yield from</span> <span class="bp">self</span><span class="o">.</span><span class="n">extra_files</span>
+        <span class="k">if</span> <span class="n">include_globs</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">directory</span><span class="p">,</span> <span class="n">patterns</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">directory_globs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">for</span> <span class="n">pattern</span> <span class="ow">in</span> <span class="n">patterns</span><span class="p">:</span>
+                    <span class="k">yield from</span> <span class="n">directory</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="n">pattern</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseReloader.wait_for_apps_ready">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.BaseReloader.wait_for_apps_ready">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">wait_for_apps_ready</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">app_reg</span><span class="p">,</span> <span class="n">django_main_thread</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Wait until Django reports that the apps have been loaded. If the given</span>
+<span class="sd">        thread has terminated before the apps are ready, then a SyntaxError or</span>
+<span class="sd">        other non-recoverable error has been raised. In that case, stop waiting</span>
+<span class="sd">        for the apps_ready event and continue processing.</span>
+
+<span class="sd">        Return True if the thread is alive and the ready event has been</span>
+<span class="sd">        triggered, or False if the thread is terminated while waiting for the</span>
+<span class="sd">        event.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">while</span> <span class="n">django_main_thread</span><span class="o">.</span><span class="n">is_alive</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">app_reg</span><span class="o">.</span><span class="n">ready_event</span><span class="o">.</span><span class="n">wait</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">0.1</span><span class="p">):</span>
+                <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Main Django thread has terminated before apps are ready.&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="kc">False</span></div>
+
+
+<div class="viewcode-block" id="BaseReloader.run">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.BaseReloader.run">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">django_main_thread</span><span class="p">):</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Waiting for apps ready_event.&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wait_for_apps_ready</span><span class="p">(</span><span class="n">apps</span><span class="p">,</span> <span class="n">django_main_thread</span><span class="p">)</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">django.urls</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_resolver</span>
+
+        <span class="c1"># Prevent a race condition where URL modules aren&#39;t loaded when the</span>
+        <span class="c1"># reloader starts by accessing the urlconf_module property.</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">get_resolver</span><span class="p">()</span><span class="o">.</span><span class="n">urlconf_module</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="c1"># Loading the urlconf can result in errors during development.</span>
+            <span class="c1"># If this occurs then swallow the error and continue.</span>
+            <span class="k">pass</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Apps ready_event triggered. Sending autoreload_started signal.&quot;</span><span class="p">)</span>
+        <span class="n">autoreload_started</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">sender</span><span class="o">=</span><span class="bp">self</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">run_loop</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="BaseReloader.run_loop">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.BaseReloader.run_loop">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">run_loop</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">ticker</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tick</span><span class="p">()</span>
+        <span class="k">while</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">should_stop</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="nb">next</span><span class="p">(</span><span class="n">ticker</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">StopIteration</span><span class="p">:</span>
+                <span class="k">break</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="BaseReloader.tick">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.BaseReloader.tick">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">tick</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        This generator is called in a loop from run_loop. It&#39;s important that</span>
+<span class="sd">        the method takes care of pausing or otherwise waiting for a period of</span>
+<span class="sd">        time. This split between run_loop() and tick() is to improve the</span>
+<span class="sd">        testability of the reloader implementations by decoupling the work they</span>
+<span class="sd">        do from the loop.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;subclasses must implement tick().&quot;</span><span class="p">)</span></div>
+
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="BaseReloader.check_availability">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.BaseReloader.check_availability">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_availability</span><span class="p">(</span><span class="bp">cls</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;subclasses must implement check_availability().&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="BaseReloader.notify_file_changed">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.BaseReloader.notify_file_changed">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">notify_file_changed</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="n">file_changed</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">sender</span><span class="o">=</span><span class="bp">self</span><span class="p">,</span> <span class="n">file_path</span><span class="o">=</span><span class="n">path</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> notified as changed. Signal results: </span><span class="si">%s</span><span class="s2">.&quot;</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">results</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">res</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">res</span> <span class="ow">in</span> <span class="n">results</span><span class="p">):</span>
+            <span class="n">trigger_reload</span><span class="p">(</span><span class="n">path</span><span class="p">)</span></div>
+
+
+    <span class="c1"># These are primarily used for testing.</span>
+    <span class="nd">@property</span>
+<div class="viewcode-block" id="BaseReloader.should_stop">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.BaseReloader.should_stop">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">should_stop</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_stop_condition</span><span class="o">.</span><span class="n">is_set</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="BaseReloader.stop">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.BaseReloader.stop">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">stop</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_stop_condition</span><span class="o">.</span><span class="n">set</span><span class="p">()</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="StatReloader">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.StatReloader">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">StatReloader</span><span class="p">(</span><span class="n">BaseReloader</span><span class="p">):</span>
+<div class="viewcode-block" id="StatReloader.SLEEP_TIME">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.StatReloader.SLEEP_TIME">[docs]</a>
+    <span class="n">SLEEP_TIME</span> <span class="o">=</span> <span class="mi">1</span>  <span class="c1"># Check for changes once per second.</span></div>
+
+
+<div class="viewcode-block" id="StatReloader.tick">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.StatReloader.tick">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">tick</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">mtimes</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">filepath</span><span class="p">,</span> <span class="n">mtime</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">snapshot_files</span><span class="p">():</span>
+                <span class="n">old_time</span> <span class="o">=</span> <span class="n">mtimes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">filepath</span><span class="p">)</span>
+                <span class="n">mtimes</span><span class="p">[</span><span class="n">filepath</span><span class="p">]</span> <span class="o">=</span> <span class="n">mtime</span>
+                <span class="k">if</span> <span class="n">old_time</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;File </span><span class="si">%s</span><span class="s2"> first seen with mtime </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">filepath</span><span class="p">,</span> <span class="n">mtime</span><span class="p">)</span>
+                    <span class="k">continue</span>
+                <span class="k">elif</span> <span class="n">mtime</span> <span class="o">&gt;</span> <span class="n">old_time</span><span class="p">:</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+                        <span class="s2">&quot;File </span><span class="si">%s</span><span class="s2"> previous mtime: </span><span class="si">%s</span><span class="s2">, current mtime: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+                        <span class="n">filepath</span><span class="p">,</span>
+                        <span class="n">old_time</span><span class="p">,</span>
+                        <span class="n">mtime</span><span class="p">,</span>
+                    <span class="p">)</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">notify_file_changed</span><span class="p">(</span><span class="n">filepath</span><span class="p">)</span>
+
+            <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SLEEP_TIME</span><span class="p">)</span>
+            <span class="k">yield</span></div>
+
+
+<div class="viewcode-block" id="StatReloader.snapshot_files">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.StatReloader.snapshot_files">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">snapshot_files</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># watched_files may produce duplicate paths if globs overlap.</span>
+        <span class="n">seen_files</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">file</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">watched_files</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">file</span> <span class="ow">in</span> <span class="n">seen_files</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">mtime</span> <span class="o">=</span> <span class="n">file</span><span class="o">.</span><span class="n">stat</span><span class="p">()</span><span class="o">.</span><span class="n">st_mtime</span>
+            <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
+                <span class="c1"># This is thrown when the file does not exist.</span>
+                <span class="k">continue</span>
+            <span class="n">seen_files</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">file</span><span class="p">)</span>
+            <span class="k">yield</span> <span class="n">file</span><span class="p">,</span> <span class="n">mtime</span></div>
+
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="StatReloader.check_availability">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.StatReloader.check_availability">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_availability</span><span class="p">(</span><span class="bp">cls</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">True</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="WatchmanUnavailable">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.WatchmanUnavailable">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">WatchmanUnavailable</span><span class="p">(</span><span class="ne">RuntimeError</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+
+
+
+<div class="viewcode-block" id="WatchmanReloader">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.WatchmanReloader">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">WatchmanReloader</span><span class="p">(</span><span class="n">BaseReloader</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="WatchmanReloader.roots">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.WatchmanReloader.roots">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">roots</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">set</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="WatchmanReloader.processed_request">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.WatchmanReloader.processed_request">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">processed_request</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Event</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="WatchmanReloader.client_timeout">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.WatchmanReloader.client_timeout">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">client_timeout</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;DJANGO_WATCHMAN_TIMEOUT&quot;</span><span class="p">,</span> <span class="mi">5</span><span class="p">))</span></div>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+
+    <span class="nd">@cached_property</span>
+<div class="viewcode-block" id="WatchmanReloader.client">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.WatchmanReloader.client">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">client</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">pywatchman</span><span class="o">.</span><span class="n">client</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">client_timeout</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_watch_root</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="p">):</span>
+        <span class="c1"># In practice this shouldn&#39;t occur, however, it&#39;s possible that a</span>
+        <span class="c1"># directory that doesn&#39;t exist yet is being watched. If it&#39;s outside of</span>
+        <span class="c1"># sys.path then this will end up a new root. How to handle this isn&#39;t</span>
+        <span class="c1"># clear: Not adding the root will likely break when subscribing to the</span>
+        <span class="c1"># changes, however, as this is currently an internal API,  no files</span>
+        <span class="c1"># will be being watched outside of sys.path. Fixing this by checking</span>
+        <span class="c1"># inside watch_glob() and watch_dir() is expensive, instead this could</span>
+        <span class="c1"># could fall back to the StatReloader if this case is detected? For</span>
+        <span class="c1"># now, watching its parent, if possible, is sufficient.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">root</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">root</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                    <span class="s2">&quot;Unable to watch root dir </span><span class="si">%s</span><span class="s2"> as neither it or its parent exist.&quot;</span><span class="p">,</span>
+                    <span class="n">root</span><span class="p">,</span>
+                <span class="p">)</span>
+                <span class="k">return</span>
+            <span class="n">root</span> <span class="o">=</span> <span class="n">root</span><span class="o">.</span><span class="n">parent</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="s2">&quot;watch-project&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">root</span><span class="o">.</span><span class="n">absolute</span><span class="p">()))</span>
+        <span class="k">if</span> <span class="s2">&quot;warning&quot;</span> <span class="ow">in</span> <span class="n">result</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Watchman warning: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;warning&quot;</span><span class="p">])</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Watchman watch-project result: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">result</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;watch&quot;</span><span class="p">],</span> <span class="n">result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;relative_path&quot;</span><span class="p">)</span>
+
+    <span class="nd">@lru_cache</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_clock</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="s2">&quot;clock&quot;</span><span class="p">,</span> <span class="n">root</span><span class="p">)[</span><span class="s2">&quot;clock&quot;</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_subscribe</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">directory</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">expression</span><span class="p">):</span>
+        <span class="n">root</span><span class="p">,</span> <span class="n">rel_path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_watch_root</span><span class="p">(</span><span class="n">directory</span><span class="p">)</span>
+        <span class="c1"># Only receive notifications of files changing, filtering out other types</span>
+        <span class="c1"># like special files: https://facebook.github.io/watchman/docs/type</span>
+        <span class="n">only_files_expression</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="s2">&quot;allof&quot;</span><span class="p">,</span>
+            <span class="p">[</span><span class="s2">&quot;anyof&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;type&quot;</span><span class="p">,</span> <span class="s2">&quot;f&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;type&quot;</span><span class="p">,</span> <span class="s2">&quot;l&quot;</span><span class="p">]],</span>
+            <span class="n">expression</span><span class="p">,</span>
+        <span class="p">]</span>
+        <span class="n">query</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;expression&quot;</span><span class="p">:</span> <span class="n">only_files_expression</span><span class="p">,</span>
+            <span class="s2">&quot;fields&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">],</span>
+            <span class="s2">&quot;since&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_clock</span><span class="p">(</span><span class="n">root</span><span class="p">),</span>
+            <span class="s2">&quot;dedup_results&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="p">}</span>
+        <span class="k">if</span> <span class="n">rel_path</span><span class="p">:</span>
+            <span class="n">query</span><span class="p">[</span><span class="s2">&quot;relative_root&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">rel_path</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+            <span class="s2">&quot;Issuing watchman subscription </span><span class="si">%s</span><span class="s2">, for root </span><span class="si">%s</span><span class="s2">. Query: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="n">name</span><span class="p">,</span>
+            <span class="n">root</span><span class="p">,</span>
+            <span class="n">query</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="s2">&quot;subscribe&quot;</span><span class="p">,</span> <span class="n">root</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">query</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_subscribe_dir</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">directory</span><span class="p">,</span> <span class="n">filenames</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">directory</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">directory</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                    <span class="s2">&quot;Unable to watch directory </span><span class="si">%s</span><span class="s2"> as neither it or its parent exist.&quot;</span><span class="p">,</span>
+                    <span class="n">directory</span><span class="p">,</span>
+                <span class="p">)</span>
+                <span class="k">return</span>
+            <span class="n">prefix</span> <span class="o">=</span> <span class="s2">&quot;files-parent-</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">directory</span><span class="o">.</span><span class="n">name</span>
+            <span class="n">filenames</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">/</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">directory</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span> <span class="k">for</span> <span class="n">filename</span> <span class="ow">in</span> <span class="n">filenames</span><span class="p">]</span>
+            <span class="n">directory</span> <span class="o">=</span> <span class="n">directory</span><span class="o">.</span><span class="n">parent</span>
+            <span class="n">expression</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="n">filenames</span><span class="p">,</span> <span class="s2">&quot;wholename&quot;</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">prefix</span> <span class="o">=</span> <span class="s2">&quot;files&quot;</span>
+            <span class="n">expression</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="n">filenames</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_subscribe</span><span class="p">(</span><span class="n">directory</span><span class="p">,</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">:</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">prefix</span><span class="p">,</span> <span class="n">directory</span><span class="p">),</span> <span class="n">expression</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_watch_glob</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">directory</span><span class="p">,</span> <span class="n">patterns</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Watch a directory with a specific glob. If the directory doesn&#39;t yet</span>
+<span class="sd">        exist, attempt to watch the parent directory and amend the patterns to</span>
+<span class="sd">        include this. It&#39;s important this method isn&#39;t called more than one per</span>
+<span class="sd">        directory when updating all subscriptions. Subsequent calls will</span>
+<span class="sd">        overwrite the named subscription, so it must include all possible glob</span>
+<span class="sd">        expressions.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">prefix</span> <span class="o">=</span> <span class="s2">&quot;glob&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">directory</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">directory</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                    <span class="s2">&quot;Unable to watch directory </span><span class="si">%s</span><span class="s2"> as neither it or its parent exist.&quot;</span><span class="p">,</span>
+                    <span class="n">directory</span><span class="p">,</span>
+                <span class="p">)</span>
+                <span class="k">return</span>
+            <span class="n">prefix</span> <span class="o">=</span> <span class="s2">&quot;glob-parent-</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">directory</span><span class="o">.</span><span class="n">name</span>
+            <span class="n">patterns</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">/</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">directory</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">pattern</span><span class="p">)</span> <span class="k">for</span> <span class="n">pattern</span> <span class="ow">in</span> <span class="n">patterns</span><span class="p">]</span>
+            <span class="n">directory</span> <span class="o">=</span> <span class="n">directory</span><span class="o">.</span><span class="n">parent</span>
+
+        <span class="n">expression</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;anyof&quot;</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">pattern</span> <span class="ow">in</span> <span class="n">patterns</span><span class="p">:</span>
+            <span class="n">expression</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="s2">&quot;match&quot;</span><span class="p">,</span> <span class="n">pattern</span><span class="p">,</span> <span class="s2">&quot;wholename&quot;</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_subscribe</span><span class="p">(</span><span class="n">directory</span><span class="p">,</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">:</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">prefix</span><span class="p">,</span> <span class="n">directory</span><span class="p">),</span> <span class="n">expression</span><span class="p">)</span>
+
+<div class="viewcode-block" id="WatchmanReloader.watched_roots">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.WatchmanReloader.watched_roots">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">watched_roots</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">watched_files</span><span class="p">):</span>
+        <span class="n">extra_directories</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">directory_globs</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+        <span class="n">watched_file_dirs</span> <span class="o">=</span> <span class="p">[</span><span class="n">f</span><span class="o">.</span><span class="n">parent</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">watched_files</span><span class="p">]</span>
+        <span class="n">sys_paths</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">sys_path_directories</span><span class="p">())</span>
+        <span class="k">return</span> <span class="nb">frozenset</span><span class="p">((</span><span class="o">*</span><span class="n">extra_directories</span><span class="p">,</span> <span class="o">*</span><span class="n">watched_file_dirs</span><span class="p">,</span> <span class="o">*</span><span class="n">sys_paths</span><span class="p">))</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_update_watches</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">watched_files</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">watched_files</span><span class="p">(</span><span class="n">include_globs</span><span class="o">=</span><span class="kc">False</span><span class="p">))</span>
+        <span class="n">found_roots</span> <span class="o">=</span> <span class="n">common_roots</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">watched_roots</span><span class="p">(</span><span class="n">watched_files</span><span class="p">))</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Watching </span><span class="si">%s</span><span class="s2"> files&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">watched_files</span><span class="p">))</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Found common roots: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">found_roots</span><span class="p">)</span>
+        <span class="c1"># Setup initial roots for performance, shortest roots first.</span>
+        <span class="k">for</span> <span class="n">root</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">found_roots</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_watch_root</span><span class="p">(</span><span class="n">root</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">directory</span><span class="p">,</span> <span class="n">patterns</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">directory_globs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_watch_glob</span><span class="p">(</span><span class="n">directory</span><span class="p">,</span> <span class="n">patterns</span><span class="p">)</span>
+        <span class="c1"># Group sorted watched_files by their parent directory.</span>
+        <span class="n">sorted_files</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">watched_files</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">p</span><span class="p">:</span> <span class="n">p</span><span class="o">.</span><span class="n">parent</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">directory</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">itertools</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">sorted_files</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">p</span><span class="p">:</span> <span class="n">p</span><span class="o">.</span><span class="n">parent</span><span class="p">):</span>
+            <span class="c1"># These paths need to be relative to the parent directory.</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_subscribe_dir</span><span class="p">(</span>
+                <span class="n">directory</span><span class="p">,</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">relative_to</span><span class="p">(</span><span class="n">directory</span><span class="p">))</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">group</span><span class="p">]</span>
+            <span class="p">)</span>
+
+<div class="viewcode-block" id="WatchmanReloader.update_watches">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.WatchmanReloader.update_watches">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">update_watches</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_update_watches</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">ex</span><span class="p">:</span>
+            <span class="c1"># If the service is still available, raise the original exception.</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">check_server_status</span><span class="p">(</span><span class="n">ex</span><span class="p">):</span>
+                <span class="k">raise</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_subscription</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sub</span><span class="p">):</span>
+        <span class="n">subscription</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">getSubscription</span><span class="p">(</span><span class="n">sub</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">subscription</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Watchman subscription </span><span class="si">%s</span><span class="s2"> has results.&quot;</span><span class="p">,</span> <span class="n">sub</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">result</span> <span class="ow">in</span> <span class="n">subscription</span><span class="p">:</span>
+            <span class="c1"># When using watch-project, it&#39;s not simple to get the relative</span>
+            <span class="c1"># directory without storing some specific state. Store the full</span>
+            <span class="c1"># path to the directory in the subscription name, prefixed by its</span>
+            <span class="c1"># type (glob, files).</span>
+            <span class="n">root_directory</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="s2">&quot;subscription&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">1</span><span class="p">])</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Found root directory </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">root_directory</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">file</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;files&quot;</span><span class="p">,</span> <span class="p">[]):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">notify_file_changed</span><span class="p">(</span><span class="n">root_directory</span> <span class="o">/</span> <span class="n">file</span><span class="p">)</span>
+
+<div class="viewcode-block" id="WatchmanReloader.request_processed">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.WatchmanReloader.request_processed">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">request_processed</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Request processed. Setting update_watches event.&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">processed_request</span><span class="o">.</span><span class="n">set</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="WatchmanReloader.tick">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.WatchmanReloader.tick">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">tick</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">request_finished</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">request_processed</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">update_watches</span><span class="p">()</span>
+        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">processed_request</span><span class="o">.</span><span class="n">is_set</span><span class="p">():</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">update_watches</span><span class="p">()</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">processed_request</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">receive</span><span class="p">()</span>
+            <span class="k">except</span> <span class="n">pywatchman</span><span class="o">.</span><span class="n">SocketTimeout</span><span class="p">:</span>
+                <span class="k">pass</span>
+            <span class="k">except</span> <span class="n">pywatchman</span><span class="o">.</span><span class="n">WatchmanError</span> <span class="k">as</span> <span class="n">ex</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Watchman error: </span><span class="si">%s</span><span class="s2">, checking server status.&quot;</span><span class="p">,</span> <span class="n">ex</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">check_server_status</span><span class="p">(</span><span class="n">ex</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">sub</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">subs</span><span class="o">.</span><span class="n">keys</span><span class="p">()):</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_check_subscription</span><span class="p">(</span><span class="n">sub</span><span class="p">)</span>
+            <span class="k">yield</span>
+            <span class="c1"># Protect against busy loops.</span>
+            <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="WatchmanReloader.stop">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.WatchmanReloader.stop">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">stop</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="WatchmanReloader.check_server_status">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.WatchmanReloader.check_server_status">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_server_status</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inner_ex</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return True if the server is available.&quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="s2">&quot;version&quot;</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">WatchmanUnavailable</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">inner_ex</span><span class="p">))</span> <span class="kn">from</span><span class="w"> </span><span class="nn">inner_ex</span>
+        <span class="k">return</span> <span class="kc">True</span></div>
+
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="WatchmanReloader.check_availability">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.WatchmanReloader.check_availability">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_availability</span><span class="p">(</span><span class="bp">cls</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">pywatchman</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">WatchmanUnavailable</span><span class="p">(</span><span class="s2">&quot;pywatchman not installed.&quot;</span><span class="p">)</span>
+        <span class="n">client</span> <span class="o">=</span> <span class="n">pywatchman</span><span class="o">.</span><span class="n">client</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">capabilityCheck</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="c1"># The service is down?</span>
+            <span class="k">raise</span> <span class="n">WatchmanUnavailable</span><span class="p">(</span><span class="s2">&quot;Cannot connect to the watchman service.&quot;</span><span class="p">)</span>
+        <span class="n">version</span> <span class="o">=</span> <span class="n">get_version_tuple</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="s2">&quot;version&quot;</span><span class="p">])</span>
+        <span class="c1"># Watchman 4.9 includes multiple improvements to watching project</span>
+        <span class="c1"># directories as well as case insensitive filesystems.</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Watchman version </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">version</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">version</span> <span class="o">&lt;</span> <span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">9</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">WatchmanUnavailable</span><span class="p">(</span><span class="s2">&quot;Watchman 4.9 or later is required.&quot;</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="get_reloader">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.get_reloader">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_reloader</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the most suitable reloader for this environment.&quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">WatchmanReloader</span><span class="o">.</span><span class="n">check_availability</span><span class="p">()</span>
+    <span class="k">except</span> <span class="n">WatchmanUnavailable</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">StatReloader</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">WatchmanReloader</span><span class="p">()</span></div>
+
+
+
+<div class="viewcode-block" id="start_django">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.start_django">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">start_django</span><span class="p">(</span><span class="n">reloader</span><span class="p">,</span> <span class="n">main_func</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="n">ensure_echo_on</span><span class="p">()</span>
+
+    <span class="n">main_func</span> <span class="o">=</span> <span class="n">check_errors</span><span class="p">(</span><span class="n">main_func</span><span class="p">)</span>
+    <span class="n">django_main_thread</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span>
+        <span class="n">target</span><span class="o">=</span><span class="n">main_func</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="o">=</span><span class="n">kwargs</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;django-main-thread&quot;</span>
+    <span class="p">)</span>
+    <span class="n">django_main_thread</span><span class="o">.</span><span class="n">daemon</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">django_main_thread</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+
+    <span class="k">while</span> <span class="ow">not</span> <span class="n">reloader</span><span class="o">.</span><span class="n">should_stop</span><span class="p">:</span>
+        <span class="n">reloader</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">django_main_thread</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="run_with_reloader">
+<a class="viewcode-back" href="../../../autoapi/django/utils/autoreload/index.html#django.utils.autoreload.run_with_reloader">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">run_with_reloader</span><span class="p">(</span><span class="n">main_func</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="n">signal</span><span class="o">.</span><span class="n">signal</span><span class="p">(</span><span class="n">signal</span><span class="o">.</span><span class="n">SIGTERM</span><span class="p">,</span> <span class="k">lambda</span> <span class="o">*</span><span class="n">args</span><span class="p">:</span> <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">DJANGO_AUTORELOAD_ENV</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;true&quot;</span><span class="p">:</span>
+            <span class="n">reloader</span> <span class="o">=</span> <span class="n">get_reloader</span><span class="p">()</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="s2">&quot;Watching for file changes with </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">reloader</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span>
+            <span class="p">)</span>
+            <span class="n">start_django</span><span class="p">(</span><span class="n">reloader</span><span class="p">,</span> <span class="n">main_func</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">exit_code</span> <span class="o">=</span> <span class="n">restart_with_reloader</span><span class="p">()</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="n">exit_code</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">KeyboardInterrupt</span><span class="p">:</span>
+        <span class="k">pass</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
